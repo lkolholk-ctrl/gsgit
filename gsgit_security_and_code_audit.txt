@@ -1,0 +1,217 @@
+================================================================================
+           GsGit: АУДИТ БЕЗОПАСНОСТИ, АРХИТЕКТУРЫ И НОВЫЕ ПРЕДЛОЖЕНИЯ
+================================================================================
+
+В ходе детального анализа исходного кода проекта GsGit (включая Kotlin-код, C-модуль
+и конфигурацию Gradle) было обнаружено несколько критических расхождений между
+декларируемыми функциями защиты и их фактической реализацией, а также зоны для
+оптимизации архитектуры.
+
+Ниже представлен отчет с конкретными уязвимостями, архитектурными рекомендациями
+и шаблонами кода для их исправления.
+
+--------------------------------------------------------------------------------
+1. КРИТИЧЕСКИЕ НАХОДКИ В СФЕРЕ БЕЗОПАСНОСТИ (УЯЗВИМОСТИ)
+--------------------------------------------------------------------------------
+
+* [КРИТИЧЕСКАЯ УЯЗВИМОСТЬ] Хранение GitHub-токенов в открытом виде (Plaintext):
+  - Место в коде: GitHubManager.kt (строки 28-33)
+  - Описание: Токен доступа пользователя сохраняется в стандартный SharedPreferences 
+    в виде открытого незашифрованного текста:
+    `context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_TOKEN, token).apply()`
+  - Угроза: На устройствах с Root-правами (или через уязвимости резервного копирования) 
+    любое приложение с доступом к системе или злоумышленник могут прочитать файл 
+    `/data/data/gs.git.vps/shared_prefs/github_prefs.xml` и скомпрометировать GitHub PAT 
+    пользователя.
+
+* [КРИТИЧЕСКАЯ ПРОБЛЕМА] Неактивный нативный слой безопасности (Dead Code):
+  - Место в коде: MainActivity.kt / App.kt / NativeSecurity.kt
+  - Описание: В проекте объявлен потрясающий модуль NativeSecurity.kt, связывающий 
+    нативную библиотеку `libgsgit_security.so` (написанную на C в `security.c` с 
+    поддержкой OMVLL, детектом Frida, Root, Magisk, APatch и KSU). Однако в Kotlin-коде 
+    приложения функции `isEnvironmentSafe()`, `runSecurityChecks()` и `encryptToken()` 
+    НИКОГДА не вызываются. Защита существует в коде, но фактически выключена.
+
+* [УЯЗВИМОСТЬ] Отсутствие проверки подписи APK (Signature Spoofing):
+  - Место в коде: security.c
+  - Описание: Нативная часть не проверяет целостность и подпись APK-файла. Взломщик 
+    может легко декомпилировать приложение, вырезать JNI-вызовы из NativeSecurity 
+    (или пропатчить C-методы так, чтобы они всегда возвращали true), собрать APK обратно 
+    и подписать его своим ключом. Приложение не заметит подмены.
+
+* [СЛАБОСТЬ] Обход проверки Root через libc-функции:
+  - Место в коде: security.c (функции detect_root и detect_magisk)
+  - Описание: Проверка наличия файлов `su` выполняется с помощью стандартной функции 
+    `access(paths[i], F_OK)`. Любой стандартный скрипт Frida или утилита скрытия Root 
+    (например, DenyList в Magisk/KSU) легко перехватывает вызовы `access` и возвращает -1.
+
+--------------------------------------------------------------------------------
+2. РЕКОМЕНДАЦИИ ПО АРХИТЕКТУРЕ И СЕТЕВОМУ СЛОЮ
+--------------------------------------------------------------------------------
+
+* Избыточный и перегруженный сетевой код в GitHubManager.kt:
+  - Текущая реализация: Класс занимает более 7000 строк кода! Он использует 
+    устаревший класс `HttpURLConnection` и выполняет ручную сборку запросов, чтение 
+    стримов, обработку ошибок сети и разбор JSON с помощью стандартных классов 
+    `JSONObject` и `JSONArray`. Это порождает гигантское количество бойлерплейта 
+    (повторяющегося кода) и усложняет чтение.
+  - Решение: Переписать сетевой слой на современные и легковесные библиотеки:
+    * OkHttp / Retrofit или Ktor для работы с HTTP (автоматический пул соединений, 
+      удобные интерцепторы для логов и прокси).
+    * Kotlinx.serialization или Moshi для автоматического маппинга JSON в data-классы Kotlin.
+    Это сократит размер GitHubManager.kt на 70-80% и уберет ручной парсинг строк.
+
+--------------------------------------------------------------------------------
+3. НОВЫЕ ПРЕДЛОЖЕНИЯ ПО УЛУЧШЕНИЮ ФУНКЦИОНАЛА
+--------------------------------------------------------------------------------
+
+* Интеграция прокси-настроек внутри приложения (Proxy Settings):
+  - Зачем: Поскольку пользователи часто сталкиваются с региональными блокировками ИИ-серверов 
+    Google / GitHub, добавление экрана настроек прокси (SOCKS5/HTTP) внутри GsGit 
+    позволит перенаправлять трафик самого приложения через прокси без необходимости 
+    включать общесистемный VPN на Android. Это особенно критично для обхода блокировок 
+    из регионов РФ.
+
+* Переход на EncryptedSharedPreferences или Jetpack DataStore:
+  - Вместо записи токенов в базовый `getSharedPreferences` использовать 
+    `EncryptedSharedPreferences` из библиотеки `androidx.security:security-crypto`, 
+    которая аппаратно шифрует данные на уровне Android KeyStore.
+
+* Реализация проверки подписи на уровне JNI (Anti-Tampering):
+  - Добавить в `security.c` сверку хэша подписи приложения с жестко зашитой константой 
+    (SHA-256 оригинального сертификата разработчика), получая сигнатуру через JNI из 
+    `PackageManager`. Если хэш не совпадает — приложение завершает работу.
+
+--------------------------------------------------------------------------------
+4. ПРАКТИЧЕСКИЕ РЕШЕНИЯ (ШАБЛОНЫ КОДА ДЛЯ ИСПРАВЛЕНИЯ)
+================================================================================
+
+Ниже представлены шаблоны кода, которые вы можете внедрить прямо сейчас для устранения
+критических проблем безопасности.
+
+### ШАБЛОН №1: Интеграция шифрования токена в GitHubManager.kt
+
+Измените функции сохранения и получения токена, добавив вызовы нативной библиотеки:
+
+```kotlin
+import android.util.Base64
+import gs.git.vps.security.NativeSecurity
+
+// Внутри object GitHubManager:
+
+fun saveToken(context: Context, token: String) {
+    if (token.isBlank()) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(KEY_TOKEN).apply()
+        return
+    }
+    try {
+        // Шифруем токен с помощью нативного аппаратного ключа
+        val encryptedBytes = NativeSecurity.encryptToken(token)
+        // Кодируем байты в Base64 для безопасного хранения в XML
+        val base64Token = Base64.encodeToString(encryptedBytes, Base64.NO_WRAP)
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString(KEY_TOKEN, base64Token)
+            .apply()
+    } catch (e: Exception) {
+        Log.e(TAG, "Failed to encrypt token: ${e.message}")
+        // Резервный вариант на случай сбоя JNI (или сохраняем обычный с предупреждением)
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_TOKEN, token).apply()
+    }
+}
+
+fun getToken(context: Context): String {
+    val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_TOKEN, "") ?: ""
+    if (raw.isBlank()) return ""
+    
+    // Проверяем, является ли токен зашифрованным (в Base64 длина кратна 4 и нет префикса ghp_)
+    if (raw.startsWith("ghp_") || raw.startsWith("github_pat_")) {
+        // Токен старого образца (незашифрованный) -> шифруем его на лету для безопасности
+        saveToken(context, raw)
+        return raw
+    }
+    
+    return try {
+        val encryptedBytes = Base64.decode(raw, Base64.DEFAULT)
+        // Дешифруем аппаратно-зависимым ключом
+        NativeSecurity.decryptToken(encryptedBytes)
+    } catch (e: Exception) {
+        Log.e(TAG, "Failed to decrypt token: ${e.message}")
+        ""
+    }
+}
+```
+
+---
+
+### ШАБЛОН №2: Подключение проверок среды в MainActivity.kt
+
+Обеспечьте блокировку запуска приложения при обнаружении небезопасного окружения 
+(Frida, Root, модифицированное ПО) в файле MainActivity.kt:
+
+```kotlin
+import android.widget.Toast
+import gs.git.vps.security.NativeSecurity
+import kotlin.system.exitProcess
+
+// Внутри MainActivity:
+
+override fun onCreate(savedInstanceState: Bundle?) {
+    super.onCreate(savedInstanceState)
+    
+    // Выполняем проверку безопасности среды перед запуском UI
+    if (!NativeSecurity.isEnvironmentSafe()) {
+        val checkResult = NativeSecurity.runSecurityChecks()
+        val reason = when (checkResult) {
+            1 -> "Frida Port Detected (27042)"
+            2 -> "Frida Memory Map Detected"
+            3 -> "Su Binary / Root Access Detected"
+            4 -> "Magisk / KernelSU / APatch Detected"
+            else -> "Untrusted environment"
+        }
+        
+        // Показываем Toast и завершаем процесс
+        Toast.makeText(this, "Security Violation: $reason. Exiting.", Toast.LENGTH_LONG).show()
+        
+        // Завершаем процесс приложения
+        finishAffinity()
+        exitProcess(0)
+    }
+    
+    // Если всё чисто, продолжаем инициализацию темы и Compose...
+    gs.git.vps.ui.theme.ThemeState.initialize(this)
+    setContent {
+        AiModuleSurface {
+            GitHubScreen(onBack = {})
+        }
+    }
+}
+```
+
+---
+
+### ШАБЛОН №3: Защита от Frida/обхода через syscall в security.c
+
+Вместо libc-функции `access()` используйте прямой системный вызов `syscall` для 
+проверки существования файлов `su`, чтобы Frida-скрипты не могли перехватить вызов:
+
+```c
+#include <sys/syscall.h>
+
+static int file_exists_syscall(const char* filepath) {
+    // Используем прямой syscall для SYS_faccessat (или SYS_openat)
+    // Это обходит хуки стандартной библиотеки libc.so ( access / open )
+    #if defined(__arm__) || defined(__aarch64__)
+    long res = syscall(SYS_faccessat, AT_FDCWD, filepath, F_OK, 0);
+    return res == 0;
+    #else
+    return access(filepath, F_OK) == 0;
+    #endif
+}
+
+// Замените вызовы access() в detect_root и detect_magisk на file_exists_syscall()
+```
+
+================================================================================
+Разработчик: Antigravity AI Coding Assistant
+Дата анализа: 31 мая 2026 года
+================================================================================

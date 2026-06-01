@@ -1,0 +1,92 @@
+package gs.git.vps.logging
+
+import android.content.Context
+import android.os.Environment
+import android.os.Process
+import java.io.File
+import java.io.PrintWriter
+import java.io.StringWriter
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+object CrashHandler {
+
+    @Volatile
+    private var installed = false
+
+    fun install(context: Context) {
+        if (installed) return
+        installed = true
+        val appContext = context.applicationContext
+
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            try {
+                val text = buildCrashReport(thread, throwable)
+                val ts = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US).format(Date())
+
+                // 1. Internal storage (for CrashActivity)
+                val internalDir = File(appContext.filesDir, "crash_logs").apply { mkdirs() }
+                File(internalDir, "java_crash_$ts.txt").writeText(text)
+
+                // 2. External Downloads/GsGit/ (user-accessible)
+                try {
+                    val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                    val gsgitDir = File(downloadsDir, "GsGit").apply { mkdirs() }
+                    File(gsgitDir, "crash_$ts.txt").writeText(text)
+                } catch (_: Throwable) {}
+            } catch (_: Throwable) {}
+
+            Process.killProcess(Process.myPid())
+            kotlin.system.exitProcess(10)
+        }
+    }
+
+    fun hasCrashLog(context: Context): Boolean {
+        return try {
+            val dir = File(context.filesDir, "crash_logs")
+            dir.exists() && dir.listFiles()?.any { it.isFile } == true
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    fun readAndClearAll(context: Context): String? {
+        return try {
+            val dir = File(context.filesDir, "crash_logs")
+            if (!dir.exists()) return null
+            val files = dir.listFiles()?.filter { it.isFile } ?: return null
+            if (files.isEmpty()) return null
+            val combined = files
+                .sortedBy { it.lastModified() }
+                .joinToString("\n\n${"-".repeat(60)}\n\n") { file ->
+                    val text = file.readText()
+                    file.delete()
+                    "=== ${file.name} ===\n$text"
+                }
+            combined.takeIf { it.isNotBlank() }
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    private fun buildCrashReport(thread: Thread, throwable: Throwable): String {
+        val writer = StringWriter()
+        val pw = PrintWriter(writer)
+        pw.println("GsGit Java Crash")
+        pw.println("Thread: ${thread.name}")
+        pw.println("Exception: ${throwable::class.java.name}")
+        pw.println("Message: ${throwable.message}")
+        pw.println()
+        throwable.printStackTrace(pw)
+        var cause = throwable.cause
+        while (cause != null) {
+            pw.println()
+            pw.println("Caused by: ${cause::class.java.name}")
+            cause.printStackTrace(pw)
+            cause = cause.cause
+        }
+        pw.flush()
+        return writer.toString()
+    }
+}

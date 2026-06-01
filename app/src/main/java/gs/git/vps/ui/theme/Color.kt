@@ -1,0 +1,106 @@
+package gs.git.vps.ui.theme
+
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
+import gs.git.vps.data.AppThemeMode
+
+object ThemeState {
+    var mode by mutableStateOf(AppThemeMode.LIGHT)
+    var accent by mutableStateOf(Color(0xFF007AFF))
+    var fileFontSize by mutableIntStateOf(15)
+    val isDark: Boolean get() = mode != AppThemeMode.LIGHT
+    val isAmoled: Boolean get() = mode == AppThemeMode.AMOLED || mode == AppThemeMode.CYBERPUNK
+
+    fun initialize(context: android.content.Context) {
+        val prefs = context.getSharedPreferences("gsgit_theme_prefs", android.content.Context.MODE_PRIVATE)
+        val modeStr = prefs.getString("theme_mode", AppThemeMode.DARK.name) // Default to DARK for terminal aesthetic!
+        mode = runCatching { AppThemeMode.valueOf(modeStr ?: "") }.getOrDefault(AppThemeMode.DARK)
+        fileFontSize = prefs.getInt("file_font_size", 15)
+        val accentArgb = prefs.getInt("accent_color", 0xFF007AFF.toInt())
+        accent = Color(accentArgb)
+    }
+
+    fun saveTheme(context: android.content.Context, newMode: AppThemeMode) {
+        mode = newMode
+        context.getSharedPreferences("gsgit_theme_prefs", android.content.Context.MODE_PRIVATE)
+            .edit()
+            .putString("theme_mode", newMode.name)
+            .apply()
+    }
+
+    fun saveFontSize(context: android.content.Context, size: Int) {
+        fileFontSize = size
+        context.getSharedPreferences("gsgit_theme_prefs", android.content.Context.MODE_PRIVATE)
+            .edit()
+            .putInt("file_font_size", size)
+            .apply()
+    }
+
+    fun saveAccentColor(context: android.content.Context, colorArgb: Int) {
+        accent = Color(colorArgb)
+        context.getSharedPreferences("gsgit_theme_prefs", android.content.Context.MODE_PRIVATE)
+            .edit()
+            .putInt("accent_color", colorArgb)
+            .apply()
+    }
+}
+
+val Blue: Color get() = ThemeState.accent
+val Green = Color(0xFF34C759)
+val Orange = Color(0xFFFF9500)
+val Red = Color(0xFFFF3B30)
+val Purple = Color(0xFFAF52DE)
+val Teal = Color(0xFF5AC8FA)
+val Yellow = Color(0xFFFFCC00)
+val Pink = Color(0xFFFF2D55)
+val Indigo = Color(0xFF5856D6)
+
+val FolderBlue = Color(0xFF56A0F5)
+val FolderGreen = Color(0xFF5EC45A)
+val FolderOrange = Color(0xFFF5A623)
+val FolderRed = Color(0xFFF25C54)
+val FolderPurple = Color(0xFFB47AE8)
+val FolderYellow = Color(0xFFEDD44A)
+
+val SurfaceLight: Color get() = when {
+    ThemeState.isAmoled -> Color(0xFF000000)
+    ThemeState.isDark -> Color(0xFF1C1C1E)
+    else -> Color(0xFFF2F2F7)
+}
+val SurfaceWhite: Color get() = when {
+    ThemeState.isAmoled -> Color(0xFF0C0C0C)
+    ThemeState.isDark -> Color(0xFF2C2C2E)
+    else -> Color(0xFFFFFFFF)
+}
+val TextPrimary: Color get() = when {
+    ThemeState.isDark -> Color(0xFFE5E5EA)
+    else -> Color(0xFF1C1C1E)
+}
+val TextSecondary: Color get() = when {
+    ThemeState.isDark -> Color(0xFF98989D)
+    else -> Color(0xFF8E8E93)
+}
+val TextTertiary: Color get() = when {
+    ThemeState.isDark -> Color(0xFF48484A)
+    else -> Color(0xFFC7C7CC)
+}
+val SeparatorColor: Color get() = when {
+    ThemeState.isDark -> Color(0x33FFFFFF)
+    else -> Color(0x33000000)
+}
+val TabBarInactiveColor: Color get() = when {
+    ThemeState.isDark -> Color(0xFF636366)
+    else -> Color(0xFF999999)
+}
+val CardBackground: Color get() = when {
+    ThemeState.isAmoled -> Color(0xFF0A0A0A)
+    ThemeState.isDark -> Color(0xFF2C2C2E)
+    else -> Color(0xFFFFFFFF)
+}
+val CardBorder: Color get() = when {
+    ThemeState.isDark -> Color(0x22FFFFFF)
+    else -> Color(0x22000000)
+}
