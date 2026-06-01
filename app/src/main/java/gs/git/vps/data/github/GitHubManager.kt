@@ -19,24 +19,23 @@ object GitHubManager {
 
     private const val TAG = "GH"
     private const val API = "https://api.github.com"
-    private const val PREFS = "github_prefs"
-    private const val KEY_TOKEN = "token"
     private const val KEY_USER = "user_json"
-    private const val KEY_API_ERRORS = "api_error_log"
-    private const val MAX_API_ERROR_LOG = 30
+    private const val CODE_NOT_MODIFIED = 304
 
-    fun saveToken(context: Context, token: String) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_TOKEN, token).apply()
-    }
+    private val etagCache = mutableMapOf<String, Pair<String, Map<String, String>>>()
+    @Volatile private var lastRateRemaining: Int = Int.MAX_VALUE
+    @Volatile private var lastRateReset: Long = 0L
 
-    fun getToken(context: Context): String =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_TOKEN, "") ?: ""
+    fun getRateLimitRemaining(): Int = lastRateRemaining
+    fun getRateLimitResetEpoch(): Long = lastRateReset
+    fun isRateLimitLow(): Boolean = lastRateRemaining < 10
 
-    fun isLoggedIn(context: Context): Boolean = getToken(context).isNotBlank()
-
-    fun logout(context: Context) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
-    }
+    fun saveToken(context: Context, token: String) = GitHubAuth.saveToken(context, token)
+    fun getToken(context: Context): String = GitHubAuth.getToken(context)
+    fun isLoggedIn(context: Context): Boolean = GitHubAuth.isLoggedIn(context)
+    fun logout(context: Context) = GitHubAuth.logout(context)
+    fun getApiErrorLog(context: Context): List<GHApiErrorLogEntry> = GitHubAuth.getApiErrorLog(context)
+    fun clearApiErrorLog(context: Context) = GitHubAuth.clearApiErrorLog(context)
 
     private suspend fun request(
         context: Context,
@@ -45,17 +44,23 @@ object GitHubManager {
         body: String? = null,
         extraHeaders: Map<String, String> = emptyMap(),
         trackErrors: Boolean = true,
+        rateLimitRetries: Int = 1,
+        backoffRetries: Int = 3,
     ): ApiResult =
         withContext(Dispatchers.IO) {
+            var conn: HttpURLConnection? = null
             try {
                 val token = getToken(context)
                 val url = if (endpoint.startsWith("http")) endpoint else "$API$endpoint"
-                val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                val cacheKey = "$method:$url"
+                val cachedEtag = if (method == "GET") etagCache[cacheKey]?.let { (_, h) -> h["etag"] } else null
+                conn = (URL(url).openConnection() as HttpURLConnection).apply {
                     requestMethod = method
                     setRequestProperty("Accept", "application/vnd.github.v3+json")
                     setRequestProperty("User-Agent", "GlassFiles")
                     extraHeaders.forEach { (k, v) -> setRequestProperty(k, v) }
                     if (token.isNotBlank()) setRequestProperty("Authorization", "Bearer $token")
+                    if (cachedEtag != null) setRequestProperty("If-None-Match", cachedEtag)
                     if (body != null) {
                         doOutput = true
                         setRequestProperty("Content-Type", "application/json")
@@ -67,72 +72,67 @@ object GitHubManager {
 
                 val code = conn.responseCode
                 val headers = responseHeaders(conn)
+
+                if (code == CODE_NOT_MODIFIED && etagCache.containsKey(cacheKey)) {
+                    val (cachedBody, cachedHeaders) = etagCache[cacheKey]!!
+                    return@withContext ApiResult(true, cachedBody, CODE_NOT_MODIFIED, cachedHeaders)
+                }
+
                 val stream = if (code in 200..299) conn.inputStream else conn.errorStream
                 val text = stream?.bufferedReader()?.use { it.readText() } ?: ""
-                conn.disconnect()
+
+                headers["x-ratelimit-remaining"]?.toIntOrNull()?.let { lastRateRemaining = it }
+                headers["x-ratelimit-reset"]?.toLongOrNull()?.let { lastRateReset = it }
+
+                if (code in 200..299 && method == "GET" && headers.containsKey("etag")) {
+                    etagCache[cacheKey] = text to headers
+                }
+
+                if (code == 403 && rateLimitRetries > 0 && headers["x-ratelimit-remaining"] == "0") {
+                    val resetEpoch = headers["x-ratelimit-reset"]?.toLongOrNull() ?: 0L
+                    val waitSec = (resetEpoch * 1000 - System.currentTimeMillis()).coerceIn(1000, 60_000) / 1000
+                    Log.w(TAG, "Rate limited, waiting ${waitSec}s for reset")
+                    kotlinx.coroutines.delay(waitSec * 1000)
+                    return@withContext request(context, endpoint, method, body, extraHeaders, trackErrors, rateLimitRetries - 1)
+                }
+
+                if (code in 500..599 && backoffRetries > 0) {
+                    val delayMs = (1000L * (4 - backoffRetries)).coerceIn(1000, 3000)
+                    Log.w(TAG, "Server error $code, retrying in ${delayMs}ms ($backoffRetries left)")
+                    kotlinx.coroutines.delay(delayMs)
+                    return@withContext request(context, endpoint, method, body, extraHeaders, trackErrors, rateLimitRetries, backoffRetries - 1)
+                }
 
                 val result = if (code in 200..299) ApiResult(true, text, code, headers) else ApiResult(false, text, code, headers)
                 if (!result.success && trackErrors) recordApiError(context, endpoint, method, result)
                 result
             } catch (e: Exception) {
+                if (backoffRetries > 0) {
+                    val delayMs = (1000L * (4 - backoffRetries)).coerceIn(1000, 3000)
+                    Log.w(TAG, "Network error: ${e.message}, retrying in ${delayMs}ms ($backoffRetries left)")
+                    kotlinx.coroutines.delay(delayMs)
+                    return@withContext request(context, endpoint, method, body, extraHeaders, trackErrors, rateLimitRetries, backoffRetries - 1)
+                }
                 Log.e(TAG, "Request error: ${e.message}")
                 val result = ApiResult(false, e.message ?: "Network error", -1)
                 if (trackErrors) recordApiError(context, endpoint, method, result)
                 result
+            } finally {
+                conn?.disconnect()
             }
         }
-
-    fun getApiErrorLog(context: Context): List<GHApiErrorLogEntry> {
-        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_API_ERRORS, "[]") ?: "[]"
-        return try {
-            val arr = JSONArray(raw)
-            (0 until arr.length()).mapNotNull { index ->
-                val item = arr.optJSONObject(index) ?: return@mapNotNull null
-                GHApiErrorLogEntry(
-                    timestamp = item.optLong("timestamp"),
-                    method = item.optString("method"),
-                    endpoint = item.optString("endpoint"),
-                    statusCode = item.optInt("statusCode"),
-                    message = item.optString("message"),
-                    body = item.optString("body"),
-                    requestId = item.optString("requestId"),
-                    rateRemaining = item.optString("rateRemaining"),
-                )
-            }
-        } catch (_: Exception) {
-            emptyList()
-        }
-    }
-
-    fun clearApiErrorLog(context: Context) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(KEY_API_ERRORS).apply()
-    }
 
     private fun recordApiError(context: Context, endpoint: String, method: String, result: ApiResult) {
-        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val current = try {
-            JSONArray(prefs.getString(KEY_API_ERRORS, "[]") ?: "[]")
-        } catch (_: Exception) {
-            JSONArray()
-        }
-        val entry = JSONObject().apply {
-            put("timestamp", System.currentTimeMillis())
-            put("method", method)
-            put("endpoint", endpoint.take(220))
-            put("statusCode", result.code)
-            put("message", apiErrorMessage(result).take(300))
-            put("body", result.body.trim().take(900))
-            put("requestId", result.headers["x-github-request-id"].orEmpty())
-            put("rateRemaining", result.headers["x-ratelimit-remaining"].orEmpty())
-        }
-        val next = JSONArray().apply {
-            put(entry)
-            for (i in 0 until minOf(current.length(), MAX_API_ERROR_LOG - 1)) {
-                current.optJSONObject(i)?.let { put(it) }
-            }
-        }
-        prefs.edit().putString(KEY_API_ERRORS, next.toString()).apply()
+        GitHubAuth.recordApiError(context, endpoint, method, result)
     }
+
+    private fun repoPath(owner: String, repo: String, suffix: String = ""): String {
+        val o = URLEncoder.encode(owner, "UTF-8")
+        val r = URLEncoder.encode(repo, "UTF-8")
+        return "/repos/$o/$r$suffix"
+    }
+
+    private fun encPath(segment: String): String = URLEncoder.encode(segment, "UTF-8")
 
     private fun responseHeaders(conn: HttpURLConnection): Map<String, String> =
         conn.headerFields
@@ -142,12 +142,19 @@ object GitHubManager {
             }
             .toMap()
 
+    private fun parseNextPage(headers: Map<String, String>): Int? {
+        val link = headers["link"] ?: return null
+        val match = Regex("""<[^>]*[?&]page=(\d+)[^>]*>;\s*rel="next"""").find(link)
+        return match?.groupValues?.get(1)?.toIntOrNull()
+    }
+
     private suspend fun requestBasic(endpoint: String, method: String, body: String?, username: String, password: String): ApiResult =
         withContext(Dispatchers.IO) {
+            var conn: HttpURLConnection? = null
             try {
                 val url = if (endpoint.startsWith("http")) endpoint else "$API$endpoint"
                 val auth = android.util.Base64.encodeToString("$username:$password".toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
-                val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                conn = (URL(url).openConnection() as HttpURLConnection).apply {
                     requestMethod = method
                     setRequestProperty("Accept", "application/vnd.github+json")
                     setRequestProperty("User-Agent", "GlassFiles")
@@ -163,11 +170,12 @@ object GitHubManager {
                 val code = conn.responseCode
                 val stream = if (code in 200..299) conn.inputStream else conn.errorStream
                 val text = stream?.bufferedReader()?.use { it.readText() } ?: ""
-                conn.disconnect()
                 if (code in 200..299) ApiResult(true, text, code) else ApiResult(false, text, code)
             } catch (e: Exception) {
                 Log.e(TAG, "Basic request error: ${e.message}")
                 ApiResult(false, e.message ?: "Network error", -1)
+            } finally {
+                conn?.disconnect()
             }
         }
 
@@ -180,8 +188,14 @@ object GitHubManager {
         if (!r.success) return null
         return try {
             val root = JSONObject(r.body)
-            if (root.has("errors")) null else root.optJSONObject("data")
+            if (root.has("errors")) {
+                val errs = root.optJSONArray("errors")
+                val msg = (0 until (errs?.length() ?: 0)).mapNotNull { errs?.optJSONObject(it)?.optString("message") }.joinToString("; ")
+                Log.e(TAG, "GraphQL errors: $msg")
+                null
+            } else root.optJSONObject("data")
         } catch (e: Exception) {
+            Log.e(TAG, "GraphQL parse error: ${e.message}")
             null
         }
     }
@@ -219,10 +233,12 @@ object GitHubManager {
     suspend fun getRepos(context: Context, page: Int = 1, perPage: Int = 30): List<GHRepo> {
         val r = request(context, "/user/repos?sort=updated&per_page=$perPage&page=$page&type=all")
         if (!r.success) return emptyList()
-        return try {
+        val repos = try {
             val arr = JSONArray(r.body)
             (0 until arr.length()).map { parseRepo(arr.getJSONObject(it)) }
-        } catch (e: Exception) { Log.e(TAG, "Parse repos: ${e.message}"); emptyList() }
+        } catch (e: Exception) { Log.e(TAG, "Parse repos: ${e.message}"); return emptyList() }
+        val nextPage = parseNextPage(r.headers) ?: return repos
+        return repos + getRepos(context, nextPage, perPage)
     }
 
     suspend fun getRepo(context: Context, owner: String, repo: String): GHRepo? {
@@ -261,7 +277,7 @@ object GitHubManager {
     }
 
     suspend fun getRepoContents(context: Context, owner: String, repo: String, path: String = "", branch: String? = null): List<GHContent> {
-        val r = request(context, "/repos/$owner/$repo/contents/$path${refQuery(branch)}")
+        val r = request(context, "${repoPath(owner, repo, "/contents/${encPath(path)}")}${refQuery(branch)}")
         if (!r.success) return emptyList()
         return try {
             val arr = JSONArray(r.body)
@@ -274,7 +290,7 @@ object GitHubManager {
     }
 
     suspend fun getFileContent(context: Context, owner: String, repo: String, path: String, branch: String? = null): String {
-        val r = request(context, "/repos/$owner/$repo/contents/$path${refQuery(branch)}")
+        val r = request(context, "${repoPath(owner, repo, "/contents/${encPath(path)}")}${refQuery(branch)}")
         if (!r.success) return ""
         return try {
             val j = JSONObject(r.body)
@@ -286,7 +302,7 @@ object GitHubManager {
     suspend fun getCommits(context: Context, owner: String, repo: String, page: Int = 1): List<GHCommit> {
         val r = request(context, "/repos/$owner/$repo/commits?per_page=30&page=$page")
         if (!r.success) return emptyList()
-        return try {
+        val commits = try {
             val arr = JSONArray(r.body)
             (0 until arr.length()).map { i ->
                 val j = arr.getJSONObject(i)
@@ -300,7 +316,9 @@ object GitHubManager {
                     avatarUrl = j.optJSONObject("author")?.optString("avatar_url") ?: ""
                 )
             }
-        } catch (e: Exception) { emptyList() }
+        } catch (e: Exception) { return emptyList() }
+        val nextPage = parseNextPage(r.headers) ?: return commits
+        return commits + getCommits(context, owner, repo, nextPage)
     }
 
     suspend fun getFileCommits(context: Context, owner: String, repo: String, path: String, branch: String? = null): List<GHCommit> {
@@ -328,7 +346,7 @@ object GitHubManager {
     suspend fun getIssues(context: Context, owner: String, repo: String, state: String = "open", page: Int = 1): List<GHIssue> {
         val r = request(context, "/repos/$owner/$repo/issues?state=$state&per_page=30&page=$page")
         if (!r.success) return emptyList()
-        return try {
+        val issues = try {
             val arr = JSONArray(r.body)
             (0 until arr.length()).map { i ->
                 val j = arr.getJSONObject(i)
@@ -336,7 +354,9 @@ object GitHubManager {
                     j.optJSONObject("user")?.optString("login") ?: "", j.optString("created_at"),
                     j.optInt("comments", 0), j.has("pull_request"))
             }
-        } catch (e: Exception) { emptyList() }
+        } catch (e: Exception) { return emptyList() }
+        val nextPage = parseNextPage(r.headers) ?: return issues
+        return issues + getIssues(context, owner, repo, state, nextPage)
     }
 
     suspend fun createIssue(context: Context, owner: String, repo: String, title: String, body: String): Boolean {
@@ -433,7 +453,7 @@ object GitHubManager {
             if (!sha.isNullOrBlank()) put("sha", sha)
             if (branch != null) put("branch", branch)
         }.toString()
-        return request(context, "/repos/$owner/$repo/contents/$path", "PUT", body).success
+        return request(context, "${repoPath(owner, repo, "/contents/${encPath(path)}")}", "PUT", body).success
     }
 
     suspend fun uploadFileWithResult(
@@ -447,7 +467,7 @@ object GitHubManager {
             if (!sha.isNullOrBlank()) put("sha", sha)
             if (branch != null) put("branch", branch)
         }.toString()
-        val r = request(context, "/repos/$owner/$repo/contents/$path", "PUT", body)
+        val r = request(context, "${repoPath(owner, repo, "/contents/${encPath(path)}")}", "PUT", body)
         if (!r.success) return GHFileSaveResult(false, "", r.body)
         val newSha = try {
             JSONObject(r.body).optJSONObject("content")?.optString("sha").orEmpty()
@@ -592,13 +612,13 @@ object GitHubManager {
             put("message", message); put("sha", sha)
             if (branch != null) put("branch", branch)
         }.toString()
-        return request(context, "/repos/$owner/$repo/contents/$path", "DELETE", body).success
+        return request(context, "${repoPath(owner, repo, "/contents/${encPath(path)}")}", "DELETE", body).success
     }
 
     suspend fun downloadFile(context: Context, owner: String, repo: String, path: String, destFile: java.io.File, branch: String? = null): Boolean =
         withContext(Dispatchers.IO) {
             try {
-                val r = request(context, "/repos/$owner/$repo/contents/$path${refQuery(branch)}")
+                val r = request(context, "${repoPath(owner, repo, "/contents/${encPath(path)}")}${refQuery(branch)}")
                 if (!r.success) return@withContext false
                 val j = JSONObject(r.body)
                 val downloadUrl = j.optString("download_url", "")
@@ -917,7 +937,7 @@ object GitHubManager {
     suspend fun getPullRequests(context: Context, owner: String, repo: String, state: String = "open", page: Int = 1): List<GHPullRequest> {
         val r = request(context, "/repos/$owner/$repo/pulls?state=$state&per_page=30&page=$page")
         if (!r.success) return emptyList()
-        return try {
+        val prs = try {
             val arr = JSONArray(r.body)
             (0 until arr.length()).map { i ->
                 val j = arr.getJSONObject(i)
@@ -936,7 +956,9 @@ object GitHubManager {
                     requestedReviewers = parseUsers(j.optJSONArray("requested_reviewers"))
                 )
             }
-        } catch (e: Exception) { emptyList() }
+        } catch (e: Exception) { return emptyList() }
+        val nextPage = parseNextPage(r.headers) ?: return prs
+        return prs + getPullRequests(context, owner, repo, state, nextPage)
     }
 
     suspend fun getPullRequestDetail(context: Context, owner: String, repo: String, number: Int): GHPullRequest? {
@@ -1198,19 +1220,23 @@ object GitHubManager {
     suspend fun getIssueEvents(context: Context, owner: String, repo: String, page: Int = 1): List<GHIssueEvent> {
         val r = request(context, "/repos/$owner/$repo/issues/events?per_page=100&page=$page")
         if (!r.success) return emptyList()
-        return try {
+        val events = try {
             val arr = JSONArray(r.body)
             (0 until arr.length()).map { i -> parseIssueEvent(arr.getJSONObject(i)) }
-        } catch (e: Exception) { emptyList() }
+        } catch (e: Exception) { return emptyList() }
+        val nextPage = parseNextPage(r.headers) ?: return events
+        return events + getIssueEvents(context, owner, repo, nextPage)
     }
 
     suspend fun getIssueEventsForIssue(context: Context, owner: String, repo: String, issueNumber: Int, page: Int = 1): List<GHIssueEvent> {
         val r = request(context, "/repos/$owner/$repo/issues/$issueNumber/events?per_page=100&page=$page")
         if (!r.success) return emptyList()
-        return try {
+        val events = try {
             val arr = JSONArray(r.body)
             (0 until arr.length()).map { i -> parseIssueEvent(arr.getJSONObject(i), fallbackIssueNumber = issueNumber) }
-        } catch (e: Exception) { emptyList() }
+        } catch (e: Exception) { return emptyList() }
+        val nextPage = parseNextPage(r.headers) ?: return events
+        return events + getIssueEventsForIssue(context, owner, repo, issueNumber, nextPage)
     }
 
     suspend fun getIssueEvent(context: Context, owner: String, repo: String, eventId: Long): GHIssueEvent? {
@@ -1373,25 +1399,29 @@ object GitHubManager {
             extraHeaders = mapOf("Accept" to "application/vnd.github.star+json")
         )
         if (!r.success) return emptyList()
-        return try {
+        val result = try {
             val arr = JSONArray(r.body)
             (0 until arr.length()).mapNotNull { i -> parseRepoPerson(arr.getJSONObject(i), starred = true) }
-        } catch (e: Exception) { emptyList() }
+        } catch (e: Exception) { return emptyList() }
+        val nextPage = parseNextPage(r.headers) ?: return result
+        return result + getRepoStargazers(context, owner, repo, nextPage)
     }
 
     suspend fun getRepoWatchers(context: Context, owner: String, repo: String, page: Int = 1): List<GHRepoPerson> {
         val r = request(context, "/repos/$owner/$repo/subscribers?per_page=50&page=$page")
         if (!r.success) return emptyList()
-        return try {
+        val result = try {
             val arr = JSONArray(r.body)
             (0 until arr.length()).mapNotNull { i -> parseRepoPerson(arr.getJSONObject(i), starred = false) }
-        } catch (e: Exception) { emptyList() }
+        } catch (e: Exception) { return emptyList() }
+        val nextPage = parseNextPage(r.headers) ?: return result
+        return result + getRepoWatchers(context, owner, repo, nextPage)
     }
 
     suspend fun getRepoEvents(context: Context, owner: String, repo: String, page: Int = 1): List<GHRepoEvent> {
         val r = request(context, "/repos/$owner/$repo/events?per_page=50&page=$page")
         if (!r.success) return emptyList()
-        return try {
+        val events = try {
             val arr = JSONArray(r.body)
             (0 until arr.length()).map { i ->
                 val j = arr.getJSONObject(i)
@@ -1407,13 +1437,15 @@ object GitHubManager {
                     size = payload?.optInt("size", 0) ?: 0
                 )
             }
-        } catch (e: Exception) { emptyList() }
+        } catch (e: Exception) { return emptyList() }
+        val nextPage = parseNextPage(r.headers) ?: return events
+        return events + getRepoEvents(context, owner, repo, nextPage)
     }
 
-    suspend fun getReleases(context: Context, owner: String, repo: String): List<GHRelease> {
-        val r = request(context, "/repos/$owner/$repo/releases?per_page=20")
+    suspend fun getReleases(context: Context, owner: String, repo: String, page: Int = 1): List<GHRelease> {
+        val r = request(context, "/repos/$owner/$repo/releases?per_page=20&page=$page")
         if (!r.success) return emptyList()
-        return try {
+        val releases = try {
             val arr = JSONArray(r.body)
             (0 until arr.length()).map { i ->
                 val j = arr.getJSONObject(i)
@@ -1425,7 +1457,9 @@ object GitHubManager {
                 }
                 parseRelease(j, assets)
             }
-        } catch (e: Exception) { emptyList() }
+        } catch (e: Exception) { return emptyList() }
+        val nextPage = parseNextPage(r.headers) ?: return releases
+        return releases + getReleases(context, owner, repo, nextPage)
     }
 
     suspend fun createRelease(context: Context, owner: String, repo: String, tag: String, name: String, body: String, prerelease: Boolean = false): Boolean {
@@ -6002,33 +6036,6 @@ object GitHubManager {
         val headers: Map<String, String> = emptyMap(),
     )
 
-    private fun apiErrorMessage(result: ApiResult): String {
-        val fallback = if (result.code > 0) "HTTP ${result.code}" else "Network error"
-        if (result.body.isBlank()) return fallback
-        return try {
-            val json = JSONObject(result.body)
-            val message = json.optString("message").takeIf { it.isNotBlank() }
-            val errors = json.optJSONArray("errors")
-            val details = if (errors != null) {
-                (0 until errors.length()).mapNotNull { index ->
-                    val item = errors.opt(index)
-                    when (item) {
-                        is JSONObject -> listOf(
-                            item.optString("field"),
-                            item.optString("code"),
-                            item.optString("message")
-                        ).filter { it.isNotBlank() && it != "null" }.joinToString(" ")
-                        else -> item?.toString()
-                    }?.takeIf { it.isNotBlank() && it != "null" }
-                }.take(3).joinToString("; ")
-            } else {
-                ""
-            }
-            listOfNotNull(message, details.takeIf { it.isNotBlank() }).joinToString(": ").ifBlank { fallback }
-        } catch (_: Exception) {
-            result.body.trim().take(220).ifBlank { fallback }
-        }
-    }
 }
 
 data class GHApiDiagnostics(
