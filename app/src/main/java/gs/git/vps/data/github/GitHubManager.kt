@@ -1022,6 +1022,14 @@ object GitHubManager {
         return request(context, "/repos/$owner/$repo/pulls/$number/merge", "PUT", body).success
     }
 
+    suspend fun updatePullRequestBranch(context: Context, owner: String, repo: String, number: Int, expectedHeadSha: String? = null): Boolean {
+        val body = JSONObject().apply {
+            if (expectedHeadSha != null) put("expected_head_sha", expectedHeadSha)
+        }.toString()
+        val r = request(context, "/repos/$owner/$repo/pulls/$number/update-branch", "PUT", body)
+        return r.success || r.code == 204
+    }
+
     suspend fun getPullRequestMergedStatus(context: Context, owner: String, repo: String, number: Int): GHPullMergeStatus {
         val r = request(context, "/repos/$owner/$repo/pulls/$number/merge")
         return when (r.code) {
@@ -1325,6 +1333,36 @@ object GitHubManager {
         } catch (e: Exception) { "" }
     }
 
+    suspend fun getGitHubMeta(context: Context): GHMeta? {
+        val r = request(context, "/meta", trackErrors = false)
+        if (!r.success) return null
+        return try {
+            val j = JSONObject(r.body)
+            GHMeta(
+                verifiablePasswordAuthentication = j.optBoolean("verifiable_password_authentication"),
+                sshKeys = j.optJSONArray("ssh_keys")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList(),
+                sshKeyFingerprints = j.optJSONArray("ssh_key_fingerprints")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList(),
+                hooks = j.optJSONArray("hooks")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList(),
+                web = j.optJSONArray("web")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList(),
+                api = j.optJSONArray("api")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList(),
+                git = j.optJSONArray("git")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList(),
+                packages = j.optJSONArray("packages")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList(),
+                pages = j.optJSONArray("pages")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList(),
+                importer = j.optJSONArray("importer")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList(),
+            )
+        } catch (e: Exception) { null }
+    }
+
+    suspend fun renderMarkdown(context: Context, text: String, mode: String = "markdown", contextRepo: String = ""): String {
+        val body = JSONObject().apply {
+            put("text", text)
+            put("mode", mode)
+            if (contextRepo.isNotBlank()) put("context", contextRepo)
+        }.toString()
+        val r = request(context, "/markdown", "POST", body, trackErrors = false)
+        return if (r.success) r.body else ""
+    }
+
     suspend fun getLanguages(context: Context, owner: String, repo: String): Map<String, Long> {
         val r = request(context, "/repos/$owner/$repo/languages")
         if (!r.success) return emptyMap()
@@ -1334,6 +1372,65 @@ object GitHubManager {
             j.keys().forEach { key -> map[key] = j.optLong(key) }
             map
         } catch (e: Exception) { emptyMap() }
+    }
+
+    suspend fun getEmojis(context: Context): Map<String, String> {
+        val r = request(context, "/emojis", trackErrors = false)
+        if (!r.success) return emptyMap()
+        return try {
+            val j = JSONObject(r.body)
+            val map = mutableMapOf<String, String>()
+            j.keys().forEach { key -> map[key] = j.optString(key) }
+            map
+        } catch (e: Exception) { emptyMap() }
+    }
+
+    suspend fun getGitignoreTemplates(context: Context): List<String> {
+        val r = request(context, "/gitignore/templates", trackErrors = false)
+        if (!r.success) return emptyList()
+        return try {
+            val arr = JSONArray(r.body)
+            (0 until arr.length()).mapNotNull { arr.optString(it)?.takeIf { s -> s.isNotBlank() } }
+        } catch (e: Exception) { emptyList() }
+    }
+
+    suspend fun getGitignoreTemplate(context: Context, name: String): String? {
+        val r = request(context, "/gitignore/templates/${encPath(name)}", trackErrors = false)
+        if (!r.success) return null
+        return try { JSONObject(r.body).optString("source") } catch (e: Exception) { null }
+    }
+
+    suspend fun getLicenses(context: Context): List<GHLicense> {
+        val r = request(context, "/licenses", trackErrors = false)
+        if (!r.success) return emptyList()
+        return try {
+            val arr = JSONArray(r.body)
+            (0 until arr.length()).map { i ->
+                val j = arr.getJSONObject(i)
+                GHLicense(j.optString("key"), j.optString("name"), j.optString("spdx_id"), j.optString("url"), j.optBoolean("featured"))
+            }
+        } catch (e: Exception) { emptyList() }
+    }
+
+    suspend fun getLicense(context: Context, key: String): GHLicenseDetail? {
+        val r = request(context, "/licenses/${encPath(key)}", trackErrors = false)
+        if (!r.success) return null
+        return try {
+            val j = JSONObject(r.body)
+            GHLicenseDetail(j.optString("key"), j.optString("name"), j.optString("spdx_id"),
+                j.optString("description", ""), j.optString("body", ""), j.optString("html_url", ""),
+                j.optBoolean("featured"))
+        } catch (e: Exception) { null }
+    }
+
+    suspend fun getRepoLicense(context: Context, owner: String, repo: String): GHLicenseDetail? {
+        val r = request(context, "${repoPath(owner, repo, "/license")}", trackErrors = false)
+        if (!r.success) return null
+        return try {
+            val j = JSONObject(r.body).optJSONObject("license") ?: return null
+            GHLicenseDetail(j.optString("key"), j.optString("name"), j.optString("spdx_id"),
+                j.optString("description", ""), "", j.optString("html_url", ""), j.optBoolean("featured"))
+        } catch (e: Exception) { null }
     }
 
     suspend fun getContributors(context: Context, owner: String, repo: String): List<GHContributor> {
@@ -2227,6 +2324,56 @@ object GitHubManager {
         return request(context, "/repos/$owner/$repo/actions/runs/$runId/pending_deployments", "POST", body).success
     }
 
+    suspend fun getDeployments(context: Context, owner: String, repo: String, environment: String? = null, ref: String? = null, page: Int = 1): List<GHDeployment> {
+        val params = mutableListOf("per_page=30", "page=$page")
+        environment?.let { params.add("environment=${URLEncoder.encode(it, "UTF-8")}") }
+        ref?.let { params.add("ref=${URLEncoder.encode(it, "UTF-8")}") }
+        val r = request(context, "${repoPath(owner, repo, "/deployments")}?${params.joinToString("&")}")
+        if (!r.success) return emptyList()
+        val deployments = try {
+            val arr = JSONArray(r.body)
+            (0 until arr.length()).map { i ->
+                val j = arr.getJSONObject(i)
+                GHDeployment(
+                    id = j.optLong("id"), sha = j.optString("sha"), ref = j.optString("ref"),
+                    task = j.optString("task"), environment = j.optString("environment"),
+                    description = j.optString("description", ""), createdAt = j.optString("created_at", ""),
+                    updatedAt = j.optString("updated_at", ""), creator = j.optJSONObject("creator")?.optString("login") ?: ""
+                )
+            }
+        } catch (e: Exception) { return emptyList() }
+        val nextPage = parseNextPage(r.headers) ?: return deployments
+        return deployments + getDeployments(context, owner, repo, environment, ref, nextPage)
+    }
+
+    suspend fun createDeployment(context: Context, owner: String, repo: String, ref: String, environment: String = "production", description: String = "", payload: String = ""): GHDeployment? {
+        val body = JSONObject().apply {
+            put("ref", ref)
+            put("environment", environment)
+            if (description.isNotBlank()) put("description", description)
+            if (payload.isNotBlank()) put("payload", JSONObject(payload))
+            put("auto_merge", false)
+        }.toString()
+        val r = request(context, "${repoPath(owner, repo, "/deployments")}", "POST", body)
+        if (!r.success) return null
+        return try {
+            val j = JSONObject(r.body)
+            GHDeployment(j.optLong("id"), j.optString("sha"), j.optString("ref"), j.optString("task"),
+                j.optString("environment"), j.optString("description", ""), j.optString("created_at", ""),
+                j.optString("updated_at", ""), j.optJSONObject("creator")?.optString("login") ?: "")
+        } catch (e: Exception) { null }
+    }
+
+    suspend fun createDeploymentStatus(context: Context, owner: String, repo: String, deploymentId: Long, state: String, description: String = "", environmentUrl: String = ""): Boolean {
+        val body = JSONObject().apply {
+            put("state", state)
+            if (description.isNotBlank()) put("description", description)
+            if (environmentUrl.isNotBlank()) put("environment_url", environmentUrl)
+        }.toString()
+        val r = request(context, "${repoPath(owner, repo, "/deployments/$deploymentId/statuses")}", "POST", body)
+        return r.success
+    }
+
     suspend fun getWorkflowRunReviewHistory(context: Context, owner: String, repo: String, runId: Long): List<GHWorkflowRunReview> {
         val r = request(context, "/repos/$owner/$repo/actions/runs/$runId/approvals")
         if (!r.success) return emptyList()
@@ -2283,6 +2430,11 @@ object GitHubManager {
 
     suspend fun deleteActionsCache(context: Context, owner: String, repo: String, cacheId: Long): Boolean =
         request(context, "/repos/$owner/$repo/actions/caches/$cacheId", "DELETE").let { it.code == 204 || it.success }
+
+    suspend fun deleteActionsCacheByKey(context: Context, owner: String, repo: String, key: String): Boolean {
+        val r = request(context, "/repos/$owner/$repo/actions/caches?key=${URLEncoder.encode(key, "UTF-8")}", "DELETE")
+        return r.success || r.code == 204
+    }
 
     suspend fun getRepoActionsSecrets(context: Context, owner: String, repo: String): List<GHActionSecret> {
         val r = request(context, "/repos/$owner/$repo/actions/secrets?per_page=100")
@@ -2538,6 +2690,42 @@ object GitHubManager {
     suspend fun deleteOAuthAppGrant(clientId: String, clientSecret: String, accessToken: String): Boolean {
         val body = JSONObject().apply { put("access_token", accessToken.trim()) }.toString()
         return requestBasic("/applications/${clientId.trim()}/grant", "DELETE", body, clientId.trim(), clientSecret).let { it.code == 204 || it.success }
+    }
+
+    suspend fun initiateDeviceFlow(clientId: String): GHDeviceCode? {
+        val body = JSONObject().apply { put("client_id", clientId) }.toString()
+        val r = requestBasic("/login/device/code", "POST", body, clientId, "")
+        if (!r.success) return null
+        return try {
+            val j = JSONObject(r.body)
+            GHDeviceCode(
+                deviceCode = j.optString("device_code"),
+                userCode = j.optString("user_code"),
+                verificationUri = j.optString("verification_uri"),
+                expiresIn = j.optInt("expires_in"),
+                interval = j.optInt("interval", 5)
+            )
+        } catch (e: Exception) { null }
+    }
+
+    suspend fun pollDeviceToken(clientId: String, deviceCode: String): GHDeviceTokenResult {
+        val body = JSONObject().apply {
+            put("client_id", clientId)
+            put("device_code", deviceCode)
+            put("grant_type", "urn:ietf:params:oauth:grant-type:device_code")
+        }.toString()
+        val r = requestBasic("/login/oauth/access_token", "POST", body, clientId, "")
+        return try {
+            val j = JSONObject(r.body)
+            val error = j.optString("error", "")
+            if (error.isBlank()) {
+                GHDeviceTokenResult(token = j.optString("access_token"), error = null)
+            } else {
+                GHDeviceTokenResult(token = null, error = error)
+            }
+        } catch (e: Exception) {
+            GHDeviceTokenResult(token = null, error = "parse_error")
+        }
     }
 
     suspend fun deleteRepoSelfHostedRunner(context: Context, owner: String, repo: String, runnerId: Long): Boolean =
@@ -2817,6 +3005,34 @@ object GitHubManager {
 
     suspend fun deleteThreadSubscription(context: Context, threadId: String): Boolean =
         request(context, "/notifications/threads/$threadId/subscription", "DELETE", extraHeaders = mapOf("Accept" to "application/vnd.github+json")).let { it.code == 204 || it.success }
+
+    suspend fun markThreadDone(context: Context, threadId: String): Boolean =
+        request(context, "/notifications/threads/$threadId", "DELETE").let { it.code == 204 || it.success }
+
+    suspend fun getNotification(context: Context, threadId: String): GHNotification? {
+        val r = request(context, "/notifications/threads/$threadId")
+        if (!r.success) return null
+        return try {
+            val j = JSONObject(r.body)
+            val sub = j.optJSONObject("subject")
+            val repo = j.optJSONObject("repository")
+            val subjectUrl = sub?.optString("url") ?: ""
+            val repoHtmlUrl = repo?.optString("html_url") ?: ""
+            val htmlUrl = githubApiUrlToWebUrl(subjectUrl).ifBlank { repoHtmlUrl }
+            GHNotification(
+                id = j.optString("id"), unread = j.optBoolean("unread", false),
+                reason = j.optString("reason", ""),
+                title = sub?.optString("title") ?: "", type = sub?.optString("type") ?: "",
+                repoName = repo?.optString("full_name") ?: "",
+                updatedAt = j.optString("updated_at", ""),
+                url = subjectUrl,
+                lastReadAt = j.optString("last_read_at", "").takeIf { it.isNotBlank() && it != "null" },
+                subjectUrl = subjectUrl,
+                repositoryUrl = repo?.optString("url") ?: "",
+                htmlUrl = htmlUrl
+            )
+        } catch (e: Exception) { null }
+    }
 
     suspend fun isWatching(context: Context, owner: String, repo: String): Boolean {
         val r = request(context, "/repos/$owner/$repo/subscription")
@@ -3114,6 +3330,47 @@ object GitHubManager {
             val arr = JSONArray(r.body)
             (0 until arr.length()).map { parseRepo(arr.getJSONObject(it)) }
         } catch (e: Exception) { emptyList() }
+    }
+
+    suspend fun getOrgMembership(context: Context, org: String): GHOrgMembership? {
+        val r = request(context, "/user/memberships/orgs/${encPath(org)}")
+        if (!r.success) return null
+        return try {
+            val j = JSONObject(r.body)
+            GHOrgMembership(
+                org = j.optJSONObject("organization")?.optString("login") ?: org,
+                state = j.optString("state", ""),
+                role = j.optString("role", ""),
+                url = j.optString("url", "")
+            )
+        } catch (e: Exception) { null }
+    }
+
+    suspend fun updateOrgMembership(context: Context, org: String, state: String = "active"): Boolean {
+        val body = JSONObject().apply { put("state", state) }.toString()
+        val r = request(context, "/user/memberships/orgs/${encPath(org)}", "PATCH", body)
+        return r.success
+    }
+
+    suspend fun getOrgHooks(context: Context, org: String): List<GHWebhook> {
+        val r = request(context, "/orgs/${encPath(org)}/hooks?per_page=30", extraHeaders = mapOf("Accept" to "application/vnd.github+json"))
+        if (!r.success) return emptyList()
+        return try {
+            val arr = JSONArray(r.body)
+            (0 until arr.length()).map { i -> parseWebhook(arr.getJSONObject(i)) }
+        } catch (e: Exception) { emptyList() }
+    }
+
+    suspend fun createOrgHook(context: Context, org: String, url: String, events: List<String> = listOf("push"), active: Boolean = true, secret: String = ""): GHWebhook? {
+        val body = JSONObject().apply {
+            put("url", url)
+            put("events", JSONArray(events))
+            put("active", active)
+            if (secret.isNotBlank()) put("secret", secret)
+        }.toString()
+        val r = request(context, "/orgs/${encPath(org)}/hooks", "POST", body, extraHeaders = mapOf("Accept" to "application/vnd.github+json"))
+        if (!r.success) return null
+        return try { parseWebhook(JSONObject(r.body)) } catch (e: Exception) { null }
     }
 
     // ═══════════════════════════════════
@@ -5484,6 +5741,18 @@ object GitHubManager {
         return r.code == 204 || r.success
     }
 
+    suspend fun restorePackage(context: Context, ownerType: String, owner: String, packageType: String, packageName: String): Boolean {
+        val path = "${packageOwnerPath(ownerType, owner)}/packages/${URLEncoder.encode(packageType, "UTF-8")}/${URLEncoder.encode(packageName, "UTF-8")}/restore"
+        val r = request(context, path, "POST", "{}", extraHeaders = mapOf("Accept" to "application/vnd.github+json"))
+        return r.success
+    }
+
+    suspend fun restorePackageVersion(context: Context, ownerType: String, owner: String, packageType: String, packageName: String, versionId: Long): Boolean {
+        val path = "${packageOwnerPath(ownerType, owner)}/packages/${URLEncoder.encode(packageType, "UTF-8")}/${URLEncoder.encode(packageName, "UTF-8")}/versions/$versionId/restore"
+        val r = request(context, path, "POST", "{}", extraHeaders = mapOf("Accept" to "application/vnd.github+json"))
+        return r.success
+    }
+
     private fun packageOwnerPath(ownerType: String, owner: String): String {
         val encodedOwner = URLEncoder.encode(owner, "UTF-8")
         return if (ownerType == "org") "/orgs/$encodedOwner" else "/users/$encodedOwner"
@@ -5794,6 +6063,31 @@ object GitHubManager {
     suspend fun getRepositorySecurityAdvisory(context: Context, owner: String, repo: String, ghsaId: String): GHRepositorySecurityAdvisory? {
         val encoded = URLEncoder.encode(ghsaId, "UTF-8")
         val r = request(context, "/repos/$owner/$repo/security-advisories/$encoded", extraHeaders = mapOf("Accept" to "application/vnd.github+json"))
+        if (!r.success) return null
+        return try { parseRepositorySecurityAdvisory(JSONObject(r.body)) } catch (e: Exception) { null }
+    }
+
+    suspend fun createRepositorySecurityAdvisory(context: Context, owner: String, repo: String, summary: String, severity: String, cveId: String = "", description: String = "", vulnerabilities: String = "[]"): GHRepositorySecurityAdvisory? {
+        val body = JSONObject().apply {
+            put("summary", summary)
+            put("severity", severity)
+            if (cveId.isNotBlank()) put("cve_id", cveId)
+            if (description.isNotBlank()) put("description", description)
+            put("vulnerabilities", JSONArray(vulnerabilities))
+        }.toString()
+        val r = request(context, "${repoPath(owner, repo, "/security-advisories")}", "POST", body, extraHeaders = mapOf("Accept" to "application/vnd.github+json"))
+        if (!r.success) return null
+        return try { parseRepositorySecurityAdvisory(JSONObject(r.body)) } catch (e: Exception) { null }
+    }
+
+    suspend fun updateRepositorySecurityAdvisory(context: Context, owner: String, repo: String, ghsaId: String, severity: String? = null, summary: String? = null, state: String? = null): GHRepositorySecurityAdvisory? {
+        val body = JSONObject().apply {
+            severity?.let { put("severity", it) }
+            summary?.let { put("summary", it) }
+            state?.let { put("state", it) }
+        }.toString()
+        val encoded = URLEncoder.encode(ghsaId, "UTF-8")
+        val r = request(context, "${repoPath(owner, repo, "/security-advisories/$encoded")}", "PATCH", body, extraHeaders = mapOf("Accept" to "application/vnd.github+json"))
         if (!r.success) return null
         return try { parseRepositorySecurityAdvisory(JSONObject(r.body)) } catch (e: Exception) { null }
     }
@@ -6445,6 +6739,12 @@ data class GHPendingDeployment(val environmentId: Long, val environmentName: Str
     val currentUserCanApprove: Boolean, val waitTimer: Int, val waitTimerStartedAt: String,
     val reviewers: List<String>)
 
+data class GHDeployment(
+    val id: Long, val sha: String, val ref: String, val task: String,
+    val environment: String, val description: String, val createdAt: String,
+    val updatedAt: String, val creator: String
+)
+
 data class GHWorkflowRunReview(val state: String, val comment: String, val user: String,
     val environments: List<String>)
 
@@ -6539,6 +6839,19 @@ data class GHOAuthTokenInfo(
 
 data class GHRunnerToken(val token: String, val expiresAt: String)
 
+data class GHDeviceCode(
+    val deviceCode: String,
+    val userCode: String,
+    val verificationUri: String,
+    val expiresIn: Int,
+    val interval: Int
+)
+
+data class GHDeviceTokenResult(
+    val token: String?,
+    val error: String?
+)
+
 data class GHActionsPermissions(val enabled: Boolean, val allowedActions: String,
     val selectedActionsUrl: String)
 
@@ -6629,6 +6942,8 @@ data class GHUserProfile(
 )
 
 data class GHOrg(val login: String, val avatarUrl: String, val description: String)
+
+data class GHOrgMembership(val org: String, val state: String, val role: String, val url: String)
 
 data class GHLabel(val name: String, val color: String, val description: String)
 
@@ -7201,4 +7516,35 @@ data class GHCommunityProfileFile(
     val name: String,
     val htmlUrl: String,
     val present: Boolean
+)
+
+data class GHMeta(
+    val verifiablePasswordAuthentication: Boolean,
+    val sshKeys: List<String>,
+    val sshKeyFingerprints: List<String>,
+    val hooks: List<String>,
+    val web: List<String>,
+    val api: List<String>,
+    val git: List<String>,
+    val packages: List<String>,
+    val pages: List<String>,
+    val importer: List<String>,
+)
+
+data class GHLicense(
+    val key: String,
+    val name: String,
+    val spdxId: String,
+    val url: String,
+    val featured: Boolean
+)
+
+data class GHLicenseDetail(
+    val key: String,
+    val name: String,
+    val spdxId: String,
+    val description: String,
+    val body: String,
+    val htmlUrl: String,
+    val featured: Boolean
 )
