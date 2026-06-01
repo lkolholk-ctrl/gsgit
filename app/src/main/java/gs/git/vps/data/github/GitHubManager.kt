@@ -3776,6 +3776,21 @@ object GitHubManager {
         } catch (_: Exception) { "Unavailable" }
     }
 
+    suspend fun getRateLimitGraphQL(context: Context): GHRateLimitGraphQL? {
+        val data = graphql(context, "{ rateLimit { limit cost remaining resetAt nodeCount } }")
+        if (data == null) return null
+        return try {
+            val rl = data.getJSONObject("rateLimit")
+            GHRateLimitGraphQL(
+                limit = rl.optInt("limit"),
+                cost = rl.optInt("cost"),
+                remaining = rl.optInt("remaining"),
+                resetAt = rl.optString("resetAt", ""),
+                nodeCount = rl.optInt("nodeCount")
+            )
+        } catch (e: Exception) { null }
+    }
+
     suspend fun runApiDiagnostics(
         context: Context,
         owner: String = "",
@@ -4427,10 +4442,10 @@ object GitHubManager {
     // PR Review Comments
     // ═══════════════════════════════════
 
-    suspend fun getPullRequestReviewComments(context: Context, owner: String, repo: String, pullNumber: Int): List<GHReviewComment> {
-        val r = request(context, "/repos/$owner/$repo/pulls/$pullNumber/comments?per_page=100")
+    suspend fun getPullRequestReviewComments(context: Context, owner: String, repo: String, pullNumber: Int, page: Int = 1): List<GHReviewComment> {
+        val r = request(context, "/repos/$owner/$repo/pulls/$pullNumber/comments?per_page=100&page=$page")
         if (!r.success) return emptyList()
-        return try {
+        val comments = try {
             val arr = JSONArray(r.body)
             (0 until arr.length()).map { i ->
                 val j = arr.getJSONObject(i)
@@ -4447,7 +4462,9 @@ object GitHubManager {
                     inReplyToId = j.optLong("in_reply_to_id", 0L).takeIf { it > 0 }
                 )
             }
-        } catch (e: Exception) { emptyList() }
+        } catch (e: Exception) { return emptyList() }
+        val nextPage = parseNextPage(r.headers) ?: return comments
+        return comments + getPullRequestReviewComments(context, owner, repo, pullNumber, nextPage)
     }
 
     suspend fun createPullRequestReviewComment(
@@ -4472,6 +4489,29 @@ object GitHubManager {
 
     suspend fun deletePullRequestReviewComment(context: Context, owner: String, repo: String, commentId: Long): Boolean =
         request(context, "/repos/$owner/$repo/pulls/comments/$commentId", "DELETE").let { it.code == 204 || it.success }
+
+    suspend fun getPullRequestReviewComment(context: Context, owner: String, repo: String, commentId: Long): GHReviewComment? {
+        val r = request(context, "/repos/$owner/$repo/pulls/comments/$commentId")
+        if (!r.success) return null
+        return try {
+            val j = JSONObject(r.body)
+            GHReviewComment(
+                id = j.optLong("id"), body = j.optString("body"), path = j.optString("path"),
+                line = j.optInt("line", 0), originalLine = j.optInt("original_line", 0),
+                diffHunk = j.optString("diff_hunk", ""),
+                author = j.optJSONObject("user")?.optString("login") ?: "",
+                avatarUrl = j.optJSONObject("user")?.optString("avatar_url") ?: "",
+                createdAt = j.optString("created_at", ""),
+                inReplyToId = j.optLong("in_reply_to_id", 0L).takeIf { it > 0 }
+            )
+        } catch (e: Exception) { null }
+    }
+
+    suspend fun updatePullRequestReviewComment(context: Context, owner: String, repo: String, commentId: Long, body: String): Boolean {
+        val json = JSONObject().apply { put("body", body) }.toString()
+        val r = request(context, "/repos/$owner/$repo/pulls/comments/$commentId", "PATCH", json)
+        return r.success
+    }
 
     // ═══════════════════════════════════
     // PR Check Runs
@@ -4630,6 +4670,33 @@ object GitHubManager {
     suspend fun addIssueCommentReaction(context: Context, owner: String, repo: String, commentId: Long, content: String): Boolean {
         val body = JSONObject().apply { put("content", content) }.toString()
         return request(context, "/repos/$owner/$repo/issues/comments/$commentId/reactions", "POST", body).success
+    }
+
+    suspend fun deleteIssueCommentReaction(context: Context, owner: String, repo: String, reactionId: Long): Boolean {
+        val r = request(context, "/repos/$owner/$repo/reactions/$reactionId", "DELETE")
+        return r.code == 204 || r.success
+    }
+
+    suspend fun getPullRequestReviewCommentReactions(context: Context, owner: String, repo: String, commentId: Long): List<GHReaction> {
+        val r = request(context, "/repos/$owner/$repo/pulls/comments/$commentId/reactions?per_page=100")
+        if (!r.success) return emptyList()
+        return try {
+            val arr = JSONArray(r.body)
+            (0 until arr.length()).map { i ->
+                val j = arr.getJSONObject(i)
+                GHReaction(id = j.optLong("id"), content = j.optString("content"), user = j.optJSONObject("user")?.optString("login") ?: "")
+            }
+        } catch (e: Exception) { emptyList() }
+    }
+
+    suspend fun addPullRequestReviewCommentReaction(context: Context, owner: String, repo: String, commentId: Long, content: String): Boolean {
+        val body = JSONObject().apply { put("content", content) }.toString()
+        return request(context, "/repos/$owner/$repo/pulls/comments/$commentId/reactions", "POST", body).success
+    }
+
+    suspend fun deletePullRequestReviewCommentReaction(context: Context, owner: String, repo: String, reactionId: Long): Boolean {
+        val r = request(context, "/repos/$owner/$repo/reactions/$reactionId", "DELETE")
+        return r.code == 204 || r.success
     }
 
     // ═══════════════════════════════════
@@ -5078,6 +5145,25 @@ object GitHubManager {
             put("body", body)
         }.toString()
         val r = request(context, "/repos/$owner/$repo/projects", "POST", payload, extraHeaders = mapOf("Accept" to "application/vnd.github+json"))
+        if (!r.success) return null
+        return try { parseProject(JSONObject(r.body)) } catch (e: Exception) { null }
+    }
+
+    suspend fun getOrgProjects(context: Context, org: String, state: String = "all"): List<GHProject> {
+        val r = request(context, "/orgs/${encPath(org)}/projects?state=$state&per_page=100", extraHeaders = mapOf("Accept" to "application/vnd.github+json"))
+        if (!r.success) return emptyList()
+        return try {
+            val arr = JSONArray(r.body)
+            (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i)?.let(::parseProject) }
+        } catch (e: Exception) { emptyList() }
+    }
+
+    suspend fun createOrgProject(context: Context, org: String, name: String, body: String): GHProject? {
+        val payload = JSONObject().apply {
+            put("name", name)
+            put("body", body)
+        }.toString()
+        val r = request(context, "/orgs/${encPath(org)}/projects", "POST", payload, extraHeaders = mapOf("Accept" to "application/vnd.github+json"))
         if (!r.success) return null
         return try { parseProject(JSONObject(r.body)) } catch (e: Exception) { null }
     }
@@ -6375,6 +6461,14 @@ data class GHApiRateSummary(
     val graphqlLimit: Int = 0,
     val graphqlRemaining: Int = 0,
     val resetEpoch: Long = 0L,
+
+data class GHRateLimitGraphQL(
+    val limit: Int,
+    val cost: Int,
+    val remaining: Int,
+    val resetAt: String,
+    val nodeCount: Int
+)
 )
 
 data class GHApiDiagnosticCheck(
