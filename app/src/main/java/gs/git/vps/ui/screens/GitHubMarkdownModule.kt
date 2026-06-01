@@ -30,6 +30,8 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import gs.git.vps.data.Strings
 import gs.git.vps.data.github.*
+import gs.git.vps.ui.components.AiModulePillButton
+import gs.git.vps.ui.components.AiModuleSpinner
 import gs.git.vps.ui.components.AiModuleText as Text
 import gs.git.vps.ui.theme.*
 import kotlinx.coroutines.launch
@@ -127,20 +129,128 @@ fun parseMarkdown(text: String): List<MarkdownBlock> {
 }
 
 @Composable
-fun MarkdownCanvas(text: String, modifier: Modifier = Modifier) {
+fun MarkdownCanvas(text: String, modifier: Modifier = Modifier, repo: String = "") {
     val palette = AiModuleTheme.colors
-    val blocks = remember(text) { parseMarkdown(text) }
-    
-    Column(
-        modifier = modifier
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 14.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        blocks.forEach { block ->
-            RenderMarkdownBlock(block)
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var useGithubRender by remember { mutableStateOf(false) }
+    var githubHtml by remember { mutableStateOf("") }
+    var rendering by remember { mutableStateOf(false) }
+
+    LaunchedEffect(useGithubRender, text) {
+        if (useGithubRender && text.isNotBlank()) {
+            rendering = true
+            githubHtml = GitHubManager.renderMarkdown(context, text, if (repo.isNotBlank()) "gfm" else "markdown", repo)
+            rendering = false
         }
     }
+
+    Column(modifier) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.End,
+        ) {
+            AiModulePillButton(
+                label = if (useGithubRender) "local" else "gfm",
+                onClick = { useGithubRender = !useGithubRender },
+                compact = true,
+            )
+        }
+        if (rendering) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                AiModuleSpinner(label = "rendering…")
+            }
+        } else if (useGithubRender && githubHtml.isNotBlank()) {
+            val htmlBlocks = remember(githubHtml) { parseGithubHtml(githubHtml) }
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 14.dp, vertical = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                htmlBlocks.forEach { block -> RenderMarkdownBlock(block) }
+            }
+        } else {
+            val blocks = remember(text) { parseMarkdown(text) }
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 14.dp, vertical = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                blocks.forEach { block -> RenderMarkdownBlock(block) }
+            }
+        }
+    }
+}
+
+private fun parseGithubHtml(html: String): List<MarkdownBlock> {
+    val blocks = mutableListOf<MarkdownBlock>()
+    var i = 0
+    val len = html.length
+    while (i < len) {
+        when {
+            i + 4 <= len && html.substring(i, i + 4) == "<h1>" -> {
+                val end = html.indexOf("</h1>", i); val to = if (end > i) end else len
+                blocks.add(MarkdownBlock.Heading(1, stripTags(html.substring(i + 4, to)))); i = if (end > i) end + 5 else len
+            }
+            i + 4 <= len && html.substring(i, i + 4) == "<h2>" -> {
+                val end = html.indexOf("</h2>", i); val to = if (end > i) end else len
+                blocks.add(MarkdownBlock.Heading(2, stripTags(html.substring(i + 4, to)))); i = if (end > i) end + 5 else len
+            }
+            i + 4 <= len && html.substring(i, i + 4) == "<h3>" -> {
+                val end = html.indexOf("</h3>", i); val to = if (end > i) end else len
+                blocks.add(MarkdownBlock.Heading(3, stripTags(html.substring(i + 4, to)))); i = if (end > i) end + 5 else len
+            }
+            i + 4 <= len && html.substring(i, i + 4) == "<h4>" -> {
+                val end = html.indexOf("</h4>", i); val to = if (end > i) end else len
+                blocks.add(MarkdownBlock.Heading(4, stripTags(html.substring(i + 4, to)))); i = if (end > i) end + 5 else len
+            }
+            i + 3 <= len && html.substring(i, i + 3) == "<p>" -> {
+                val end = html.indexOf("</p>", i); val to = if (end > i) end else len
+                blocks.add(MarkdownBlock.Paragraph(stripTags(html.substring(i + 3, to)))); i = if (end > i) end + 4 else len
+            }
+            i + 5 <= len && html.substring(i, i + 5) == "<pre>" -> {
+                val end = html.indexOf("</pre>", i); val to = if (end > i) end else len
+                val raw = html.substring(i + 5, to)
+                val codeStart = raw.indexOf(">"); val codeEnd = raw.lastIndexOf("<")
+                val code = if (codeStart in 0 until codeEnd) raw.substring(codeStart + 1, codeEnd) else raw
+                blocks.add(MarkdownBlock.CodeBlock("", code.trimIndent())); i = if (end > i) end + 6 else len
+            }
+            i + 4 <= len && html.substring(i, i + 4) == "<ul>" -> {
+                val end = html.indexOf("</ul>", i); val to = if (end > i) end else len
+                val inner = html.substring(i + 4, to)
+                val liRx = Regex("<li>(.*?)</li>", RegexOption.DOT_MATCHES_ALL)
+                liRx.findAll(inner).forEach { m -> blocks.add(MarkdownBlock.ListItem(0, stripTags(m.groupValues[1]))) }
+                i = if (end > i) end + 5 else len
+            }
+            i + 4 <= len && html.substring(i, i + 4) == "<ol>" -> {
+                val end = html.indexOf("</ol>", i); val to = if (end > i) end else len
+                val inner = html.substring(i + 4, to)
+                val liRx = Regex("<li>(.*?)</li>", RegexOption.DOT_MATCHES_ALL)
+                liRx.findAll(inner).forEach { m -> blocks.add(MarkdownBlock.ListItem(0, stripTags(m.groupValues[1]))) }
+                i = if (end > i) end + 5 else len
+            }
+            i + 8 <= len && html.substring(i, i + 8) == "<hr>" -> {
+                blocks.add(MarkdownBlock.HorizontalRule); i += 4
+            }
+            i + 10 <= len && html.substring(i, i + 10) == "<hr />" -> {
+                blocks.add(MarkdownBlock.HorizontalRule); i += 5
+            }
+            i + 10 <= len && html.substring(i, i + 10) == "<blockquote>" -> {
+                val end = html.indexOf("</blockquote>", i); val to = if (end > i) end else len
+                blocks.add(MarkdownBlock.BlockQuote(stripTags(html.substring(i + 10, to)).trim())); i = if (end > i) end + 13 else len
+            }
+            else -> i++
+        }
+    }
+    return blocks
+}
+
+private fun stripTags(html: String): String {
+    return html.replace(Regex("<[^>]+>"), "").replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&#39;", "'")
 }
 
 @Composable

@@ -85,7 +85,9 @@ private enum class RepoSettingsTab(val label: String) {
     SECRETS("Secrets"),
     WEBHOOKS("Webhooks"),
     RULES("Rules"),
-    SECURITY("Security")
+    SECURITY("Security"),
+    GITIGNORE("Gitignore"),
+    LICENSE("License")
 }
 
 @Composable
@@ -168,6 +170,8 @@ fun GitHubRepoSettingsScreen(
                 RepoSettingsTab.SECURITY -> {
                     security = GitHubRepoSettingsManager.getSecuritySettings(context, repo.owner, repo.name)
                 }
+                RepoSettingsTab.GITIGNORE -> {}
+                RepoSettingsTab.LICENSE -> {}
             }
         } catch (t: Throwable) {
             error = t.message ?: "Failed to load settings"
@@ -353,6 +357,8 @@ fun GitHubRepoSettingsScreen(
                         }
                     }
                 )
+                RepoSettingsTab.GITIGNORE -> GitignoreTab(repo.owner, repo.name)
+                RepoSettingsTab.LICENSE -> LicenseTab(repo.owner, repo.name)
             }
         }
     }
@@ -984,3 +990,57 @@ private fun WebhookDialog(
 private fun yesNo(value: Boolean): String = if (value) "Yes" else "No"
 
 private fun dateLabel(raw: String): String = raw.take(10).ifBlank { "—" }
+
+@Composable
+private fun GitignoreTab(owner: String, repoName: String) {
+    val context = LocalContext.current
+    var templates by remember { mutableStateOf<List<String>>(emptyList()) }
+    var selectedTemplate by remember { mutableStateOf<String?>(null) }
+    var templateContent by remember { mutableStateOf<String?>(null) }
+    var loading by remember { mutableStateOf(true) }
+    var query by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) { templates = GitHubManager.getGitignoreTemplates(context); loading = false }
+    Column(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxWidth().padding(12.dp)) {
+            AiModuleSearchField(value = query, onValueChange = { query = it }, placeholder = "search templates")
+        }
+        selectedTemplate?.let { name ->
+            LaunchedEffect(name) { templateContent = GitHubManager.getGitignoreTemplate(context, name) }
+            Column(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono, modifier = Modifier.weight(1f))
+                    AiModulePillButton(label = "close", onClick = { selectedTemplate = null; templateContent = null })
+                }
+                templateContent?.let { Text(it, fontSize = 11.sp, color = AiModuleTheme.colors.textSecondary, fontFamily = JetBrainsMono, lineHeight = 16.sp) }
+                    ?: AiModuleSpinner(label = "loading")
+            }
+        }
+        if (loading) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { AiModuleSpinner(label = "loading") }
+        else {
+            val filtered = templates.filter { query.isBlank() || it.contains(query, ignoreCase = true) }
+            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                items(filtered) { name ->
+                    Row(Modifier.fillMaxWidth().clickable { selectedTemplate = name }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(name, fontSize = 12.sp, fontFamily = JetBrainsMono, color = AiModuleTheme.colors.textPrimary)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LicenseTab(owner: String, repoName: String) {
+    val context = LocalContext.current
+    var repoLicense by remember { mutableStateOf<GHLicenseDetail?>(null) }
+    LaunchedEffect(Unit) { repoLicense = GitHubManager.getRepoLicense(context, owner, repoName) }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        repoLicense?.let { l ->
+            AiModuleSectionLabel(text = "repository license")
+            Text(l.name, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono)
+            AiModuleKeyValueRow("key", l.key)
+            AiModuleKeyValueRow("spdx", l.spdxId)
+            if (l.description.isNotBlank()) Text(l.description, fontSize = 12.sp, color = AiModuleTheme.colors.textSecondary)
+        } ?: GitHubMonoEmpty(title = "no license detected", subtitle = "This repository may not have a LICENSE file")
+    }
+}

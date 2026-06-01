@@ -79,7 +79,7 @@ import gs.git.vps.ui.components.AiModulePageBar
 import gs.git.vps.ui.components.AiModuleHairline
 import kotlinx.coroutines.launch
 
-private enum class ProjectsKind { CLASSIC, V2 }
+private enum class ProjectsKind { CLASSIC, V2, ORG }
 
 @Composable
 internal fun ProjectsTab(repo: GHRepo) {
@@ -88,6 +88,7 @@ internal fun ProjectsTab(repo: GHRepo) {
 
     var classicProjects by remember { mutableStateOf<List<GHProject>>(emptyList()) }
     var v2Projects by remember { mutableStateOf<List<GHProjectV2>>(emptyList()) }
+    var orgProjects by remember { mutableStateOf<List<GHProject>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var selectedKind by remember { mutableStateOf(ProjectsKind.CLASSIC) }
     var query by remember { mutableStateOf("") }
@@ -100,6 +101,7 @@ internal fun ProjectsTab(repo: GHRepo) {
         scope.launch {
             classicProjects = GitHubManager.getRepoProjects(context, repo.owner, repo.name)
             v2Projects = GitHubManager.getRepoProjectsV2(context, repo.owner, repo.name)
+            orgProjects = GitHubManager.getOrgProjects(context, repo.owner)
             loading = false
         }
     }
@@ -185,6 +187,7 @@ internal fun ProjectsTab(repo: GHRepo) {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 ProjectChip("Classic ${classicProjects.size}", selectedKind == ProjectsKind.CLASSIC) { selectedKind = ProjectsKind.CLASSIC }
                 ProjectChip("V2 ${v2Projects.size}", selectedKind == ProjectsKind.V2) { selectedKind = ProjectsKind.V2 }
+                ProjectChip("Org ${orgProjects.size}", selectedKind == ProjectsKind.ORG) { selectedKind = ProjectsKind.ORG }
             }
         }
         when (selectedKind) {
@@ -195,6 +198,10 @@ internal fun ProjectsTab(repo: GHRepo) {
             ProjectsKind.V2 -> {
                 items(visibleV2) { project -> ProjectV2Card(project) { selectedProjectV2 = project } }
                 if (visibleV2.isEmpty()) item { EmptyProjectsCard(if (v2Projects.isEmpty()) "No Projects V2 returned" else "No matching Projects V2") }
+            }
+            ProjectsKind.ORG -> {
+                items(orgProjects) { project -> ClassicProjectCard(project) { selectedProject = project } }
+                if (orgProjects.isEmpty()) item { EmptyProjectsCard("No org projects found") }
             }
         }
     }

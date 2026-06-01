@@ -212,6 +212,8 @@ internal fun ReposScreen(user: GHUser?, onBack: () -> Unit, onMinimize: () -> Un
     var showEnterpriseAdmin by rememberSaveable { mutableStateOf(false) }
     var showDiagnostics by rememberSaveable { mutableStateOf(false) }
     var showAdvancedSearch by rememberSaveable { mutableStateOf(false) }
+    var showEmojis by rememberSaveable { mutableStateOf(false) }
+    var showLicenses by rememberSaveable { mutableStateOf(false) }
     var reposPage by rememberSaveable { mutableIntStateOf(1) }; var reposHasMore by rememberSaveable { mutableStateOf(true) }
     val listState = rememberSaveable(saver = LazyListState.Saver) { LazyListState(0, 0) }
     fun handleReposBack() {
@@ -224,10 +226,12 @@ internal fun ReposScreen(user: GHUser?, onBack: () -> Unit, onMinimize: () -> Un
             showEnterpriseAdmin -> showEnterpriseAdmin = false
             showDiagnostics -> showDiagnostics = false
             showAdvancedSearch -> showAdvancedSearch = false
+            showEmojis -> showEmojis = false
+            showLicenses -> showLicenses = false
             else -> onBack()
         }
     }
-    BackHandler(enabled = showStarred || showOrgs || showPackages || showApps || showEnterpriseAdmin || showDiagnostics || showAdvancedSearch || showCreate) {
+    BackHandler(enabled = showStarred || showOrgs || showPackages || showApps || showEnterpriseAdmin || showDiagnostics || showAdvancedSearch || showEmojis || showLicenses || showCreate) {
         handleReposBack()
     }
     LaunchedEffect(Unit) { val r = GitHubManager.getRepos(context, 1); repos = r; reposHasMore = r.size >= 30; loading = false }
@@ -242,6 +246,8 @@ internal fun ReposScreen(user: GHUser?, onBack: () -> Unit, onMinimize: () -> Un
     if (showEnterpriseAdmin) { GitHubEnterpriseAdminScreen(onBack = { showEnterpriseAdmin = false }); return }
     if (showDiagnostics) { GitHubDiagnosticsScreen(onBack = { showDiagnostics = false }); return }
     if (showAdvancedSearch) { AdvancedSearchScreen(onBack = { showAdvancedSearch = false }, onRepoClick = onRepoClick, onProfile = onProfile); return }
+    if (showEmojis) { EmojisScreen(onBack = { showEmojis = false }); return }
+    if (showLicenses) { LicensesScreen(onBack = { showLicenses = false }); return }
     AiModuleSurface {
     val palette = AiModuleTheme.colors
     Column(Modifier.fillMaxSize().background(palette.background)) {
@@ -321,6 +327,8 @@ internal fun ReposScreen(user: GHUser?, onBack: () -> Unit, onMinimize: () -> Un
                 ) {
                     TerminalQuickChip(Strings.ghStarredRepos) { showStarred = true }
                     TerminalQuickChip(Strings.ghOrganizations) { showOrgs = true }
+                    TerminalQuickChip("emojis") { showEmojis = true }
+                    TerminalQuickChip("licenses") { showLicenses = true }
                     TerminalQuickChip("Search") { showAdvancedSearch = true }
                     TerminalQuickChip("Packages") { showPackages = true }
                     TerminalQuickChip("Apps") { showApps = true }

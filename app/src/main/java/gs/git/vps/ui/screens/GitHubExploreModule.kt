@@ -361,3 +361,85 @@ private fun OrgRow(org: GHOrg, onClick: () -> Unit) {
         )
     }
 }
+
+@Composable
+internal fun EmojisScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
+    var emojis by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var loading by remember { mutableStateOf(true) }
+    var query by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) { emojis = GitHubManager.getEmojis(context); loading = false }
+    GitHubScreenFrame(title = "> emojis", onBack = onBack) {
+        Column(Modifier.fillMaxSize()) {
+            Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
+                AiModuleSearchField(value = query, onValueChange = { query = it }, placeholder = "search emojis")
+            }
+            AiModuleHairline()
+            when {
+                loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { AiModuleSpinner(label = "loading emojis") }
+                emojis.isEmpty() -> GitHubMonoEmpty(title = "no emojis loaded")
+                else -> {
+                    val filtered = emojis.filter { (name, _) -> query.isBlank() || name.contains(query, ignoreCase = true) }
+                    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(filtered.entries.toList()) { (name, url) ->
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                AsyncImage(model = url, contentDescription = name, modifier = Modifier.size(20.dp))
+                                Text(name, fontSize = 12.sp, fontFamily = JetBrainsMono, color = AiModuleTheme.colors.textPrimary)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun LicensesScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var licenses by remember { mutableStateOf<List<GHLicense>>(emptyList()) }
+    var selectedLicense by remember { mutableStateOf<GHLicenseDetail?>(null) }
+    var loading by remember { mutableStateOf(true) }
+    var query by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) { licenses = GitHubManager.getLicenses(context); loading = false }
+    fun handleBack() { if (selectedLicense != null) selectedLicense = null else onBack() }
+    BackHandler(onBack = ::handleBack)
+    GitHubScreenFrame(title = "> licenses", onBack = ::handleBack) {
+        when {
+            selectedLicense != null -> {
+                val l = selectedLicense!!
+                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(l.name, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono)
+                    AiModuleKeyValueRow("key", l.key)
+                    AiModuleKeyValueRow("spdx", l.spdxId)
+                    if (l.description.isNotBlank()) Text(l.description, fontSize = 12.sp, color = AiModuleTheme.colors.textSecondary)
+                    if (l.body.isNotBlank()) {
+                        AiModuleSectionLabel(text = "full text")
+                        Text(l.body, fontSize = 11.sp, color = AiModuleTheme.colors.textPrimary, lineHeight = 16.sp, fontFamily = JetBrainsMono)
+                    }
+                }
+            }
+            loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { AiModuleSpinner(label = "loading licenses") }
+            else -> {
+                Column(Modifier.fillMaxSize()) {
+                    Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
+                        AiModuleSearchField(value = query, onValueChange = { query = it }, placeholder = "search licenses")
+                    }
+                    AiModuleHairline()
+                    val filtered = licenses.filter { query.isBlank() || it.name.contains(query, ignoreCase = true) }
+                    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        items(filtered) { license ->
+                            Row(Modifier.fillMaxWidth().clickable {
+                                scope.launch { selectedLicense = GitHubManager.getLicense(context, license.key) }
+                            }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(license.name, fontSize = 12.sp, fontFamily = JetBrainsMono, color = AiModuleTheme.colors.textPrimary, modifier = Modifier.weight(1f))
+                                if (license.featured) Text("★", fontSize = 12.sp, color = AiModuleTheme.colors.accent)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

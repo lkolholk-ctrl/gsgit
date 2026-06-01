@@ -158,6 +158,8 @@ internal fun GitHubDiagnosticsScreen(onBack: () -> Unit) {
 
             report?.let { current ->
                 item { GitHubDiagnosticsSummary(current) }
+                item { GitHubMetaPanel() }
+                item { GitHubGraphQLRateLimitPanel() }
                 item {
                     GitHubApiErrorLogPanel(
                         errors = errorLog,
@@ -518,3 +520,44 @@ private fun githubDiagnosticsJson(report: GHApiDiagnostics, errors: List<GHApiEr
             }
         })
     }
+
+@Composable
+private fun GitHubMetaPanel() {
+    val context = LocalContext.current
+    val palette = AiModuleTheme.colors
+    var meta by remember { mutableStateOf<GHMeta?>(null) }
+    LaunchedEffect(Unit) { meta = GitHubManager.getGitHubMeta(context) }
+    GitHubDiagnosticPanel {
+        Text("github /meta", color = palette.accent, fontFamily = JetBrainsMono, fontWeight = FontWeight.Medium, fontSize = 13.sp)
+        Spacer(Modifier.height(6.dp))
+        meta?.let { m ->
+            GitHubDiagnosticKV("password auth", m.verifiablePasswordAuthentication.toString())
+            GitHubDiagnosticKV("ssh keys", m.sshKeys.take(3).joinToString(", "))
+            GitHubDiagnosticKV("hooks", m.hooks.take(3).joinToString(", "))
+            GitHubDiagnosticKV("api", m.api.take(3).joinToString(", "))
+            GitHubDiagnosticKV("web", m.web.take(3).joinToString(", "))
+            GitHubDiagnosticKV("git", m.git.take(3).joinToString(", "))
+            GitHubDiagnosticKV("pages", m.pages.take(3).joinToString(", "))
+        } ?: Text("loading...", color = palette.textMuted, fontSize = 12.sp, fontFamily = JetBrainsMono)
+    }
+}
+
+@Composable
+private fun GitHubGraphQLRateLimitPanel() {
+    val context = LocalContext.current
+    val palette = AiModuleTheme.colors
+    var gqlRate by remember { mutableStateOf<GHRateLimitGraphQL?>(null) }
+    LaunchedEffect(Unit) { gqlRate = GitHubManager.getRateLimitGraphQL(context) }
+    GitHubDiagnosticPanel {
+        Text("graphql rate limit", color = palette.accent, fontFamily = JetBrainsMono, fontWeight = FontWeight.Medium, fontSize = 13.sp)
+        Spacer(Modifier.height(6.dp))
+        gqlRate?.let { r ->
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                GitHubRateBox("remaining", "${r.remaining}/${r.limit}")
+                GitHubRateBox("cost", r.cost.toString())
+                GitHubRateBox("nodes", r.nodeCount.toString())
+            }
+            if (r.resetAt.isNotBlank()) GitHubDiagnosticKV("reset at", r.resetAt.take(19).replace('T', ' '))
+        } ?: Text("loading...", color = palette.textMuted, fontSize = 12.sp, fontFamily = JetBrainsMono)
+    }
+}

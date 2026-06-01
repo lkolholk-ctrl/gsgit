@@ -906,7 +906,7 @@ fun CodeEditorScreen(
             Box(contentModifier) {
                 when {
                     isImage -> ModernImageCanvas(file)
-                    isMarkdown && mode == GitHubEditorMode.PREVIEW -> ModernMarkdownCanvas(lines)
+                    isMarkdown && mode == GitHubEditorMode.PREVIEW -> ModernMarkdownCanvas(lines, "$repoOwner/$repoName")
                     mode == GitHubEditorMode.READ -> ModernReadCanvas(lines, ext, lineNumbers, wrapLines, currentMatch?.line, fontSize)
                     mode == GitHubEditorMode.DIFF -> ModernDiffCanvas(savedContent, text, fontSize)
                     else -> ModernEditCanvas(
@@ -1970,9 +1970,9 @@ private fun ModernReadCanvas(
 }
 
 @Composable
-private fun ModernMarkdownCanvas(lines: List<String>) {
+private fun ModernMarkdownCanvas(lines: List<String>, repo: String = "") {
     val markdownText = remember(lines) { lines.joinToString("\n") }
-    MarkdownCanvas(markdownText, Modifier.fillMaxSize())
+    MarkdownCanvas(markdownText, Modifier.fillMaxSize(), repo = repo)
 }
 
 @Composable

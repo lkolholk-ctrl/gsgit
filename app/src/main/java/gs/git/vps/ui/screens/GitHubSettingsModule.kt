@@ -165,6 +165,7 @@ internal fun GitHubSettingsScreen(
     var repoInvitations by remember { mutableStateOf<List<GHUserRepositoryInvitation>>(emptyList()) }
     var rateLimitSummary by remember { mutableStateOf("Unavailable") }
     var showChangeToken by remember { mutableStateOf(false) }
+    var showDeviceLogin by remember { mutableStateOf(false) }
     var newToken by remember { mutableStateOf("") }
     var emailQuery by remember { mutableStateOf("") }
     var notificationQuery by remember { mutableStateOf("") }
@@ -652,6 +653,7 @@ internal fun GitHubSettingsScreen(
                             InfoLine("Token", maskToken(GitHubManager.getToken(context)))
                             InfoLine("Rate limit", rateLimitSummary)
                             ActionRow(Icons.Rounded.Key, "Change token") { showChangeToken = true }
+                            ActionRow(Icons.Rounded.Devices, "Device login") { showDeviceLogin = true }
                             ActionRow(Icons.Rounded.Delete, "Clear GitHub cache") {
                                 confirmAction(
                                     title = "clear github cache",
@@ -969,6 +971,62 @@ internal fun GitHubSettingsScreen(
                 AiModuleTextAction(label = Strings.cancel.lowercase(), onClick = { showChangeToken = false }, tint = AiModuleTheme.colors.textSecondary)
             },
         )
+    }
+
+    if (showDeviceLogin) {
+        var deviceClientId by remember { mutableStateOf("") }
+        var deviceCode by remember { mutableStateOf<GHDeviceCode?>(null) }
+        var devicePolling by remember { mutableStateOf(false) }
+        var deviceError by remember { mutableStateOf<String?>(null) }
+
+        AiModuleAlertDialog(
+            onDismissRequest = { showDeviceLogin = false; deviceCode = null },
+            title = "device login",
+            confirmButton = {
+                if (deviceCode == null) {
+                    AiModuleTextAction(label = "start", enabled = deviceClientId.isNotBlank(), onClick = {
+                        scope.launch {
+                            deviceCode = GitHubManager.initiateDeviceFlow(deviceClientId.trim())
+                            if (deviceCode == null) deviceError = "Failed to start device flow"
+                        }
+                    }, tint = AiModuleTheme.colors.accent)
+                } else {
+                    AiModuleTextAction(label = "poll", enabled = !devicePolling, onClick = {
+                        devicePolling = true
+                        scope.launch {
+                            val result = GitHubManager.pollDeviceToken(deviceClientId.trim(), deviceCode!!.deviceCode)
+                            devicePolling = false
+                            if (result.token != null) {
+                                GitHubManager.saveToken(context, result.token)
+                                showDeviceLogin = false
+                                deviceCode = null
+                                addLog("Logged in via device flow")
+                                onLogout(); // triggers re-login
+                            } else {
+                                deviceError = result.error ?: "pending"
+                            }
+                        }
+                    }, tint = AiModuleTheme.colors.accent)
+                }
+            },
+            dismissButton = {
+                AiModuleTextAction(label = Strings.cancel.lowercase(), onClick = { showDeviceLogin = false; deviceCode = null }, tint = AiModuleTheme.colors.textSecondary)
+            },
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (deviceCode == null) {
+                    CompactField("Client ID", deviceClientId) { deviceClientId = it }
+                } else {
+                    Text("Enter this code on GitHub:", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted)
+                    Text(deviceCode!!.userCode, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = AiModuleTheme.colors.accent, fontFamily = JetBrainsMono)
+                    Text("Verification URL:", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted)
+                    Text(deviceCode!!.verificationUri, fontSize = 13.sp, color = AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono)
+                }
+                deviceError?.let {
+                    Text(it, fontSize = 12.sp, color = AiModuleTheme.colors.error, fontFamily = JetBrainsMono)
+                }
+            }
+        }
     }
 
     pendingConfirmation?.let { request ->
@@ -1418,13 +1476,39 @@ private fun BlockedRow(entry: GHBlockedEntry, onUnblock: () -> Unit) {
 }
 
 @Composable
+@Composable
 private fun CompactOrgRow(org: GHOrg) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        AsyncImage(model = org.avatarUrl, contentDescription = org.login, modifier = Modifier.size(24.dp).clip(CircleShape))
-        Spacer(Modifier.width(10.dp))
-        Column(Modifier.weight(1f)) {
-            Text(org.login, color = AiModuleTheme.colors.textPrimary, fontSize = 13.sp, fontFamily = JetBrainsMono)
-            if (org.description.isNotBlank()) Text(org.description, color = AiModuleTheme.colors.textMuted, fontSize = 11.sp, fontFamily = JetBrainsMono, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var membership by remember { mutableStateOf<GHOrgMembership?>(null) }
+    var hooks by remember { mutableStateOf<List<GHWebhook>>(emptyList()) }
+    var expanded by remember { mutableStateOf(false) }
+
+    Column(Modifier.fillMaxWidth().ghGlassCard(10.dp).padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(Modifier.fillMaxWidth().clickable { expanded = !expanded }, verticalAlignment = Alignment.CenterVertically) {
+            AsyncImage(model = org.avatarUrl, contentDescription = org.login, modifier = Modifier.size(24.dp).clip(CircleShape))
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(org.login, color = AiModuleTheme.colors.textPrimary, fontSize = 13.sp, fontFamily = JetBrainsMono)
+                if (org.description.isNotBlank()) Text(org.description, color = AiModuleTheme.colors.textMuted, fontSize = 11.sp, fontFamily = JetBrainsMono, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Text(if (expanded) "▼" else "▶", color = AiModuleTheme.colors.textMuted, fontSize = 12.sp, fontFamily = JetBrainsMono)
+        }
+        if (expanded) {
+            LaunchedEffect(org.login) {
+                membership = GitHubManager.getOrgMembership(context, org.login)
+                hooks = GitHubManager.getOrgHooks(context, org.login)
+            }
+            if (membership != null) {
+                AiModuleKeyValueRow("role", membership!!.role)
+                AiModuleKeyValueRow("state", membership!!.state)
+            }
+            if (hooks.isNotEmpty()) {
+                Text("Webhooks (${hooks.size})", fontSize = 12.sp, color = AiModuleTheme.colors.textSecondary, fontFamily = JetBrainsMono)
+                hooks.take(5).forEach { hook ->
+                    Text("· ${hook.url.take(50)}", fontSize = 11.sp, color = AiModuleTheme.colors.textMuted, fontFamily = JetBrainsMono)
+                }
+            }
         }
     }
 }
