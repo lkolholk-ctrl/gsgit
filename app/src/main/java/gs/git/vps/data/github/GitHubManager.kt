@@ -19,6 +19,7 @@ object GitHubManager {
 
     private const val TAG = "GH"
     private const val API = "https://api.github.com"
+    private const val PREFS = "github_prefs"
     private const val KEY_USER = "user_json"
     private const val CODE_NOT_MODIFIED = 304
 
@@ -6035,6 +6036,32 @@ object GitHubManager {
         val code: Int,
         val headers: Map<String, String> = emptyMap(),
     )
+
+    private fun apiErrorMessage(result: ApiResult): String {
+        val fallback = if (result.code > 0) "HTTP ${result.code}" else "Network error"
+        if (result.body.isBlank()) return fallback
+        return try {
+            val json = JSONObject(result.body)
+            val message = json.optString("message").takeIf { it.isNotBlank() }
+            val errors = json.optJSONArray("errors")
+            val details = if (errors != null) {
+                (0 until errors.length()).mapNotNull { index ->
+                    val item = errors.opt(index)
+                    when (item) {
+                        is JSONObject -> listOf(
+                            item.optString("field"),
+                            item.optString("code"),
+                            item.optString("message")
+                        ).filter { it.isNotBlank() && it != "null" }.joinToString(" ")
+                        else -> item?.toString()
+                    }?.takeIf { it.isNotBlank() && it != "null" }
+                }.take(3).joinToString("; ")
+            } else ""
+            listOfNotNull(message, details.takeIf { it.isNotBlank() }).joinToString(": ").ifBlank { fallback }
+        } catch (_: Exception) {
+            result.body.trim().take(220).ifBlank { fallback }
+        }
+    }
 
 }
 
