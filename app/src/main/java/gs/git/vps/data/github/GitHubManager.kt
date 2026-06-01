@@ -4507,11 +4507,6 @@ object GitHubManager {
         } catch (e: Exception) { null }
     }
 
-    suspend fun updatePullRequestReviewComment(context: Context, owner: String, repo: String, commentId: Long, body: String): Boolean {
-        val json = JSONObject().apply { put("body", body) }.toString()
-        val r = request(context, "/repos/$owner/$repo/pulls/comments/$commentId", "PATCH", json)
-        return r.success
-    }
 
     // ═══════════════════════════════════
     // PR Check Runs
@@ -6461,6 +6456,7 @@ data class GHApiRateSummary(
     val graphqlLimit: Int = 0,
     val graphqlRemaining: Int = 0,
     val resetEpoch: Long = 0L,
+)
 
 data class GHRateLimitGraphQL(
     val limit: Int,
@@ -6468,7 +6464,6 @@ data class GHRateLimitGraphQL(
     val remaining: Int,
     val resetAt: String,
     val nodeCount: Int
-)
 )
 
 data class GHApiDiagnosticCheck(
