@@ -241,6 +241,20 @@ private fun PackageDetailScreen(owner: PackageOwner, pkg: GHPackage, onBack: () 
                     tint = AiModuleTheme.colors.error,
                     contentDescription = "delete package",
                 )
+                GitHubTopBarAction(
+                    glyph = GhGlyphs.CHECK,
+                    onClick = {
+                        scope.launch {
+                            actionInFlight = true
+                            val ok = GitHubManager.restorePackage(context, owner.type, owner.login, detail.packageType, detail.name)
+                            Toast.makeText(context, if (ok) "Package restored" else "Failed", Toast.LENGTH_SHORT).show()
+                            actionInFlight = false
+                        }
+                    },
+                    enabled = !actionInFlight,
+                    tint = AiModuleTheme.colors.accent,
+                    contentDescription = "restore package",
+                )
             }
         },
     ) {

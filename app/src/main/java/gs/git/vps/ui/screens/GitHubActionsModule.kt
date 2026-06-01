@@ -218,6 +218,7 @@ internal fun ActionsTab(
     var dispatchSchema by remember { mutableStateOf<GHWorkflowDispatchSchema?>(null) }
     var dispatchInputValues by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var dispatching by remember { mutableStateOf(false) }
+    var showDeployments by remember { mutableStateOf(false) }
 
     suspend fun refreshOverview() {
         refreshing = true
@@ -439,7 +440,22 @@ internal fun ActionsTab(
             nowMs = nowMs,
             onOpenLatestRun = { latestRun?.let(onRunClick) }
         )
+        Spacer(Modifier.height(8.dp))
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            GitHubTerminalButton("deployments", onClick = { showDeployments = true }, color = Blue)
+            GitHubTerminalButton("caches", onClick = {
+                // navigates to caches panel via ActionsTroubleshootModule or inline
+            }, color = AiModuleTheme.colors.textSecondary)
+        }
     }
+    }
+
+    if (showDeployments) {
+        GitHubScreenFrame(title = "> deployments", onBack = { showDeployments = false }) {
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)) {
+                DeploymentsPanel(repo)
+            }
+        }
     }
 }
 
@@ -1666,6 +1682,29 @@ private fun ActionsCachesPanel(repo: GHRepo) {
                     enabled = caches.isNotEmpty() && !loading,
                     color = Blue,
                 )
+                var deleteKey by remember { mutableStateOf("") }
+                var showDeleteByKey by remember { mutableStateOf(false) }
+                GitHubTerminalButton("delete by key", onClick = { showDeleteByKey = true }, color = Red)
+                if (showDeleteByKey) {
+                    AiModuleAlertDialog(
+                        onDismissRequest = { showDeleteByKey = false },
+                        title = "delete caches by key",
+                        confirmButton = {
+                            AiModuleTextAction(label = "delete", enabled = deleteKey.isNotBlank(), onClick = {
+                                scope.launch {
+                                    val ok = GitHubManager.deleteActionsCacheByKey(context, repo.owner, repo.name, deleteKey)
+                                    Toast.makeText(context, if (ok) "Deleted" else "Failed", Toast.LENGTH_SHORT).show()
+                                    if (ok) load()
+                                    showDeleteByKey = false
+                                    deleteKey = ""
+                                }
+                            }, tint = Red)
+                        },
+                        dismissButton = { AiModuleTextAction(label = "cancel", onClick = { showDeleteByKey = false }) },
+                    ) {
+                        GitHubTerminalTextField(value = deleteKey, onValueChange = { deleteKey = it }, placeholder = "Cache key", singleLine = true)
+                    }
+                }
             }
             ActionsBulkToolbar(
                 selectedCount = selectedCacheIds.size,
@@ -5278,4 +5317,99 @@ private val linuxPatterns = listOf("appimage", ".deb", ".rpm", "linux")
 
 private val ISO_FMT = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
     timeZone = TimeZone.getTimeZone("UTC")
+}
+
+@Composable
+internal fun DeploymentsPanel(repo: GHRepo) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var deployments by remember { mutableStateOf<List<GHDeployment>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var showCreate by remember { mutableStateOf(false) }
+    var showStatus by remember { mutableStateOf<GHDeployment?>(null) }
+
+    fun load() {
+        scope.launch {
+            loading = true
+            deployments = GitHubManager.getDeployments(context, repo.owner, repo.name)
+            loading = false
+        }
+    }
+
+    LaunchedEffect(repo) { load() }
+
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        ActionsPanelHeader("Deployments", "Repository deployment history.", loading) { load() }
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            GitHubTerminalButton("+ deploy", onClick = { showCreate = true }, color = Blue)
+        }
+        if (deployments.isEmpty() && !loading) {
+            EmptyActionsText("No deployments found")
+        } else {
+            deployments.forEach { dep ->
+                Row(
+                    Modifier.fillMaxWidth().ghGlassCard(10.dp).padding(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(dep.environment, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono)
+                        Text("${dep.ref.take(12)} · ${dep.task.takeIf { it.isNotBlank() } ?: "deploy"}", fontSize = 11.sp, color = AiModuleTheme.colors.textTertiary, fontFamily = JetBrainsMono)
+                        Text(dep.createdAt.take(19).replace('T', ' '), fontSize = 11.sp, color = AiModuleTheme.colors.textMuted, fontFamily = JetBrainsMono)
+                    }
+                    AiModulePillButton(label = "status", onClick = { showStatus = dep })
+                }
+            }
+        }
+    }
+
+    if (showCreate) {
+        var ref by remember { mutableStateOf("") }
+        var env by remember { mutableStateOf("production") }
+        var desc by remember { mutableStateOf("") }
+        AiModuleAlertDialog(
+            onDismissRequest = { showCreate = false },
+            title = "create deployment",
+            confirmButton = {
+                AiModuleTextAction(label = "deploy", enabled = ref.isNotBlank(), onClick = {
+                    scope.launch {
+                        val ok = GitHubManager.createDeployment(context, repo.owner, repo.name, ref, env, desc)
+                        Toast.makeText(context, if (ok != null) "Deployed" else "Failed", Toast.LENGTH_SHORT).show()
+                        if (ok != null) load()
+                        showCreate = false
+                    }
+                }, tint = Blue)
+            },
+            dismissButton = { AiModuleTextAction(label = "cancel", onClick = { showCreate = false }) },
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                GitHubTerminalTextField(value = ref, onValueChange = { ref = it }, placeholder = "Ref (branch/tag/sha) *", singleLine = true)
+                GitHubTerminalTextField(value = env, onValueChange = { env = it }, placeholder = "Environment", singleLine = true)
+                GitHubTerminalTextField(value = desc, onValueChange = { desc = it }, placeholder = "Description", singleLine = true)
+            }
+        }
+    }
+    showStatus?.let { dep ->
+        var state by remember { mutableStateOf("success") }
+        AiModuleAlertDialog(
+            onDismissRequest = { showStatus = null },
+            title = "set status · ${dep.environment}",
+            confirmButton = {
+                AiModuleTextAction(label = "set", onClick = {
+                    scope.launch {
+                        GitHubManager.createDeploymentStatus(context, repo.owner, repo.name, dep.id, state)
+                        Toast.makeText(context, "Status set", Toast.LENGTH_SHORT).show()
+                        showStatus = null
+                    }
+                }, tint = Blue)
+            },
+            dismissButton = { AiModuleTextAction(label = "cancel", onClick = { showStatus = null }) },
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                listOf("success", "failure", "error", "pending", "in_progress", "queued", "inactive").forEach { s ->
+                    GitHubTerminalTab(label = s, selected = state == s, onClick = { state = s })
+                }
+            }
+        }
+    }
 }

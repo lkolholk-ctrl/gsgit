@@ -136,6 +136,18 @@ fun NotificationsScreen(onBack: () -> Unit) {
                                     notifications = GitHubManager.getNotifications(context, showAll)
                                 }
                             },
+                            onMarkDone = {
+                                scope.launch {
+                                    GitHubManager.markThreadDone(context, notification.id)
+                                    notifications = GitHubManager.getNotifications(context, showAll)
+                                }
+                            },
+                            onDetail = {
+                                scope.launch {
+                                    val detail = GitHubManager.getNotification(context, notification.id)
+                                    if (detail != null) selectedSubscription = detail
+                                }
+                            },
                             onSubscription = { selectedSubscription = notification },
                         )
                         AiModuleHairline()
@@ -157,6 +169,8 @@ fun NotificationsScreen(onBack: () -> Unit) {
 private fun NotificationRow(
     notification: GHNotification,
     onMarkRead: () -> Unit,
+    onMarkDone: () -> Unit,
+    onDetail: () -> Unit,
     onSubscription: () -> Unit,
 ) {
     val palette = AiModuleTheme.colors
@@ -239,6 +253,22 @@ private fun NotificationRow(
                     )
                 }
             }
+        }
+        IconButton(onClick = onDetail, modifier = Modifier.size(32.dp)) {
+            Icon(
+                Icons.Rounded.Info,
+                contentDescription = "detail",
+                modifier = Modifier.size(16.dp),
+                tint = palette.textSecondary,
+            )
+        }
+        IconButton(onClick = onMarkDone, modifier = Modifier.size(32.dp)) {
+            Icon(
+                Icons.Rounded.DeleteOutline,
+                contentDescription = "mark done",
+                modifier = Modifier.size(16.dp),
+                tint = palette.textSecondary,
+            )
         }
         IconButton(onClick = onSubscription, modifier = Modifier.size(32.dp)) {
             Icon(

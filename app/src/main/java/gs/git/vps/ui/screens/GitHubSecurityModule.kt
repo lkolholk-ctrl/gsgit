@@ -698,6 +698,9 @@ internal fun SecurityScreen(
     var selectedSecretAlert by remember { mutableStateOf<GHSecretScanningAlert?>(null) }
     var selectedAdvisory by remember { mutableStateOf<GHRepositorySecurityAdvisory?>(null) }
     var settingsActionInFlight by remember { mutableStateOf(false) }
+    var showCreateAdvisory by remember { mutableStateOf(false) }
+    var showEditAdvisory by remember { mutableStateOf<GHRepositorySecurityAdvisory?>(null) }
+    var advisoryActionInFlight by remember { mutableStateOf(false) }
 
     fun loadAlerts() {
         loading = true
@@ -767,7 +770,7 @@ internal fun SecurityScreen(
                     when (selectedTab) {
                         "Code" -> CodeScanningSummaryCard(codeAlerts)
                         "Secrets" -> SecretScanningSummaryCard(secretAlerts)
-                        "Advisories" -> AdvisorySummaryCard(advisories)
+                        "Advisories" -> AdvisorySummaryCard(advisories) { showCreateAdvisory = true }
                         "Community" -> CommunityProfileCard(communityProfile) {
                             openGitHubSecurityUrl(context, communityProfile?.documentationUrl.orEmpty())
                         }
@@ -945,9 +948,40 @@ internal fun SecurityScreen(
         }
     }
     selectedAdvisory?.let { advisory ->
-        RepositoryAdvisoryDetailDialog(advisory, onDismiss = { selectedAdvisory = null }) {
+        RepositoryAdvisoryDetailDialog(advisory, onDismiss = { selectedAdvisory = null }, onEdit = { showEditAdvisory = advisory; selectedAdvisory = null }) {
             openGitHubSecurityUrl(context, advisory.htmlUrl.ifBlank { advisory.url })
         }
+    }
+    if (showCreateAdvisory) {
+        CreateAdvisoryDialog(
+            actionInFlight = advisoryActionInFlight,
+            onDismiss = { showCreateAdvisory = false },
+            onCreate = { summary, severity, cveId, description ->
+                advisoryActionInFlight = true
+                scope.launch {
+                    GitHubManager.createRepositorySecurityAdvisory(context, repoOwner, repoName, summary, severity, cveId, description)
+                    advisoryActionInFlight = false
+                    showCreateAdvisory = false
+                    advisories = GitHubManager.getRepositorySecurityAdvisories(context, repoOwner, repoName)
+                }
+            }
+        )
+    }
+    showEditAdvisory?.let { advisory ->
+        EditAdvisoryDialog(
+            advisory = advisory,
+            actionInFlight = advisoryActionInFlight,
+            onDismiss = { showEditAdvisory = null },
+            onUpdate = { severity, summary, state ->
+                advisoryActionInFlight = true
+                scope.launch {
+                    GitHubManager.updateRepositorySecurityAdvisory(context, repoOwner, repoName, advisory.ghsaId, severity, summary, state)
+                    advisoryActionInFlight = false
+                    showEditAdvisory = null
+                    advisories = GitHubManager.getRepositorySecurityAdvisories(context, repoOwner, repoName)
+                }
+            }
+        )
     }
 }
 
@@ -1011,7 +1045,7 @@ private fun SecretScanningSummaryCard(alerts: List<GHSecretScanningAlert>) {
 }
 
 @Composable
-private fun AdvisorySummaryCard(advisories: List<GHRepositorySecurityAdvisory>) {
+private fun AdvisorySummaryCard(advisories: List<GHRepositorySecurityAdvisory>, onCreate: () -> Unit) {
     val open = advisories.count { it.state.equals("draft", true) || it.state.equals("published", true) }
     val highRisk = advisories.count { it.severity.equals("critical", true) || it.severity.equals("high", true) }
     Column(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(14.dp)) {
@@ -1019,6 +1053,7 @@ private fun AdvisorySummaryCard(advisories: List<GHRepositorySecurityAdvisory>) 
             Icon(Icons.Rounded.GppMaybe, null, Modifier.size(20.dp), tint = if (highRisk > 0) Color(0xFFFF3B30) else AiModuleTheme.colors.accent)
             Text("Security advisories", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = AiModuleTheme.colors.textPrimary, modifier = Modifier.weight(1f))
             Text("$open active", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = AiModuleTheme.colors.textPrimary)
+            AiModulePillButton(label = "+ new", onClick = onCreate, accent = true)
         }
         Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
@@ -1417,11 +1452,13 @@ private fun DependabotDetailDialog(alert: GHDependabotAlert, onDismiss: () -> Un
 }
 
 @Composable
-private fun RepositoryAdvisoryDetailDialog(advisory: GHRepositorySecurityAdvisory, onDismiss: () -> Unit, onOpen: () -> Unit) {
+private fun RepositoryAdvisoryDetailDialog(advisory: GHRepositorySecurityAdvisory, onDismiss: () -> Unit, onEdit: () -> Unit = {}, onOpen: () -> Unit) {
     AiModuleAlertDialog(
         onDismissRequest = onDismiss,
         title = advisory.ghsaId.ifBlank { "repository advisory" },
         confirmButton = {
+            AiModuleTextAction(label = "edit", onClick = onEdit, tint = AiModuleTheme.colors.accent)
+            Spacer(Modifier.width(8.dp))
             AiModuleTextAction(label = "open", enabled = advisory.htmlUrl.isNotBlank() || advisory.url.isNotBlank(), onClick = onOpen, tint = AiModuleTheme.colors.accent)
         },
         dismissButton = {
@@ -1603,5 +1640,83 @@ private fun openGitHubSecurityUrl(context: Context, url: String) {
     try {
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) })
     } catch (_: Exception) {
+    }
+}
+
+@Composable
+private fun CreateAdvisoryDialog(actionInFlight: Boolean, onDismiss: () -> Unit, onCreate: (summary: String, severity: String, cveId: String, description: String) -> Unit) {
+    var summary by remember { mutableStateOf("") }
+    var severity by remember { mutableStateOf("medium") }
+    var cveId by remember { mutableStateOf("") }
+    var description by remember { mutableStateOf("") }
+    val severities = listOf("low", "medium", "high", "critical")
+    AiModuleAlertDialog(
+        onDismissRequest = onDismiss,
+        title = "create advisory",
+        confirmButton = {
+            AiModuleTextAction(label = "create", enabled = summary.isNotBlank() && !actionInFlight, onClick = { onCreate(summary, severity, cveId, description) }, tint = AiModuleTheme.colors.accent)
+        },
+        dismissButton = {
+            AiModuleTextAction(label = "cancel", onClick = onDismiss, tint = AiModuleTheme.colors.textSecondary)
+        },
+    ) {
+        Column(Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            GitHubTerminalTextField(value = summary, onValueChange = { summary = it }, placeholder = "Summary *", singleLine = true)
+            Column {
+                AiModuleSectionLabel(text = "severity")
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                    severities.forEach { s ->
+                        GitHubTerminalTab(label = s, selected = severity == s, onClick = { severity = s })
+                    }
+                }
+            }
+            GitHubTerminalTextField(value = cveId, onValueChange = { cveId = it }, placeholder = "CVE ID (optional)", singleLine = true)
+            GitHubTerminalTextField(value = description, onValueChange = { description = it }, placeholder = "Description", singleLine = false, minHeight = 80.dp)
+        }
+    }
+}
+
+@Composable
+private fun EditAdvisoryDialog(advisory: GHRepositorySecurityAdvisory, actionInFlight: Boolean, onDismiss: () -> Unit, onUpdate: (severity: String?, summary: String?, state: String?) -> Unit) {
+    var severity by remember { mutableStateOf(advisory.severity) }
+    var summary by remember { mutableStateOf(advisory.summary) }
+    var state by remember { mutableStateOf(advisory.state) }
+    val severities = listOf("low", "medium", "high", "critical")
+    val states = listOf("draft", "published", "closed", "withdrawn")
+    AiModuleAlertDialog(
+        onDismissRequest = onDismiss,
+        title = "edit advisory",
+        confirmButton = {
+            AiModuleTextAction(label = "update", enabled = !actionInFlight, onClick = {
+                onUpdate(
+                    severity.takeIf { it != advisory.severity },
+                    summary.takeIf { it != advisory.summary },
+                    state.takeIf { it != advisory.state }
+                )
+            }, tint = AiModuleTheme.colors.accent)
+        },
+        dismissButton = {
+            AiModuleTextAction(label = "cancel", onClick = onDismiss, tint = AiModuleTheme.colors.textSecondary)
+        },
+    ) {
+        Column(Modifier.heightIn(max = 460.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column {
+                AiModuleSectionLabel(text = "severity")
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                    severities.forEach { s ->
+                        GitHubTerminalTab(label = s, selected = severity == s, onClick = { severity = s })
+                    }
+                }
+            }
+            GitHubTerminalTextField(value = summary, onValueChange = { summary = it }, placeholder = "Summary", singleLine = true)
+            Column {
+                AiModuleSectionLabel(text = "state")
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                    states.forEach { s ->
+                        GitHubTerminalTab(label = s, selected = state == s, onClick = { state = s })
+                    }
+                }
+            }
+        }
     }
 }

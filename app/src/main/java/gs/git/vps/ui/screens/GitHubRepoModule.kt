@@ -2569,6 +2569,13 @@ internal fun PullsTab(
                         GitHubTerminalButton("review", onClick = { reviewTarget = pr }, color = AiModuleTheme.colors.textSecondary)
                         GitHubTerminalButton("checks", onClick = { checkRunTarget = pr }, color = AiModuleTheme.colors.textSecondary)
                         if (pr.state == "open" && !pr.merged && !pr.draft) {
+                            GitHubTerminalButton("update branch", color = AiModuleTheme.colors.accent, onClick = {
+                                scope.launch {
+                                    val ok = GitHubManager.updatePullRequestBranch(context, repo.owner, repo.name, pr.number)
+                                    Toast.makeText(context, if (ok) "Branch updated" else "Update failed", Toast.LENGTH_SHORT).show()
+                                    if (ok) onRefresh()
+                                }
+                            })
                             GitHubTerminalButton("merge", color = GitHubSuccessGreen, onClick = {
                                 scope.launch {
                                     val ok = GitHubManager.mergePullRequest(context, repo.owner, repo.name, pr.number)
@@ -2820,6 +2827,46 @@ private fun PullRequestDetailScreen(
                 if (files.size > 12) {
                     item {
                         Text("+${files.size - 12} more files", fontSize = 11.sp, color = TextTertiary)
+                    }
+                }
+            }
+
+            if (comments.isNotEmpty()) {
+                item { Text("Review comments", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary) }
+                items(comments) { c ->
+                    Column(Modifier.fillMaxWidth().ghGlassCard(12.dp).padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(c.author, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = TextPrimary, fontFamily = JetBrainsMono)
+                            Spacer(Modifier.width(6.dp))
+                            Text(c.path, fontSize = 11.sp, color = TextTertiary, fontFamily = JetBrainsMono, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                            Text(":${c.line}", fontSize = 11.sp, color = TextTertiary, fontFamily = JetBrainsMono)
+                        }
+                        Text(c.body, fontSize = 12.sp, color = TextPrimary, lineHeight = 16.sp)
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            val rcContext = LocalContext.current
+                            val rcScope = rememberCoroutineScope()
+                            var rcReactions by remember { mutableStateOf<List<GHReaction>>(emptyList()) }
+                            LaunchedEffect(c.id) { rcReactions = GitHubManager.getPullRequestReviewCommentReactions(rcContext, repo.owner, repo.name, c.id) }
+                            rcReactions.groupBy { it.content }.forEach { (emoji, reacts) ->
+                                AiModulePillButton(label = "$emoji ${reacts.size}", onClick = {}, accent = false)
+                            }
+                            AiModulePillButton(label = "+react", onClick = {
+                                rcScope.launch {
+                                    val emojis = listOf("+1", "-1", "laugh", "hooray", "rocket", "heart", "eyes")
+                                    val picked = emojis.first()
+                                    GitHubManager.addPullRequestReviewCommentReaction(rcContext, repo.owner, repo.name, c.id, picked)
+                                    rcReactions = GitHubManager.getPullRequestReviewCommentReactions(rcContext, repo.owner, repo.name, c.id)
+                                }
+                            }, accent = true)
+                            AiModulePillButton(label = "edit", onClick = {
+                                rcScope.launch {
+                                    val newBody = c.body
+                                    if (newBody.isNotBlank()) {
+                                        GitHubManager.updatePullRequestReviewComment(rcContext, repo.owner, repo.name, c.id, newBody)
+                                    }
+                                }
+                            })
+                        }
                     }
                 }
             }
