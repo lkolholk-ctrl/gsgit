@@ -656,10 +656,31 @@ internal fun RepoDetailScreen(
                     )
                 }
             } else if (isMd) {
-                MarkdownCanvas(
-                    text = safeFileContent,
+                GitHubMarkdownDocument(
+                    markdown = safeFileContent,
+                    repo = repo,
+                    readmePath = safeOpenedFile.path,
                     modifier = Modifier.fillMaxSize(),
-                    repo = repo.fullName,
+                    onLinkClick = { url ->
+                        val path = url.removePrefix("https://github.com/${repo.owner}/${repo.name}/")
+                            .removePrefix("http://github.com/${repo.owner}/${repo.name}/")
+                        if (url.startsWith("https://github.com/${repo.owner}/${repo.name}/") && !path.contains("/")) {
+                            scope.launch { openedFile = null; fileContent = null }
+                        } else if (url.startsWith("https://github.com/${repo.owner}/${repo.name}/blob/")) {
+                            val blobPath = path.removePrefix("blob/").substringAfter("/", "")
+                            if (blobPath.isNotBlank()) {
+                                scope.launch {
+                                    val dir = blobPath.substringBeforeLast("/", "")
+                                    val list = GitHubManager.getRepoContents(context, repo.owner, repo.name, dir.ifEmpty { "/" }, selectedBranch)
+                                    val f = list.find { it.path == blobPath || it.name == blobPath.substringAfterLast("/") }
+                                    if (f != null) { openedFile = f; fileContent = GitHubManager.getFileContent(context, repo.owner, repo.name, f.path, selectedBranch) }
+                                    else { openedFile = GHContent(blobPath.substringAfterLast("/"), blobPath, "file", 0L, "https://raw.githubusercontent.com/${repo.owner}/${repo.name}/${selectedBranch}/$blobPath", ""); fileContent = GitHubManager.getFileContent(context, repo.owner, repo.name, blobPath, selectedBranch) }
+                                }
+                            }
+                        } else {
+                            try { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }) } catch (_: Exception) {}
+                        }
+                    },
                 )
             } else {
                 LazyColumn(Modifier.fillMaxSize().padding(start = 4.dp, end = 4.dp, top = 4.dp), contentPadding = PaddingValues(bottom = 16.dp)) {
