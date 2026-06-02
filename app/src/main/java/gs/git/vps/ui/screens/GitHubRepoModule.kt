@@ -87,8 +87,6 @@ import java.net.URLEncoder
 import okhttp3.OkHttpClient
 import org.json.JSONObject
 
-internal val LocalReadmeNavigator = compositionLocalOf<(String) -> Unit> { {} }
-
 // Compact mode — propagates through all sub-screens automatically
 
 internal enum class RepoTab { FILES, COMMITS, ISSUES, PULLS, RELEASES, ACTIONS, BUILDS, HISTORY, PROJECTS, README, CODE_SEARCH }
@@ -3290,11 +3288,7 @@ internal fun ReleasesTab(releases: List<GHRelease>, repo: GHRepo) { val context 
         Text(r.tag, fontSize = 12.sp, color = colors.textMuted, fontFamily = FontFamily.Monospace)
         if (r.body.isNotBlank()) {
             Spacer(Modifier.height(8.dp))
-            CompositionLocalProvider(LocalReadmeNavigator provides { url ->
-                context.openReadmeUrl(url)
-            }) {
-                GitHubMarkdownDocument(r.body, repo)
-            }
+            GitHubMarkdownDocument(r.body, repo, onLinkClick = { context.openReadmeUrl(it) })
         }
         if (r.assets.isNotEmpty()) {
             Spacer(Modifier.height(8.dp))
@@ -3390,21 +3384,15 @@ private fun ReadmeTab(
     val context = LocalContext.current
     val readmeImageLoader = rememberReadmeImageLoader(context)
     val colors = AiModuleTheme.colors
-    val navigator: (String) -> Unit = remember(repo, context) {
-        { url: String ->
-            if (url.isNotBlank() && !url.startsWith("#")) {
-                val resolved = resolveReadmeLink(url, repo)
-                if (resolved != null) {
-                    onOpenFile(resolved)
-                } else {
-                    context.openReadmeUrl(url)
-                }
-            }
+    val onLinkClick: (String) -> Unit = { url ->
+        if (url.isNotBlank() && !url.startsWith("#")) {
+            val resolved = resolveReadmeLink(url, repo)
+            if (resolved != null) onOpenFile(resolved)
+            else context.openReadmeUrl(url)
         }
     }
-    CompositionLocalProvider(LocalReadmeNavigator provides navigator) {
-        var rawView by remember(readme) { mutableStateOf(false) }
-        var visibleCount by remember(readme) { mutableIntStateOf(250) }
+    var rawView by remember(readme) { mutableStateOf(false) }
+    var visibleCount by remember(readme) { mutableIntStateOf(250) }
         var renderCompleteLogged by remember(readme, blocks?.size ?: -1) { mutableStateOf(false) }
         val safeBlocks = blocks.orEmpty()
         val shownBlocks = safeBlocks.take(visibleCount)
@@ -3416,7 +3404,7 @@ private fun ReadmeTab(
                         html = renderedHtml,
                         repo = repo,
                         modifier = Modifier.fillMaxSize(),
-                        onNavigateLink = navigator,
+                        onNavigateLink = onLinkClick,
                     )
                 }
             }
@@ -3459,7 +3447,7 @@ private fun ReadmeTab(
                                         .fillMaxWidth()
                                         .padding(vertical = 5.dp)
                                 ) {
-                                    ReadmeBlockView(block, readmeImageLoader)
+                                    ReadmeBlockView(block, readmeImageLoader, onLinkClick)
                                 }
                             }
                             item(key = "readme_doc_bottom_${repo.owner}_${repo.name}_${shownBlocks.size}") {
@@ -3994,7 +3982,8 @@ internal fun GitHubMarkdownDocument(
     repo: GHRepo,
     readmePath: String = "",
     modifier: Modifier = Modifier,
-    maxBlocks: Int? = null
+    maxBlocks: Int? = null,
+    onLinkClick: (String) -> Unit = {},
 ) {
     val imageLoader = rememberReadmeImageLoader(LocalContext.current)
     var blocks by remember(markdown, repo.owner, repo.name, repo.defaultBranch, readmePath) { mutableStateOf<List<ReadmeRenderBlock>?>(null) }
@@ -4007,7 +3996,7 @@ internal fun GitHubMarkdownDocument(
     } else {
         Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             safeBlocks.let { if (maxBlocks == null) it else it.take(maxBlocks) }.forEach { block ->
-                ReadmeBlockView(block, imageLoader)
+                ReadmeBlockView(block, imageLoader, onLinkClick)
             }
         }
     }
@@ -4015,21 +4004,20 @@ internal fun GitHubMarkdownDocument(
 
 @Composable
 internal fun ReadmeBlockView(block: ReadmeRenderBlock, imageLoader: ImageLoader, onLinkClick: (String) -> Unit = {}) {
-    val navigateLink = LocalReadmeNavigator.current
     when (block) {
         is ReadmeRenderBlock.Heading -> ReadmeHeading(block)
-        is ReadmeRenderBlock.Paragraph -> ReadmeText(block.text)
-        is ReadmeRenderBlock.Bullet -> ReadmeBullet(block.text, block.ordered, block.checked, block.level, block.marker)
+        is ReadmeRenderBlock.Paragraph -> ReadmeText(block.text, onLinkClick = onLinkClick)
+        is ReadmeRenderBlock.Bullet -> ReadmeBullet(block.text, block.ordered, block.checked, block.level, block.marker, onLinkClick = onLinkClick)
         is ReadmeRenderBlock.Quote -> Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Box(Modifier.width(4.dp).heightIn(min = 28.dp).background(AiModuleTheme.colors.border, RoundedCornerShape(2.dp)))
-            ReadmeText(block.text, modifier = Modifier.weight(1f))
+            ReadmeText(block.text, modifier = Modifier.weight(1f), onLinkClick = onLinkClick)
         }
         is ReadmeRenderBlock.Rule -> Box(Modifier.fillMaxWidth().padding(vertical = 18.dp).height(1.dp).background(AiModuleTheme.colors.border.copy(alpha = 0.62f)))
         is ReadmeRenderBlock.Image -> ReadmeImage(block, imageLoader)
         is ReadmeRenderBlock.ImageRow -> ReadmeImageRow(block.images, imageLoader)
         is ReadmeRenderBlock.Code -> ReadmeCodeBlock(block)
-        is ReadmeRenderBlock.Table -> ReadmeTable(block.rows)
-        is ReadmeRenderBlock.Link -> ReadmeLinkCard(block.text, block.url)
+        is ReadmeRenderBlock.Table -> ReadmeTable(block.rows, onLinkClick = onLinkClick)
+        is ReadmeRenderBlock.Link -> ReadmeLinkCard(block.text, block.url, onLinkClick = onLinkClick)
     }
 }
 
@@ -4117,9 +4105,7 @@ private fun ReadmeRawBlock(markdown: String) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ReadmeText(text: String, modifier: Modifier = Modifier) {
-    val context = LocalContext.current
-    val navigateLink = LocalReadmeNavigator.current
+private fun ReadmeText(text: String, modifier: Modifier = Modifier, onLinkClick: (String) -> Unit = {}) {
     val segments = remember(text) { readmeInlineSegments(text) }
     if (segments.size == 1 && segments.first() is ReadmeInlineSegment.Text) {
         val annotated = readmeInlineAnnotated(text)
@@ -4128,7 +4114,7 @@ private fun ReadmeText(text: String, modifier: Modifier = Modifier) {
             modifier = modifier,
             style = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = AiModuleTheme.colors.textPrimary, lineHeight = 19.sp),
             onClick = { offset ->
-                annotated.getStringAnnotations("URL", offset, offset).firstOrNull()?.item?.let { navigateLink(it) }
+                annotated.getStringAnnotations("URL", offset, offset).firstOrNull()?.item?.let { onLinkClick(it) }
             }
         )
     } else {
@@ -4154,7 +4140,7 @@ private fun ReadmeText(text: String, modifier: Modifier = Modifier) {
                             text = annotated,
                             style = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = AiModuleTheme.colors.textPrimary, lineHeight = 19.sp),
                             onClick = { offset ->
-                                annotated.getStringAnnotations("URL", offset, offset).firstOrNull()?.item?.let { navigateLink(it) }
+                                annotated.getStringAnnotations("URL", offset, offset).firstOrNull()?.item?.let { onLinkClick(it) }
                             }
                         )
                     }
@@ -4191,7 +4177,7 @@ private fun readmeInlineSegments(text: String): List<ReadmeInlineSegment> {
 }
 
 @Composable
-private fun ReadmeBullet(text: String, ordered: Boolean = false, checked: Boolean? = null, level: Int = 0, markerText: String? = null) {
+private fun ReadmeBullet(text: String, ordered: Boolean = false, checked: Boolean? = null, level: Int = 0, markerText: String? = null, onLinkClick: (String) -> Unit = {}) {
     Row(Modifier.fillMaxWidth().padding(start = (level * 18).dp, top = 3.dp, bottom = 3.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         val marker = markerText ?: when (checked) {
             true -> "✓"
@@ -4199,7 +4185,7 @@ private fun ReadmeBullet(text: String, ordered: Boolean = false, checked: Boolea
             null -> if (ordered) "1." else "•"
         }
         Text(marker, fontSize = 13.sp, color = if (checked == true) GitHubSuccessGreen else AiModuleTheme.colors.textPrimary, fontWeight = FontWeight.SemiBold, modifier = Modifier.widthIn(min = 18.dp))
-        ReadmeText(text, modifier = Modifier.weight(1f))
+        ReadmeText(text, modifier = Modifier.weight(1f), onLinkClick = onLinkClick)
     }
 }
 
@@ -4385,7 +4371,7 @@ private fun ReadmeCodeBlock(block: ReadmeRenderBlock.Code) {
 }
 
 @Composable
-private fun ReadmeTable(rows: List<List<String>>) {
+private fun ReadmeTable(rows: List<List<String>>, onLinkClick: (String) -> Unit = {}) {
     if (rows.isEmpty()) return
     var expanded by remember(rows) { mutableStateOf(false) }
     val colors = AiModuleTheme.colors
@@ -4432,14 +4418,12 @@ private fun ReadmeTable(rows: List<List<String>>) {
 }
 
 @Composable
-private fun ReadmeLinkCard(text: String, url: String) {
-    val context = LocalContext.current
-    val navigateLink = LocalReadmeNavigator.current
+private fun ReadmeLinkCard(text: String, url: String, onLinkClick: (String) -> Unit = {}) {
     Row(
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(5.dp))
-            .clickable { navigateLink(url) }
+            .clickable { onLinkClick(url) }
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
