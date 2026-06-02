@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.sp
 import gs.git.vps.data.github.GHCodeScanningAlert
 import gs.git.vps.ui.components.AiModuleAlertDialog
 import gs.git.vps.ui.components.AiModuleHairline
+import gs.git.vps.ui.components.AiModulePillButton
 import gs.git.vps.ui.components.AiModuleSectionLabel
 import gs.git.vps.ui.components.AiModuleIcon as Icon
 import gs.git.vps.ui.components.AiModuleIconButton as IconButton

@@ -658,7 +658,7 @@ internal fun GitHubSettingsScreen(
                             InfoLine("Token", maskToken(GitHubManager.getToken(context)))
                             InfoLine("Rate limit", rateLimitSummary)
                             ActionRow(Icons.Rounded.Key, "Change token") { showChangeToken = true }
-                            ActionRow(Icons.Rounded.Login, "Device login") { showDeviceLogin = true }
+                            ActionRow(Icons.Rounded.Settings, "Device login") { showDeviceLogin = true }
                             ActionRow(Icons.Rounded.Delete, "Clear GitHub cache") {
                                 confirmAction(
                                     title = "clear github cache",
