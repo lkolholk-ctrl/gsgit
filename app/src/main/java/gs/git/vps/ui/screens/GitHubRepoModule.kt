@@ -208,10 +208,17 @@ internal fun RepoDetailScreen(
                 val path = target.filePath.orEmpty()
                 if (path.isNotBlank()) {
                     scope.launch {
-                        val file = GitHubManager.getRepoContents(context, repo.owner, repo.name, path.substringBeforeLast("/", ""), target.branch).find { it.path == path }
+                        val branch = target.branch ?: selectedBranch
+                        val list = GitHubManager.getRepoContents(context, repo.owner, repo.name, path.substringBeforeLast("/", ""), branch)
+                        val file = list.find { it.path == path }
                         if (file != null) {
                             openedFile = file
-                            fileContent = GitHubManager.getFileContent(context, repo.owner, repo.name, path, target.branch ?: selectedBranch)
+                            fileContent = GitHubManager.getFileContent(context, repo.owner, repo.name, path, branch)
+                        } else {
+                            val name = path.substringAfterLast("/")
+                            openedFile = GHContent(name, path, "file", 0L,
+                                "https://raw.githubusercontent.com/${repo.owner}/${repo.name}/$branch/$path", "")
+                            fileContent = GitHubManager.getFileContent(context, repo.owner, repo.name, path, branch)
                         }
                     }
                 }
@@ -569,6 +576,24 @@ internal fun RepoDetailScreen(
     }
     
     val safeOpenedFile = openedFile
+    if (safeOpenedFile != null && safeFileContent == null) {
+        LaunchedEffect(safeOpenedFile.path, selectedBranch) {
+            fileContent = GitHubManager.getFileContent(context, repo.owner, repo.name, safeOpenedFile.path, selectedBranch)
+        }
+        AiModuleSurface {
+            Column(Modifier.fillMaxSize().background(AiModuleTheme.colors.background)) {
+                GitHubPageBar(
+                    title = "> ${safeOpenedFile.name}",
+                    subtitle = "loading…",
+                    onBack = { openedFile = null; fileContent = null },
+                )
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    AiModuleSpinner(label = "loading file…")
+                }
+            }
+        }
+        return
+    }
     if (safeFileContent != null && safeOpenedFile != null) {
         val ext = safeOpenedFile.name.substringAfterLast(".", "").lowercase()
         val isImage = ext in listOf("png", "jpg", "jpeg", "gif", "webp", "svg", "ico")
@@ -1037,13 +1062,20 @@ internal fun RepoDetailScreen(
             RepoTab.HISTORY -> ActionsHistoryTab(workflowRuns, repo) { selectedRunId = it.id }
             RepoTab.PROJECTS -> ProjectsTab(repo)
             RepoTab.README -> ReadmeTab(readme, readmeHtml, readmeBlocks, readmeError, languages, contributors, releases, repo, { readmeReloadNonce++ }, onOpenFile = { path ->
+                selectedTab = RepoTab.FILES
                 scope.launch {
-                    val file = GitHubManager.getRepoContents(context, repo.owner, repo.name, path.substringBeforeLast("/", ""), selectedBranch).find { it.path == path }
+                    val dir = path.substringBeforeLast("/", "")
+                    val list = GitHubManager.getRepoContents(context, repo.owner, repo.name, dir, selectedBranch)
+                    val file = list.find { it.path == path }
                     if (file != null) {
                         openedFile = file
                         fileContent = GitHubManager.getFileContent(context, repo.owner, repo.name, path, selectedBranch)
                     } else {
-                        context.openReadmeUrl("https://github.com/${repo.owner}/${repo.name}/blob/${selectedBranch}/$path")
+                        val name = path.substringAfterLast("/")
+                        val ghContent = GHContent(name, path, "file", 0L,
+                            "https://raw.githubusercontent.com/${repo.owner}/${repo.name}/${selectedBranch}/$path", "")
+                        openedFile = ghContent
+                        fileContent = GitHubManager.getFileContent(context, repo.owner, repo.name, path, selectedBranch)
                     }
                 }
             })
