@@ -656,32 +656,41 @@ internal fun RepoDetailScreen(
                     )
                 }
             } else if (isMd) {
-                GitHubMarkdownDocument(
-                    markdown = safeFileContent,
-                    repo = repo,
-                    readmePath = safeOpenedFile.path,
-                    modifier = Modifier.fillMaxSize(),
-                    onLinkClick = { url ->
-                        val path = url.removePrefix("https://github.com/${repo.owner}/${repo.name}/")
-                            .removePrefix("http://github.com/${repo.owner}/${repo.name}/")
-                        if (url.startsWith("https://github.com/${repo.owner}/${repo.name}/") && !path.contains("/")) {
-                            scope.launch { openedFile = null; fileContent = null }
-                        } else if (url.startsWith("https://github.com/${repo.owner}/${repo.name}/blob/")) {
-                            val blobPath = path.removePrefix("blob/").substringAfter("/", "")
-                            if (blobPath.isNotBlank()) {
-                                scope.launch {
-                                    val dir = blobPath.substringBeforeLast("/", "")
-                                    val list = GitHubManager.getRepoContents(context, repo.owner, repo.name, dir.ifEmpty { "/" }, selectedBranch)
-                                    val f = list.find { it.path == blobPath || it.name == blobPath.substringAfterLast("/") }
-                                    if (f != null) { openedFile = f; fileContent = GitHubManager.getFileContent(context, repo.owner, repo.name, f.path, selectedBranch) }
-                                    else { openedFile = GHContent(blobPath.substringAfterLast("/"), blobPath, "file", 0L, "https://raw.githubusercontent.com/${repo.owner}/${repo.name}/${selectedBranch}/$blobPath", ""); fileContent = GitHubManager.getFileContent(context, repo.owner, repo.name, blobPath, selectedBranch) }
-                                }
+                val mdImageLoader = rememberReadmeImageLoader(context)
+                var mdBlocks by remember(safeFileContent) { mutableStateOf<List<ReadmeRenderBlock>?>(null) }
+                LaunchedEffect(safeFileContent, repo.owner, repo.name, selectedBranch, safeOpenedFile.path) {
+                    mdBlocks = withContext(Dispatchers.Default) { parseReadmeBlocks(safeFileContent, repo, safeOpenedFile.path) }
+                }
+                val onMdLinkClick: (String) -> Unit = { url ->
+                    if (url.isNotBlank() && !url.startsWith("#")) {
+                        val resolved = resolveReadmeLink(url, repo)
+                        if (resolved != null) {
+                            scope.launch {
+                                val dir = resolved.substringBeforeLast("/", "")
+                                val list = GitHubManager.getRepoContents(context, repo.owner, repo.name, dir.ifEmpty { "/" }, selectedBranch)
+                                val f = list.find { it.path == resolved || it.name == resolved.substringAfterLast("/") }
+                                if (f != null) { openedFile = f; fileContent = GitHubManager.getFileContent(context, repo.owner, repo.name, f.path, selectedBranch) }
+                                else { openedFile = GHContent(resolved.substringAfterLast("/"), resolved, "file", 0L, "https://raw.githubusercontent.com/${repo.owner}/${repo.name}/${selectedBranch}/$resolved", ""); fileContent = GitHubManager.getFileContent(context, repo.owner, repo.name, resolved, selectedBranch) }
                             }
-                        } else {
-                            try { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }) } catch (_: Exception) {}
+                        } else context.openReadmeUrl(url)
+                    }
+                }
+                LazyColumn(
+                    Modifier.fillMaxSize().background(viewerPalette.background),
+                    contentPadding = PaddingValues(start = 22.dp, end = 22.dp, top = 14.dp, bottom = 28.dp),
+                ) {
+                    if (mdBlocks == null) {
+                        item { Box(Modifier.fillMaxWidth().padding(vertical = 20.dp), contentAlignment = Alignment.Center) { AiModuleSpinner(label = "rendering…") } }
+                    } else if (mdBlocks!!.isEmpty()) {
+                        item { Text("No renderable content.", fontSize = 15.sp, color = viewerPalette.textMuted, lineHeight = 22.sp) }
+                    } else {
+                        items(mdBlocks!!, key = { it.stableId }) { block ->
+                            Box(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
+                                ReadmeBlockView(block, mdImageLoader, onMdLinkClick)
+                            }
                         }
-                    },
-                )
+                    }
+                }
             } else {
                 LazyColumn(Modifier.fillMaxSize().padding(start = 4.dp, end = 4.dp, top = 4.dp), contentPadding = PaddingValues(bottom = 16.dp)) {
                     items(cachedLines.size) { idx ->
