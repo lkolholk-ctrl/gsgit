@@ -203,17 +203,17 @@ internal fun RepoDetailScreen(
             "Release" -> selectedTab = RepoTab.RELEASES
             "Discussion" -> showDiscussions = true
             "File" -> {
-                selectedTab = RepoTab.FILES
                 target.branch?.let { selectedBranch = it }
                 val path = target.filePath.orEmpty()
                 if (path.isNotBlank()) {
                     scope.launch {
                         val branch = target.branch ?: selectedBranch
-                        val list = GitHubManager.getRepoContents(context, repo.owner, repo.name, path.substringBeforeLast("/", ""), branch)
-                        val file = list.find { it.path == path }
+                        val dir = path.substringBeforeLast("/", "").ifEmpty { "/" }
+                        val list = GitHubManager.getRepoContents(context, repo.owner, repo.name, dir, branch)
+                        val file = list.find { it.path == path || it.name == path.substringAfterLast("/") }
                         if (file != null) {
                             openedFile = file
-                            fileContent = GitHubManager.getFileContent(context, repo.owner, repo.name, path, branch)
+                            fileContent = GitHubManager.getFileContent(context, repo.owner, repo.name, file.path, branch)
                         } else {
                             val name = path.substringAfterLast("/")
                             openedFile = GHContent(name, path, "file", 0L,
@@ -1062,19 +1062,17 @@ internal fun RepoDetailScreen(
             RepoTab.HISTORY -> ActionsHistoryTab(workflowRuns, repo) { selectedRunId = it.id }
             RepoTab.PROJECTS -> ProjectsTab(repo)
             RepoTab.README -> ReadmeTab(readme, readmeHtml, readmeBlocks, readmeError, languages, contributors, releases, repo, { readmeReloadNonce++ }, onOpenFile = { path ->
-                selectedTab = RepoTab.FILES
                 scope.launch {
                     val dir = path.substringBeforeLast("/", "")
-                    val list = GitHubManager.getRepoContents(context, repo.owner, repo.name, dir, selectedBranch)
-                    val file = list.find { it.path == path }
+                    val list = GitHubManager.getRepoContents(context, repo.owner, repo.name, dir.ifEmpty { "/" }, selectedBranch)
+                    val file = list.find { it.path == path || it.name == path.substringAfterLast("/") }
                     if (file != null) {
                         openedFile = file
-                        fileContent = GitHubManager.getFileContent(context, repo.owner, repo.name, path, selectedBranch)
+                        fileContent = GitHubManager.getFileContent(context, repo.owner, repo.name, file.path, selectedBranch)
                     } else {
                         val name = path.substringAfterLast("/")
-                        val ghContent = GHContent(name, path, "file", 0L,
+                        openedFile = GHContent(name, path, "file", 0L,
                             "https://raw.githubusercontent.com/${repo.owner}/${repo.name}/${selectedBranch}/$path", "")
-                        openedFile = ghContent
                         fileContent = GitHubManager.getFileContent(context, repo.owner, repo.name, path, selectedBranch)
                     }
                 }
