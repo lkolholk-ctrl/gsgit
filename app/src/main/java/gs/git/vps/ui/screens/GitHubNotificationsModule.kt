@@ -256,7 +256,7 @@ private fun NotificationRow(
         }
         IconButton(onClick = onDetail, modifier = Modifier.size(32.dp)) {
             Icon(
-                Icons.Rounded.Info,
+                Icons.Rounded.Description,
                 contentDescription = "detail",
                 modifier = Modifier.size(16.dp),
                 tint = palette.textSecondary,
@@ -264,7 +264,7 @@ private fun NotificationRow(
         }
         IconButton(onClick = onMarkDone, modifier = Modifier.size(32.dp)) {
             Icon(
-                Icons.Rounded.DeleteOutline,
+                Icons.Rounded.Delete,
                 contentDescription = "mark done",
                 modifier = Modifier.size(16.dp),
                 tint = palette.textSecondary,

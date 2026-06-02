@@ -37,6 +37,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import gs.git.vps.data.Strings
+import androidx.compose.ui.platform.LocalContext
 import gs.git.vps.data.github.GHApiDiagnosticCheck
 import gs.git.vps.data.github.GHApiDiagnostics
 import gs.git.vps.data.github.GHApiErrorLogEntry

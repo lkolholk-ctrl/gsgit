@@ -153,7 +153,6 @@ fun MarkdownCanvas(text: String, modifier: Modifier = Modifier, repo: String = "
             AiModulePillButton(
                 label = if (useGithubRender) "local" else "gfm",
                 onClick = { useGithubRender = !useGithubRender },
-                compact = true,
             )
         }
         if (rendering) {

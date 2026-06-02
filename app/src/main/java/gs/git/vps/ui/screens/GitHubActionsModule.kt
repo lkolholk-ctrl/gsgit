@@ -111,6 +111,7 @@ import gs.git.vps.data.github.GHWorkflowRun
 import gs.git.vps.data.github.GHWorkflowRunReview
 import gs.git.vps.data.github.GHWorkflowPermissions
 import gs.git.vps.data.github.GitHubManager
+import gs.git.vps.ui.components.AiModulePillButton
 import gs.git.vps.data.github.canWrite
 import gs.git.vps.data.github.KernelErrorCatalog
 import gs.git.vps.data.github.KernelErrorPatterns
