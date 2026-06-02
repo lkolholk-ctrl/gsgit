@@ -40,6 +40,8 @@ import gs.git.vps.data.Strings
 import gs.git.vps.data.github.GHApiDiagnosticCheck
 import gs.git.vps.data.github.GHApiDiagnostics
 import gs.git.vps.data.github.GHApiErrorLogEntry
+import gs.git.vps.data.github.GHMeta
+import gs.git.vps.data.github.GHRateLimitGraphQL
 import gs.git.vps.data.github.GitHubManager
 import gs.git.vps.ui.components.AiModuleSpinner
 import gs.git.vps.ui.components.AiModuleText as Text

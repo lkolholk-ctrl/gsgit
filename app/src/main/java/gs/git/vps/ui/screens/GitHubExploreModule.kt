@@ -17,11 +17,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.runtime.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -43,11 +46,16 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import gs.git.vps.data.Strings
 import gs.git.vps.data.github.GHCodeResult
+import gs.git.vps.data.github.GHLicense
+import gs.git.vps.data.github.GHLicenseDetail
 import gs.git.vps.data.github.GHOrg
 import gs.git.vps.data.github.GHRepo
 import gs.git.vps.data.github.GitHubManager
 import gs.git.vps.ui.components.AiModuleHairline
 import gs.git.vps.ui.components.AiModuleIcon as Icon
+import gs.git.vps.ui.components.AiModuleKeyValueRow
+import gs.git.vps.ui.components.AiModuleSearchField
+import gs.git.vps.ui.components.AiModuleSectionLabel
 import gs.git.vps.ui.components.AiModuleSpinner
 import gs.git.vps.ui.components.AiModuleText as Text
 import gs.git.vps.ui.theme.AiModuleTheme

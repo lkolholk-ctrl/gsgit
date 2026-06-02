@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -48,8 +49,11 @@ import gs.git.vps.ui.components.AiModuleAlertDialog
 import gs.git.vps.ui.components.AiModuleGlyph
 import gs.git.vps.ui.components.AiModuleGlyphAction
 import gs.git.vps.ui.components.AiModuleIcon as Icon
+import gs.git.vps.ui.components.AiModuleKeyValueRow
 import gs.git.vps.ui.components.AiModulePageBar
 import gs.git.vps.ui.components.AiModulePillButton
+import gs.git.vps.ui.components.AiModuleSearchField
+import gs.git.vps.ui.components.AiModuleSectionLabel
 import gs.git.vps.ui.components.AiModuleSpinner
 import gs.git.vps.ui.components.AiModuleText as Text
 import gs.git.vps.ui.components.AiModuleTextAction
@@ -73,7 +77,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import gs.git.vps.data.github.GHLicenseDetail
 import gs.git.vps.data.github.GHRepo
+import gs.git.vps.data.github.GitHubManager
 import gs.git.vps.ui.theme.AiModuleTheme
 import gs.git.vps.data.github.GitHubRepoSettingsManager
 import kotlinx.coroutines.launch

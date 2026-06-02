@@ -99,6 +99,7 @@ import gs.git.vps.data.github.GHActionsUsage
 import gs.git.vps.data.github.GHArtifact
 import gs.git.vps.data.github.GHCheckAnnotation
 import gs.git.vps.data.github.GHCheckRun
+import gs.git.vps.data.github.GHDeployment
 import gs.git.vps.data.github.GHJob
 import gs.git.vps.data.github.GHPendingDeployment
 import gs.git.vps.data.github.GHRepo

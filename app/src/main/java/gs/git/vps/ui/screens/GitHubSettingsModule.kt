@@ -71,7 +71,10 @@ import gs.git.vps.data.github.GHFollowerEntry
 import gs.git.vps.data.github.GHInteractionLimitEntry
 import gs.git.vps.data.github.GHNotification
 import gs.git.vps.data.github.GHOrg
+import gs.git.vps.data.github.GHDeviceCode
+import gs.git.vps.data.github.GHOrgMembership
 import gs.git.vps.data.github.GHRepo
+import gs.git.vps.data.github.GHWebhook
 import gs.git.vps.data.github.GHSocialAccountEntry
 import gs.git.vps.data.github.GHUser
 import gs.git.vps.data.github.GHUserRepositoryInvitation
@@ -1476,7 +1479,6 @@ private fun BlockedRow(entry: GHBlockedEntry, onUnblock: () -> Unit) {
 }
 
 @Composable
-@Composable
 private fun CompactOrgRow(org: GHOrg) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -1505,7 +1507,7 @@ private fun CompactOrgRow(org: GHOrg) {
             }
             if (hooks.isNotEmpty()) {
                 Text("Webhooks (${hooks.size})", fontSize = 12.sp, color = AiModuleTheme.colors.textSecondary, fontFamily = JetBrainsMono)
-                hooks.take(5).forEach { hook ->
+                hooks.take(5).forEach { hook: GHWebhook ->
                     Text("· ${hook.url.take(50)}", fontSize = 11.sp, color = AiModuleTheme.colors.textMuted, fontFamily = JetBrainsMono)
                 }
             }
