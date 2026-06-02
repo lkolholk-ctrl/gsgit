@@ -3925,11 +3925,11 @@ internal fun ReadmeBlockView(block: ReadmeRenderBlock, imageLoader: ImageLoader)
 private fun ReadmeHeading(block: ReadmeRenderBlock.Heading) {
     val colors = AiModuleTheme.colors
     val topPadding = when (block.level) {
-        1 -> 18.dp
-        2 -> 28.dp
-        else -> 18.dp
+        1 -> 10.dp
+        2 -> 14.dp
+        else -> 10.dp
     }
-    Column(Modifier.fillMaxWidth().padding(top = topPadding, bottom = 8.dp)) {
+    Column(Modifier.fillMaxWidth().padding(top = topPadding, bottom = 4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             if (block.anchor.isNotBlank()) {
                 Icon(
@@ -3940,10 +3940,10 @@ private fun ReadmeHeading(block: ReadmeRenderBlock.Heading) {
                 )
             }
             val size = when (block.level) {
-                1 -> 38.sp
-                2 -> 31.sp
-                3 -> 25.sp
-                else -> 20.sp
+                1 -> 24.sp
+                2 -> 20.sp
+                3 -> 17.sp
+                else -> 15.sp
             }
             Text(
                 readmeInlineAnnotated(block.text),
@@ -3955,7 +3955,7 @@ private fun ReadmeHeading(block: ReadmeRenderBlock.Heading) {
             )
         }
         if (block.level <= 3) {
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(6.dp))
             Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border.copy(alpha = 0.62f)))
         }
     }
@@ -4013,7 +4013,7 @@ private fun ReadmeText(text: String, modifier: Modifier = Modifier) {
         ClickableText(
             text = annotated,
             modifier = modifier,
-            style = androidx.compose.ui.text.TextStyle(fontSize = 16.sp, color = AiModuleTheme.colors.textPrimary, lineHeight = 25.sp),
+            style = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = AiModuleTheme.colors.textPrimary, lineHeight = 19.sp),
             onClick = { offset ->
                 annotated.getStringAnnotations("URL", offset, offset).firstOrNull()?.item?.let { context.openReadmeUrl(it) }
             }
@@ -4025,10 +4025,10 @@ private fun ReadmeText(text: String, modifier: Modifier = Modifier) {
                     is ReadmeInlineSegment.Code -> {
                         Text(
                             segment.text,
-                            fontSize = 15.sp,
+                            fontSize = 12.sp,
                             fontFamily = FontFamily.Monospace,
                             color = AiModuleTheme.colors.textPrimary,
-                            lineHeight = 22.sp,
+                            lineHeight = 17.sp,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(5.dp))
                                 .background(AiModuleTheme.colors.surface)
@@ -4039,7 +4039,7 @@ private fun ReadmeText(text: String, modifier: Modifier = Modifier) {
                         val annotated = readmeInlineAnnotated(segment.text)
                         ClickableText(
                             text = annotated,
-                            style = androidx.compose.ui.text.TextStyle(fontSize = 16.sp, color = AiModuleTheme.colors.textPrimary, lineHeight = 25.sp),
+                            style = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = AiModuleTheme.colors.textPrimary, lineHeight = 19.sp),
                             onClick = { offset ->
                                 annotated.getStringAnnotations("URL", offset, offset).firstOrNull()?.item?.let { context.openReadmeUrl(it) }
                             }
@@ -4085,7 +4085,7 @@ private fun ReadmeBullet(text: String, ordered: Boolean = false, checked: Boolea
             false -> "□"
             null -> if (ordered) "1." else "•"
         }
-        Text(marker, fontSize = 16.sp, color = if (checked == true) GitHubSuccessGreen else AiModuleTheme.colors.textPrimary, fontWeight = FontWeight.SemiBold, modifier = Modifier.widthIn(min = 18.dp))
+        Text(marker, fontSize = 13.sp, color = if (checked == true) GitHubSuccessGreen else AiModuleTheme.colors.textPrimary, fontWeight = FontWeight.SemiBold, modifier = Modifier.widthIn(min = 18.dp))
         ReadmeText(text, modifier = Modifier.weight(1f))
     }
 }
@@ -4240,16 +4240,16 @@ private fun ReadmeCodeBlock(block: ReadmeRenderBlock.Code) {
         Column(
             Modifier
                 .horizontalScroll(rememberScrollState())
-                .padding(start = 14.dp, end = 52.dp, top = 18.dp, bottom = 18.dp),
+                .padding(start = 14.dp, end = 52.dp, top = 10.dp, bottom = 10.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             lines.forEach { line ->
                 Text(
                     highlightLine(line.take(README_MAX_LINE_CHARS).ifEmpty { " " }, language),
-                    fontSize = 15.sp,
+                    fontSize = 12.sp,
                     fontFamily = FontFamily.Monospace,
                     color = colors.textPrimary,
-                    lineHeight = 24.sp,
+                    lineHeight = 18.sp,
                     softWrap = false,
                 )
             }
@@ -4330,10 +4330,10 @@ private fun ReadmeLinkCard(text: String, url: String) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text("→", fontSize = 18.sp, color = AiModuleTheme.colors.textPrimary)
+        Text("→", fontSize = 14.sp, color = AiModuleTheme.colors.textPrimary)
         Text(
             text.ifBlank { url },
-            fontSize = 17.sp,
+            fontSize = 13.sp,
             color = AiModuleTheme.colors.accent,
             fontWeight = FontWeight.Medium,
             maxLines = 2,
