@@ -83,6 +83,7 @@ import gs.git.vps.data.github.GHUserProfile
 import gs.git.vps.data.github.GitHubManager
 import gs.git.vps.ui.components.AiModulePageBar
 import gs.git.vps.ui.components.AiModuleHairline
+import gs.git.vps.ui.components.AiModuleKeyValueRow
 import gs.git.vps.ui.components.AiModuleAlertDialog
 import gs.git.vps.ui.components.AiModuleIcon as Icon
 import gs.git.vps.ui.components.AiModuleSpinner
