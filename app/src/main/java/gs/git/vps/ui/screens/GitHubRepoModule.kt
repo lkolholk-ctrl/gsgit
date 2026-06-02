@@ -656,9 +656,11 @@ internal fun RepoDetailScreen(
                     )
                 }
             } else if (isMd) {
-                LazyColumn(Modifier.fillMaxSize().padding(12.dp), contentPadding = PaddingValues(bottom = 16.dp)) {
-                    items(cachedLines.size) { idx -> MarkdownLine(cachedLines[idx]) }
-                }
+                MarkdownCanvas(
+                    text = safeFileContent,
+                    modifier = Modifier.fillMaxSize(),
+                    repo = repo.fullName,
+                )
             } else {
                 LazyColumn(Modifier.fillMaxSize().padding(start = 4.dp, end = 4.dp, top = 4.dp), contentPadding = PaddingValues(bottom = 16.dp)) {
                     items(cachedLines.size) { idx ->
