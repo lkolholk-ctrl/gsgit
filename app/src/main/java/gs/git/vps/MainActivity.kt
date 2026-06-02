@@ -57,6 +57,20 @@ class MainActivity : ComponentActivity() {
         val repoFullName = "$owner/$repo"
 
         val target = when {
+            segments.size >= 4 && segments[2] == "blob" -> GitHubNotificationTarget(
+                repoFullName = repoFullName,
+                subjectType = "File",
+                number = null,
+                filePath = segments.drop(4).joinToString("/"),
+                branch = segments.getOrNull(3),
+            )
+            segments.size >= 4 && segments[2] == "tree" -> GitHubNotificationTarget(
+                repoFullName = repoFullName,
+                subjectType = "Dir",
+                number = null,
+                filePath = segments.drop(4).joinToString("/"),
+                branch = segments.getOrNull(3),
+            )
             segments.size >= 4 && segments[2] == "issues" -> GitHubNotificationTarget(
                 repoFullName = repoFullName,
                 subjectType = "Issue",

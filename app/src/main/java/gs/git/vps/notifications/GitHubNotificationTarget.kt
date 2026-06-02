@@ -5,7 +5,9 @@ import android.net.Uri
 data class GitHubNotificationTarget(
     val repoFullName: String,
     val subjectType: String,
-    val number: Int? = null
+    val number: Int? = null,
+    val filePath: String? = null,
+    val branch: String? = null,
 ) {
     val owner: String get() = repoFullName.substringBefore('/', "")
     val repo: String get() = repoFullName.substringAfter('/', "")

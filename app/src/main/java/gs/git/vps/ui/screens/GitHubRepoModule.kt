@@ -87,6 +87,8 @@ import java.net.URLEncoder
 import okhttp3.OkHttpClient
 import org.json.JSONObject
 
+internal val LocalReadmeNavigator = compositionLocalOf<(String) -> Unit> { {} }
+
 // Compact mode — propagates through all sub-screens automatically
 
 internal enum class RepoTab { FILES, COMMITS, ISSUES, PULLS, RELEASES, ACTIONS, BUILDS, HISTORY, PROJECTS, README, CODE_SEARCH }
@@ -200,6 +202,29 @@ internal fun RepoDetailScreen(
             }
             "Release" -> selectedTab = RepoTab.RELEASES
             "Discussion" -> showDiscussions = true
+            "File" -> {
+                selectedTab = RepoTab.FILES
+                target.branch?.let { selectedBranch = it }
+                val path = target.filePath.orEmpty()
+                if (path.isNotBlank()) {
+                    scope.launch {
+                        val file = GitHubManager.getRepoContents(context, repo.owner, repo.name, path.substringBeforeLast("/", ""), target.branch).find { it.path == path }
+                        if (file != null) {
+                            openedFile = file
+                            fileContent = GitHubManager.getFileContent(context, repo.owner, repo.name, path, target.branch ?: selectedBranch)
+                        }
+                    }
+                }
+            }
+            "Dir" -> {
+                selectedTab = RepoTab.FILES
+                target.branch?.let { selectedBranch = it }
+                val path = target.filePath.orEmpty()
+                if (path.isNotBlank()) {
+                    currentPath = path
+                    scope.launch { contents = GitHubManager.getRepoContents(context, repo.owner, repo.name, path, target.branch) }
+                }
+            }
             else -> {
                 selectedTab = if (target.number != null) RepoTab.ISSUES else RepoTab.FILES
             }
@@ -1011,7 +1036,17 @@ internal fun RepoDetailScreen(
             }
             RepoTab.HISTORY -> ActionsHistoryTab(workflowRuns, repo) { selectedRunId = it.id }
             RepoTab.PROJECTS -> ProjectsTab(repo)
-            RepoTab.README -> ReadmeTab(readme, readmeHtml, readmeBlocks, readmeError, languages, contributors, releases, repo) { readmeReloadNonce++ }
+            RepoTab.README -> ReadmeTab(readme, readmeHtml, readmeBlocks, readmeError, languages, contributors, releases, repo, { readmeReloadNonce++ }, onOpenFile = { path ->
+                scope.launch {
+                    val file = GitHubManager.getRepoContents(context, repo.owner, repo.name, path.substringBeforeLast("/", ""), selectedBranch).find { it.path == path }
+                    if (file != null) {
+                        openedFile = file
+                        fileContent = GitHubManager.getFileContent(context, repo.owner, repo.name, path, selectedBranch)
+                    } else {
+                        context.openReadmeUrl("https://github.com/${repo.owner}/${repo.name}/blob/${selectedBranch}/$path")
+                    }
+                }
+            })
             RepoTab.CODE_SEARCH -> CodeSearchTab(repo)
         }
     }
@@ -3225,7 +3260,12 @@ internal fun ReleasesTab(releases: List<GHRelease>, repo: GHRepo) { val context 
         Text(r.tag, fontSize = 12.sp, color = colors.textMuted, fontFamily = FontFamily.Monospace)
         if (r.body.isNotBlank()) {
             Spacer(Modifier.height(8.dp))
-            GitHubMarkdownDocument(r.body, repo)
+            CompositionLocalProvider(LocalReadmeNavigator provides { url ->
+                val ctx = LocalContext.current
+                ctx.openReadmeUrl(url)
+            }) {
+                GitHubMarkdownDocument(r.body, repo)
+            }
         }
         if (r.assets.isNotEmpty()) {
             Spacer(Modifier.height(8.dp))
@@ -3315,10 +3355,24 @@ private fun ReadmeTab(
     contributors: List<GHContributor>,
     releases: List<GHRelease>,
     repo: GHRepo,
-    onRetry: () -> Unit
+    onRetry: () -> Unit,
+    onOpenFile: (String) -> Unit = {},
 ) {
-    val readmeImageLoader = rememberReadmeImageLoader(LocalContext.current)
+    val context = LocalContext.current
+    val readmeImageLoader = rememberReadmeImageLoader(context)
     val colors = AiModuleTheme.colors
+    val navigator: (String) -> Unit = remember(repo, context) {
+        { url: String ->
+            if (url.isBlank() || url.startsWith("#")) return@remember
+            val resolved = resolveReadmeLink(url, repo)
+            if (resolved != null) {
+                onOpenFile(resolved)
+            } else {
+                context.openReadmeUrl(url)
+            }
+        }
+    }
+    CompositionLocalProvider(LocalReadmeNavigator provides navigator) {
     var rawView by remember(readme) { mutableStateOf(false) }
     var visibleCount by remember(readme) { mutableIntStateOf(250) }
     var renderCompleteLogged by remember(readme, blocks?.size ?: -1) { mutableStateOf(false) }
@@ -3331,6 +3385,7 @@ private fun ReadmeTab(
                 html = renderedHtml,
                 repo = repo,
                 modifier = Modifier.fillMaxSize(),
+                onNavigateLink = navigator,
             )
         }
         return
@@ -3396,6 +3451,7 @@ private fun ReadmeTab(
             ReadmeRepositoryFooter(repo, releases, contributors, languages)
         }
     }
+    } // CompositionLocalProvider
 }
 
 @Composable
@@ -3403,6 +3459,7 @@ private fun ReadmeHtmlDocument(
     html: String,
     repo: GHRepo,
     modifier: Modifier = Modifier,
+    onNavigateLink: (String) -> Unit = {},
 ) {
     val context = LocalContext.current
     val colors = AiModuleTheme.colors
@@ -3466,6 +3523,11 @@ private fun ReadmeHtmlDocument(
                                 uri.path == "/${repo.owner}/${repo.name}/" &&
                                 !uri.fragment.isNullOrBlank()
                             if (repoAnchor) return false
+                            val seg = uri.pathSegments
+                            if (uri.host in listOf("github.com", "www.github.com") && seg.size >= 4 && seg[2] == "blob") {
+                                onNavigateLink(uri.toString())
+                                return true
+                            }
                             return runCatching {
                                 context.startActivity(Intent(Intent.ACTION_VIEW, uri))
                                 true
@@ -3921,7 +3983,8 @@ internal fun GitHubMarkdownDocument(
 }
 
 @Composable
-internal fun ReadmeBlockView(block: ReadmeRenderBlock, imageLoader: ImageLoader) {
+internal fun ReadmeBlockView(block: ReadmeRenderBlock, imageLoader: ImageLoader, onLinkClick: (String) -> Unit = {}) {
+    val navigateLink = LocalReadmeNavigator.current
     when (block) {
         is ReadmeRenderBlock.Heading -> ReadmeHeading(block)
         is ReadmeRenderBlock.Paragraph -> ReadmeText(block.text)
@@ -4033,7 +4096,7 @@ private fun ReadmeText(text: String, modifier: Modifier = Modifier) {
             modifier = modifier,
             style = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = AiModuleTheme.colors.textPrimary, lineHeight = 19.sp),
             onClick = { offset ->
-                annotated.getStringAnnotations("URL", offset, offset).firstOrNull()?.item?.let { context.openReadmeUrl(it) }
+                annotated.getStringAnnotations("URL", offset, offset).firstOrNull()?.item?.let { LocalReadmeNavigator.current(it) }
             }
         )
     } else {
@@ -4059,7 +4122,7 @@ private fun ReadmeText(text: String, modifier: Modifier = Modifier) {
                             text = annotated,
                             style = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = AiModuleTheme.colors.textPrimary, lineHeight = 19.sp),
                             onClick = { offset ->
-                                annotated.getStringAnnotations("URL", offset, offset).firstOrNull()?.item?.let { context.openReadmeUrl(it) }
+                                annotated.getStringAnnotations("URL", offset, offset).firstOrNull()?.item?.let { LocalReadmeNavigator.current(it) }
                             }
                         )
                     }
@@ -4343,7 +4406,7 @@ private fun ReadmeLinkCard(text: String, url: String) {
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(5.dp))
-            .clickable { context.openReadmeUrl(url) }
+            .clickable { LocalReadmeNavigator.current(url) }
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -4927,6 +4990,29 @@ private fun readmeNormalizePath(path: String): String {
         }
     }
     return segments.joinToString("/")
+}
+
+private fun resolveReadmeLink(url: String, repo: GHRepo): String? {
+    val uri = try { Uri.parse(url) } catch (_: Exception) { return null }
+    if (uri.host == "github.com" || uri.host == "www.github.com") {
+        val seg = uri.pathSegments
+        if (seg.size >= 2 && seg[0] == repo.owner && seg[1] == repo.name) {
+            if (seg.size >= 4 && seg[2] == "blob") {
+                return seg.drop(4).joinToString("/")
+            }
+            if (seg.size >= 4 && seg[2] == "tree") {
+                return seg.drop(4).joinToString("/")
+            }
+        }
+        if (seg.size >= 4 && seg[2] == "blob") {
+            return seg.drop(4).joinToString("/")
+        }
+    }
+    if (uri.scheme.isNullOrBlank() && !url.startsWith("/") && !url.startsWith("#")) {
+        val clean = url.removePrefix("./").removePrefix("../")
+        if (clean.contains(".") || clean.contains("/")) return clean
+    }
+    return null
 }
 
 private fun readmeBrowserUrl(repo: GHRepo): String =
