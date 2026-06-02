@@ -717,6 +717,24 @@ internal fun RepoDetailScreen(
                             showRepoOverflow = false
                         }
                     }, color = palette.accent)
+                    GitHubTerminalButton("\u2197 share", {
+                        val repoUrl = "https://github.com/${repo.owner}/${repo.name}"
+                        val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, repoUrl)
+                            putExtra(Intent.EXTRA_SUBJECT, repo.fullName)
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        context.startActivity(Intent.createChooser(sendIntent, "Share repo link").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        showRepoOverflow = false
+                    }, color = palette.textSecondary)
+                    GitHubTerminalButton("\u2398 copy link", {
+                        val repoUrl = "https://github.com/${repo.owner}/${repo.name}"
+                        val clip = android.content.ClipData.newPlainText("repo-url", repoUrl)
+                        (context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(clip)
+                        Toast.makeText(context, Strings.copied, Toast.LENGTH_SHORT).show()
+                        showRepoOverflow = false
+                    }, color = palette.textSecondary)
                     if (onMinimize != null) {
                         GitHubTerminalButton("\u229F floating window", {
                             showRepoOverflow = false
