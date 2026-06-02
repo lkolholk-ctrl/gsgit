@@ -3393,80 +3393,79 @@ private fun ReadmeTab(
     }
     var rawView by remember(readme) { mutableStateOf(false) }
     var visibleCount by remember(readme) { mutableIntStateOf(250) }
-        var renderCompleteLogged by remember(readme, blocks?.size ?: -1) { mutableStateOf(false) }
-        val safeBlocks = blocks.orEmpty()
-        val shownBlocks = safeBlocks.take(visibleCount)
+    var renderCompleteLogged by remember(readme, blocks?.size ?: -1) { mutableStateOf(false) }
+    val safeBlocks = blocks.orEmpty()
+    val shownBlocks = safeBlocks.take(visibleCount)
 
-        when {
-            !renderedHtml.isNullOrBlank() && error == null && !rawView -> {
-                Box(Modifier.fillMaxSize().background(colors.background)) {
-                    ReadmeHtmlDocument(
-                        html = renderedHtml,
-                        repo = repo,
-                        modifier = Modifier.fillMaxSize(),
-                        onNavigateLink = onLinkClick,
-                    )
+    when {
+        !renderedHtml.isNullOrBlank() && error == null && !rawView -> {
+            Box(Modifier.fillMaxSize().background(colors.background)) {
+                ReadmeHtmlDocument(
+                    html = renderedHtml,
+                    repo = repo,
+                    modifier = Modifier.fillMaxSize(),
+                    onNavigateLink = onLinkClick,
+                )
+            }
+        }
+        else -> {
+            if (!readme.isNullOrBlank() && error == null && !rawView) {
+                LaunchedEffect(readme, safeBlocks.size) {
+                    Log.d(README_RENDER_TAG, "render start ${repo.owner}/${repo.name} blocks=${safeBlocks.size}")
+                }
+                SideEffect {
+                    if (!renderCompleteLogged) {
+                        Log.d(README_RENDER_TAG, "render complete ${repo.owner}/${repo.name} blocks=${safeBlocks.size}")
+                        renderCompleteLogged = true
+                    }
                 }
             }
-            else -> {
-                if (!readme.isNullOrBlank() && error == null && !rawView) {
-                    LaunchedEffect(readme, safeBlocks.size) {
-                        Log.d(README_RENDER_TAG, "render start ${repo.owner}/${repo.name} blocks=${safeBlocks.size}")
+            LazyColumn(
+                Modifier.fillMaxSize().background(colors.background),
+                contentPadding = PaddingValues(start = 22.dp, end = 22.dp, top = 14.dp, bottom = 28.dp),
+            ) {
+                when {
+                    error != null -> item {
+                        ReadmeErrorCard(error, readme.orEmpty(), repo, onRetry = onRetry)
                     }
-                    SideEffect {
-                        if (!renderCompleteLogged) {
-                            Log.d(README_RENDER_TAG, "render complete ${repo.owner}/${repo.name} blocks=${safeBlocks.size}")
-                            renderCompleteLogged = true
+                    readme.isNullOrBlank() -> item {
+                        Text(Strings.ghNoReadme, fontSize = 15.sp, color = colors.textMuted, lineHeight = 22.sp)
+                    }
+                    rawView -> item {
+                        ReadmeRawBlock(readme.orEmpty())
+                    }
+                    shownBlocks.isEmpty() -> item {
+                        ReadmeErrorCard("README has no renderable markdown blocks.", readme.orEmpty(), repo, onViewRaw = { rawView = true })
+                    }
+                    else -> {
+                        item(key = "readme_doc_top_${repo.owner}_${repo.name}") {
+                            Spacer(Modifier.height(2.dp))
+                        }
+                        items(shownBlocks, key = { it.stableId }) { block ->
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 5.dp)
+                            ) {
+                                ReadmeBlockView(block, readmeImageLoader, onLinkClick)
+                            }
+                        }
+                        item(key = "readme_doc_bottom_${repo.owner}_${repo.name}_${shownBlocks.size}") {
+                            Spacer(Modifier.height(16.dp))
+                        }
+                        if (visibleCount < safeBlocks.size) {
+                            item {
+                                GitHubTerminalButton(
+                                    "expand more README content (${safeBlocks.size - visibleCount} hidden)",
+                                    onClick = { visibleCount += 250 },
+                                    color = AiModuleTheme.colors.accent,
+                                )
+                            }
                         }
                     }
                 }
-                LazyColumn(
-                    Modifier.fillMaxSize().background(colors.background),
-                    contentPadding = PaddingValues(start = 22.dp, end = 22.dp, top = 14.dp, bottom = 28.dp),
-                ) {
-                    when {
-                        error != null -> item {
-                            ReadmeErrorCard(error, readme.orEmpty(), repo, onRetry = onRetry)
-                        }
-                        readme.isNullOrBlank() -> item {
-                            Text(Strings.ghNoReadme, fontSize = 15.sp, color = colors.textMuted, lineHeight = 22.sp)
-                        }
-                        rawView -> item {
-                            ReadmeRawBlock(readme.orEmpty())
-                        }
-                        shownBlocks.isEmpty() -> item {
-                            ReadmeErrorCard("README has no renderable markdown blocks.", readme.orEmpty(), repo, onViewRaw = { rawView = true })
-                        }
-                        else -> {
-                            item(key = "readme_doc_top_${repo.owner}_${repo.name}") {
-                                Spacer(Modifier.height(2.dp))
-                            }
-                            items(shownBlocks, key = { it.stableId }) { block ->
-                                Box(
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 5.dp)
-                                ) {
-                                    ReadmeBlockView(block, readmeImageLoader, onLinkClick)
-                                }
-                            }
-                            item(key = "readme_doc_bottom_${repo.owner}_${repo.name}_${shownBlocks.size}") {
-                                Spacer(Modifier.height(16.dp))
-                            }
-                            if (visibleCount < safeBlocks.size) {
-                                item {
-                                    GitHubTerminalButton(
-                                        "expand more README content (${safeBlocks.size - visibleCount} hidden)",
-                                        onClick = { visibleCount += 250 },
-                                        color = AiModuleTheme.colors.accent,
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    item {
-                        ReadmeRepositoryFooter(repo, releases, contributors, languages)
-                    }
+                item {
+                    ReadmeRepositoryFooter(repo, releases, contributors, languages)
                 }
             }
         }
@@ -3542,8 +3541,17 @@ private fun ReadmeHtmlDocument(
                                 uri.path == "/${repo.owner}/${repo.name}/" &&
                                 !uri.fragment.isNullOrBlank()
                             if (repoAnchor) return false
+                            // Route internal file/dir links through the file viewer
+                            val resolved = resolveReadmeLink(uri.toString(), repo)
+                            if (resolved != null) {
+                                onNavigateLink(uri.toString())
+                                return true
+                            }
+                            // Same-repo github.com URLs that didn't resolve: also intercept
+                            // to prevent deep-link loop back into our own app
                             val seg = uri.pathSegments
-                            if (uri.host in listOf("github.com", "www.github.com") && seg.size >= 4 && seg[2] == "blob") {
+                            if (uri.host in listOf("github.com", "www.github.com") &&
+                                seg.size >= 2 && seg[0] == repo.owner && seg[1] == repo.name) {
                                 onNavigateLink(uri.toString())
                                 return true
                             }
@@ -5011,19 +5019,23 @@ private fun readmeNormalizePath(path: String): String {
 
 private fun resolveReadmeLink(url: String, repo: GHRepo): String? {
     val uri = try { Uri.parse(url) } catch (_: Exception) { return null }
+    // raw.githubusercontent.com/owner/repo/branch/path
+    if (uri.host == "raw.githubusercontent.com") {
+        val seg = uri.pathSegments
+        if (seg.size >= 4 && seg[0] == repo.owner && seg[1] == repo.name) {
+            return seg.drop(3).joinToString("/")
+        }
+        if (seg.size >= 4) return seg.drop(3).joinToString("/")
+    }
     if (uri.host == "github.com" || uri.host == "www.github.com") {
         val seg = uri.pathSegments
         if (seg.size >= 2 && seg[0] == repo.owner && seg[1] == repo.name) {
-            if (seg.size >= 4 && seg[2] == "blob") {
-                return seg.drop(4).joinToString("/")
-            }
-            if (seg.size >= 4 && seg[2] == "tree") {
-                return seg.drop(4).joinToString("/")
-            }
+            if (seg.size >= 4 && seg[2] == "blob") return seg.drop(4).joinToString("/")
+            if (seg.size >= 4 && seg[2] == "tree") return seg.drop(4).joinToString("/")
+            // github.com/owner/repo/filename.ext (no /blob/) — treat as repo file
+            if (seg.size == 3 && seg[2].contains(".")) return seg[2]
         }
-        if (seg.size >= 4 && seg[2] == "blob") {
-            return seg.drop(4).joinToString("/")
-        }
+        if (seg.size >= 4 && seg[2] == "blob") return seg.drop(4).joinToString("/")
     }
     if (uri.scheme.isNullOrBlank() && !url.startsWith("/") && !url.startsWith("#")) {
         val clean = url.removePrefix("./").removePrefix("../")

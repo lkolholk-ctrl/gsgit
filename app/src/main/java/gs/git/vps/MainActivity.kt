@@ -90,6 +90,13 @@ class MainActivity : ComponentActivity() {
                 subjectType = "Discussion",
                 number = segments.getOrNull(3)?.toIntOrNull(),
             )
+            segments.size >= 3 && segments[2].contains(".") -> GitHubNotificationTarget(
+                repoFullName = repoFullName,
+                subjectType = "File",
+                number = null,
+                filePath = segments.drop(2).joinToString("/"),
+                branch = null,
+            )
             else -> GitHubNotificationTarget(
                 repoFullName = repoFullName,
                 subjectType = "",
