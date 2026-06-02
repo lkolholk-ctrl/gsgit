@@ -5356,7 +5356,7 @@ internal fun DeploymentsPanel(repo: GHRepo) {
                 ) {
                     Column(Modifier.weight(1f)) {
                         Text(dep.environment, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono)
-                        Text("${dep.ref.take(12)} · ${dep.task.takeIf { it.isNotBlank() } ?: "deploy"}", fontSize = 11.sp, color = AiModuleTheme.colors.textTertiary, fontFamily = JetBrainsMono)
+                        Text("${dep.ref.take(12)} · ${dep.task.takeIf { it.isNotBlank() } ?: "deploy"}", fontSize = 11.sp, color = AiModuleTheme.colors.textMuted, fontFamily = JetBrainsMono)
                         Text(dep.createdAt.take(19).replace('T', ' '), fontSize = 11.sp, color = AiModuleTheme.colors.textMuted, fontFamily = JetBrainsMono)
                     }
                     AiModulePillButton(label = "status", onClick = { showStatus = dep })
