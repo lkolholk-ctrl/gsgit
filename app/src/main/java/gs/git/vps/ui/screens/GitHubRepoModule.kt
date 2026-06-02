@@ -656,10 +656,11 @@ internal fun RepoDetailScreen(
                     )
                 }
             } else if (isMd) {
-                val mdImageLoader = rememberReadmeImageLoader(context)
-                var mdBlocks by remember(safeFileContent) { mutableStateOf<List<ReadmeRenderBlock>?>(null) }
-                LaunchedEffect(safeFileContent, repo.owner, repo.name, selectedBranch, safeOpenedFile.path) {
-                    mdBlocks = withContext(Dispatchers.Default) { parseReadmeBlocks(safeFileContent, repo, safeOpenedFile.path) }
+                var mdHtml by remember(safeFileContent) { mutableStateOf("") }
+                var mdLoading by remember(safeFileContent) { mutableStateOf(true) }
+                LaunchedEffect(safeFileContent) {
+                    mdHtml = GitHubManager.renderMarkdown(context, safeFileContent, "gfm", "${repo.owner}/${repo.name}")
+                    mdLoading = false
                 }
                 val onMdLinkClick: (String) -> Unit = { url ->
                     if (url.isNotBlank() && !url.startsWith("#")) {
@@ -675,20 +676,13 @@ internal fun RepoDetailScreen(
                         } else context.openReadmeUrl(url)
                     }
                 }
-                LazyColumn(
-                    Modifier.fillMaxSize().background(viewerPalette.background),
-                    contentPadding = PaddingValues(start = 22.dp, end = 22.dp, top = 14.dp, bottom = 28.dp),
-                ) {
-                    if (mdBlocks == null) {
-                        item { Box(Modifier.fillMaxWidth().padding(vertical = 20.dp), contentAlignment = Alignment.Center) { AiModuleSpinner(label = "rendering…") } }
-                    } else if (mdBlocks!!.isEmpty()) {
-                        item { Text("No renderable content.", fontSize = 15.sp, color = viewerPalette.textMuted, lineHeight = 22.sp) }
+                Box(Modifier.fillMaxSize().background(viewerPalette.background)) {
+                    if (mdLoading) {
+                        AiModuleSpinner(label = "rendering…")
+                    } else if (mdHtml.isNotBlank()) {
+                        ReadmeHtmlDocument(html = mdHtml, repo = repo, modifier = Modifier.fillMaxSize(), onNavigateLink = onMdLinkClick)
                     } else {
-                        items(mdBlocks!!, key = { it.stableId }) { block ->
-                            Box(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
-                                ReadmeBlockView(block, mdImageLoader, onMdLinkClick)
-                            }
-                        }
+                        Text("No renderable content.", fontSize = 15.sp, color = viewerPalette.textMuted, lineHeight = 22.sp, modifier = Modifier.padding(22.dp))
                     }
                 }
             } else {
