@@ -82,6 +82,7 @@ import gs.git.vps.data.github.GHUserKeyEntry
 import gs.git.vps.data.github.GHUserProfile
 import gs.git.vps.data.github.GitHubManager
 import gs.git.vps.ui.components.AiModulePageBar
+import androidx.compose.ui.platform.LocalContext
 import gs.git.vps.ui.components.AiModuleHairline
 import gs.git.vps.ui.components.AiModuleKeyValueRow
 import gs.git.vps.ui.components.AiModuleAlertDialog
@@ -657,7 +658,7 @@ internal fun GitHubSettingsScreen(
                             InfoLine("Token", maskToken(GitHubManager.getToken(context)))
                             InfoLine("Rate limit", rateLimitSummary)
                             ActionRow(Icons.Rounded.Key, "Change token") { showChangeToken = true }
-                            ActionRow(Icons.Rounded.Devices, "Device login") { showDeviceLogin = true }
+                            ActionRow(Icons.Rounded.Login, "Device login") { showDeviceLogin = true }
                             ActionRow(Icons.Rounded.Delete, "Clear GitHub cache") {
                                 confirmAction(
                                     title = "clear github cache",
