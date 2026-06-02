@@ -94,6 +94,7 @@ import coil.compose.AsyncImage
 import gs.git.vps.data.Strings
 import gs.git.vps.data.github.GHContent
 import gs.git.vps.data.github.GHCommit
+import gs.git.vps.data.github.GHRepo
 import gs.git.vps.data.github.GitHubManager
 import gs.git.vps.ui.components.AiModuleAlertDialog
 import gs.git.vps.ui.components.AiModuleGlyph
@@ -906,7 +907,23 @@ fun CodeEditorScreen(
             Box(contentModifier) {
                 when {
                     isImage -> ModernImageCanvas(file)
-                    isMarkdown && mode == GitHubEditorMode.PREVIEW -> ModernMarkdownCanvas(lines, "$repoOwner/$repoName")
+                    isMarkdown && mode == GitHubEditorMode.PREVIEW -> {
+                        val mdRepo = remember(repoOwner, repoName, branch) {
+                            GHRepo(name = repoName, fullName = "$repoOwner/$repoName", description = "",
+                                language = "", stars = 0, forks = 0, isPrivate = false, isFork = false,
+                                defaultBranch = branch, updatedAt = "", owner = repoOwner)
+                        }
+                        GitHubMarkdownDocument(
+                            markdown = lines.joinToString("\n"),
+                            repo = mdRepo,
+                            readmePath = file.path,
+                            modifier = Modifier.fillMaxSize(),
+                            onLinkClick = { url ->
+                                try { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }) }
+                                catch (_: Exception) {}
+                            }
+                        )
+                    }
                     mode == GitHubEditorMode.READ -> ModernReadCanvas(lines, ext, lineNumbers, wrapLines, currentMatch?.line, fontSize)
                     mode == GitHubEditorMode.DIFF -> ModernDiffCanvas(savedContent, text, fontSize)
                     else -> ModernEditCanvas(
@@ -1967,12 +1984,6 @@ private fun ModernReadCanvas(
             }
         }
     }
-}
-
-@Composable
-private fun ModernMarkdownCanvas(lines: List<String>, repo: String = "") {
-    val markdownText = remember(lines) { lines.joinToString("\n") }
-    MarkdownCanvas(markdownText, Modifier.fillMaxSize(), repo = repo)
 }
 
 @Composable
