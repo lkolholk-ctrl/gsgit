@@ -3261,8 +3261,7 @@ internal fun ReleasesTab(releases: List<GHRelease>, repo: GHRepo) { val context 
         if (r.body.isNotBlank()) {
             Spacer(Modifier.height(8.dp))
             CompositionLocalProvider(LocalReadmeNavigator provides { url ->
-                val ctx = LocalContext.current
-                ctx.openReadmeUrl(url)
+                context.openReadmeUrl(url)
             }) {
                 GitHubMarkdownDocument(r.body, repo)
             }
@@ -3363,95 +3362,97 @@ private fun ReadmeTab(
     val colors = AiModuleTheme.colors
     val navigator: (String) -> Unit = remember(repo, context) {
         { url: String ->
-            if (url.isBlank() || url.startsWith("#")) return@remember
-            val resolved = resolveReadmeLink(url, repo)
-            if (resolved != null) {
-                onOpenFile(resolved)
-            } else {
-                context.openReadmeUrl(url)
+            if (url.isNotBlank() && !url.startsWith("#")) {
+                val resolved = resolveReadmeLink(url, repo)
+                if (resolved != null) {
+                    onOpenFile(resolved)
+                } else {
+                    context.openReadmeUrl(url)
+                }
             }
         }
     }
     CompositionLocalProvider(LocalReadmeNavigator provides navigator) {
-    var rawView by remember(readme) { mutableStateOf(false) }
-    var visibleCount by remember(readme) { mutableIntStateOf(250) }
-    var renderCompleteLogged by remember(readme, blocks?.size ?: -1) { mutableStateOf(false) }
-    val safeBlocks = blocks.orEmpty()
-    val shownBlocks = safeBlocks.take(visibleCount)
+        var rawView by remember(readme) { mutableStateOf(false) }
+        var visibleCount by remember(readme) { mutableIntStateOf(250) }
+        var renderCompleteLogged by remember(readme, blocks?.size ?: -1) { mutableStateOf(false) }
+        val safeBlocks = blocks.orEmpty()
+        val shownBlocks = safeBlocks.take(visibleCount)
 
-    if (!renderedHtml.isNullOrBlank() && error == null && !rawView) {
-        Box(Modifier.fillMaxSize().background(colors.background)) {
-            ReadmeHtmlDocument(
-                html = renderedHtml,
-                repo = repo,
-                modifier = Modifier.fillMaxSize(),
-                onNavigateLink = navigator,
-            )
-        }
-        return
-    }
-
-    if (!readme.isNullOrBlank() && error == null && !rawView) {
-        LaunchedEffect(readme, safeBlocks.size) {
-            Log.d(README_RENDER_TAG, "render start ${repo.owner}/${repo.name} blocks=${safeBlocks.size}")
-        }
-        SideEffect {
-            if (!renderCompleteLogged) {
-                Log.d(README_RENDER_TAG, "render complete ${repo.owner}/${repo.name} blocks=${safeBlocks.size}")
-                renderCompleteLogged = true
-            }
-        }
-    }
-
-    LazyColumn(
-        Modifier.fillMaxSize().background(colors.background),
-        contentPadding = PaddingValues(start = 22.dp, end = 22.dp, top = 14.dp, bottom = 28.dp),
-    ) {
         when {
-            error != null -> item {
-                ReadmeErrorCard(error, readme.orEmpty(), repo, onRetry = onRetry)
-            }
-            readme.isNullOrBlank() -> item {
-                Text(Strings.ghNoReadme, fontSize = 15.sp, color = colors.textMuted, lineHeight = 22.sp)
-            }
-            rawView -> item {
-                ReadmeRawBlock(readme.orEmpty())
-            }
-            shownBlocks.isEmpty() -> item {
-                ReadmeErrorCard("README has no renderable markdown blocks.", readme.orEmpty(), repo, onViewRaw = { rawView = true })
+            !renderedHtml.isNullOrBlank() && error == null && !rawView -> {
+                Box(Modifier.fillMaxSize().background(colors.background)) {
+                    ReadmeHtmlDocument(
+                        html = renderedHtml,
+                        repo = repo,
+                        modifier = Modifier.fillMaxSize(),
+                        onNavigateLink = navigator,
+                    )
+                }
             }
             else -> {
-                item(key = "readme_doc_top_${repo.owner}_${repo.name}") {
-                    Spacer(Modifier.height(2.dp))
-                }
-                items(shownBlocks, key = { it.stableId }) { block ->
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 5.dp)
-                    ) {
-                        ReadmeBlockView(block, readmeImageLoader)
+                if (!readme.isNullOrBlank() && error == null && !rawView) {
+                    LaunchedEffect(readme, safeBlocks.size) {
+                        Log.d(README_RENDER_TAG, "render start ${repo.owner}/${repo.name} blocks=${safeBlocks.size}")
+                    }
+                    SideEffect {
+                        if (!renderCompleteLogged) {
+                            Log.d(README_RENDER_TAG, "render complete ${repo.owner}/${repo.name} blocks=${safeBlocks.size}")
+                            renderCompleteLogged = true
+                        }
                     }
                 }
-                item(key = "readme_doc_bottom_${repo.owner}_${repo.name}_${shownBlocks.size}") {
-                    Spacer(Modifier.height(16.dp))
-                }
-                if (visibleCount < safeBlocks.size) {
+                LazyColumn(
+                    Modifier.fillMaxSize().background(colors.background),
+                    contentPadding = PaddingValues(start = 22.dp, end = 22.dp, top = 14.dp, bottom = 28.dp),
+                ) {
+                    when {
+                        error != null -> item {
+                            ReadmeErrorCard(error, readme.orEmpty(), repo, onRetry = onRetry)
+                        }
+                        readme.isNullOrBlank() -> item {
+                            Text(Strings.ghNoReadme, fontSize = 15.sp, color = colors.textMuted, lineHeight = 22.sp)
+                        }
+                        rawView -> item {
+                            ReadmeRawBlock(readme.orEmpty())
+                        }
+                        shownBlocks.isEmpty() -> item {
+                            ReadmeErrorCard("README has no renderable markdown blocks.", readme.orEmpty(), repo, onViewRaw = { rawView = true })
+                        }
+                        else -> {
+                            item(key = "readme_doc_top_${repo.owner}_${repo.name}") {
+                                Spacer(Modifier.height(2.dp))
+                            }
+                            items(shownBlocks, key = { it.stableId }) { block ->
+                                Box(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 5.dp)
+                                ) {
+                                    ReadmeBlockView(block, readmeImageLoader)
+                                }
+                            }
+                            item(key = "readme_doc_bottom_${repo.owner}_${repo.name}_${shownBlocks.size}") {
+                                Spacer(Modifier.height(16.dp))
+                            }
+                            if (visibleCount < safeBlocks.size) {
+                                item {
+                                    GitHubTerminalButton(
+                                        "expand more README content (${safeBlocks.size - visibleCount} hidden)",
+                                        onClick = { visibleCount += 250 },
+                                        color = AiModuleTheme.colors.accent,
+                                    )
+                                }
+                            }
+                        }
+                    }
                     item {
-                        GitHubTerminalButton(
-                            "expand more README content (${safeBlocks.size - visibleCount} hidden)",
-                            onClick = { visibleCount += 250 },
-                            color = AiModuleTheme.colors.accent,
-                        )
+                        ReadmeRepositoryFooter(repo, releases, contributors, languages)
                     }
                 }
             }
         }
-        item {
-            ReadmeRepositoryFooter(repo, releases, contributors, languages)
-        }
     }
-    } // CompositionLocalProvider
 }
 
 @Composable
@@ -4088,6 +4089,7 @@ private fun ReadmeRawBlock(markdown: String) {
 @Composable
 private fun ReadmeText(text: String, modifier: Modifier = Modifier) {
     val context = LocalContext.current
+    val navigateLink = LocalReadmeNavigator.current
     val segments = remember(text) { readmeInlineSegments(text) }
     if (segments.size == 1 && segments.first() is ReadmeInlineSegment.Text) {
         val annotated = readmeInlineAnnotated(text)
@@ -4096,7 +4098,7 @@ private fun ReadmeText(text: String, modifier: Modifier = Modifier) {
             modifier = modifier,
             style = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = AiModuleTheme.colors.textPrimary, lineHeight = 19.sp),
             onClick = { offset ->
-                annotated.getStringAnnotations("URL", offset, offset).firstOrNull()?.item?.let { LocalReadmeNavigator.current(it) }
+                annotated.getStringAnnotations("URL", offset, offset).firstOrNull()?.item?.let { navigateLink(it) }
             }
         )
     } else {
@@ -4122,7 +4124,7 @@ private fun ReadmeText(text: String, modifier: Modifier = Modifier) {
                             text = annotated,
                             style = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = AiModuleTheme.colors.textPrimary, lineHeight = 19.sp),
                             onClick = { offset ->
-                                annotated.getStringAnnotations("URL", offset, offset).firstOrNull()?.item?.let { LocalReadmeNavigator.current(it) }
+                                annotated.getStringAnnotations("URL", offset, offset).firstOrNull()?.item?.let { navigateLink(it) }
                             }
                         )
                     }
@@ -4402,11 +4404,12 @@ private fun ReadmeTable(rows: List<List<String>>) {
 @Composable
 private fun ReadmeLinkCard(text: String, url: String) {
     val context = LocalContext.current
+    val navigateLink = LocalReadmeNavigator.current
     Row(
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(5.dp))
-            .clickable { LocalReadmeNavigator.current(url) }
+            .clickable { navigateLink(url) }
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
