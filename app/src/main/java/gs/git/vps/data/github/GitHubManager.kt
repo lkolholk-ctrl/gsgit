@@ -4210,7 +4210,15 @@ object GitHubManager {
                 allowDeletions = j.optJSONObject("allow_deletions")?.optBoolean("enabled") ?: true,
                 requiredConversationResolution = j.optJSONObject("required_conversation_resolution")?.optBoolean("enabled") ?: false,
                 enforceAdmins = j.optJSONObject("enforce_admins")?.optBoolean("enabled") ?: false,
-                requiredSignatures = j.optJSONObject("required_signatures")?.optBoolean("enabled") ?: false
+                requiredSignatures = j.optJSONObject("required_signatures")?.optBoolean("enabled") ?: false,
+                requiredLinearHistory = j.optJSONObject("required_linear_history")?.optBoolean("enabled") ?: false,
+                blockCreations = j.optJSONObject("block_creations")?.optBoolean("enabled") ?: false,
+                lockBranch = j.optJSONObject("lock_branch")?.optBoolean("enabled") ?: false,
+                requiredDeployments = mutableListOf<String>().apply {
+                    val rd = j.optJSONObject("required_deployments")
+                    val arr = rd?.optJSONArray("environments")
+                    if (arr != null) for (i in 0 until arr.length()) add(arr.getString(i))
+                }
             )
         } catch (e: Exception) { null }
     }
@@ -4240,7 +4248,11 @@ object GitHubManager {
         allowForcePushes: Boolean? = null,
         allowDeletions: Boolean? = null,
         requiredConversationResolution: Boolean? = null,
-        enforceAdmins: Boolean? = null
+        enforceAdmins: Boolean? = null,
+        requiredLinearHistory: Boolean? = null,
+        blockCreations: Boolean? = null,
+        lockBranch: Boolean? = null,
+        requiredDeployments: List<String>? = null
     ): Boolean {
         val encodedBranch = URLEncoder.encode(branch, "UTF-8")
         val body = JSONObject().apply {
@@ -4273,6 +4285,10 @@ object GitHubManager {
             if (allowDeletions != null) put("allow_deletions", JSONObject().apply { put("enabled", allowDeletions) })
             if (requiredConversationResolution != null) put("required_conversation_resolution", JSONObject().apply { put("enabled", requiredConversationResolution) })
             if (enforceAdmins != null) put("enforce_admins", JSONObject().apply { put("enabled", enforceAdmins) })
+            if (requiredLinearHistory != null) put("required_linear_history", JSONObject().apply { put("enabled", requiredLinearHistory) })
+            if (blockCreations != null) put("block_creations", JSONObject().apply { put("enabled", blockCreations) })
+            if (lockBranch != null) put("lock_branch", JSONObject().apply { put("enabled", lockBranch) })
+            if (requiredDeployments != null) put("required_deployments", JSONObject().apply { put("environments", JSONArray(requiredDeployments)) })
         }.toString()
         return request(context, "/repos/$owner/$repo/branches/$encodedBranch/protection", "PUT", body).success
     }
@@ -7109,7 +7125,11 @@ data class GHBranchProtection(
     val allowDeletions: Boolean,
     val requiredConversationResolution: Boolean,
     val enforceAdmins: Boolean,
-    val requiredSignatures: Boolean = false
+    val requiredSignatures: Boolean = false,
+    val requiredLinearHistory: Boolean = false,
+    val blockCreations: Boolean = false,
+    val lockBranch: Boolean = false,
+    val requiredDeployments: List<String> = emptyList()
 )
 
 data class GHRequiredStatusChecks(

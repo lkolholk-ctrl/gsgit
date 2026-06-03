@@ -68,6 +68,11 @@ internal fun BranchProtectionScreen(
     var requireConversationResolution by remember { mutableStateOf(false) }
     var enforceAdmins by remember { mutableStateOf(false) }
     var requireSignatures by remember { mutableStateOf(false) }
+    var requiredLinearHistory by remember { mutableStateOf(false) }
+    var blockCreations by remember { mutableStateOf(false) }
+    var lockBranch by remember { mutableStateOf(false) }
+    var requiredDeployments by remember { mutableStateOf<List<String>>(emptyList()) }
+    var newDeployment by remember { mutableStateOf("") }
 
     fun loadProtection() {
         loading = true
@@ -89,6 +94,10 @@ internal fun BranchProtectionScreen(
                 requireConversationResolution = p.requiredConversationResolution
                 enforceAdmins = p.enforceAdmins
                 requireSignatures = p.requiredSignatures || signatures
+                requiredLinearHistory = p.requiredLinearHistory
+                blockCreations = p.blockCreations
+                lockBranch = p.lockBranch
+                requiredDeployments = p.requiredDeployments
             } else {
                 enabled = false
                 requireStatusChecks = false
@@ -103,6 +112,10 @@ internal fun BranchProtectionScreen(
                 requireConversationResolution = false
                 enforceAdmins = false
                 requireSignatures = false
+                requiredLinearHistory = false
+                blockCreations = false
+                lockBranch = false
+                requiredDeployments = emptyList()
             }
             loadedState = BranchProtectionEditState(
                 enabled = enabled,
@@ -117,7 +130,11 @@ internal fun BranchProtectionScreen(
                 allowDeletions = allowDeletions,
                 requireConversationResolution = requireConversationResolution,
                 enforceAdmins = enforceAdmins,
-                requireSignatures = requireSignatures
+                requireSignatures = requireSignatures,
+                requiredLinearHistory = requiredLinearHistory,
+                blockCreations = blockCreations,
+                lockBranch = lockBranch,
+                requiredDeployments = requiredDeployments
             )
             loading = false
         }
@@ -138,7 +155,11 @@ internal fun BranchProtectionScreen(
         allowDeletions = allowDeletions,
         requireConversationResolution = requireConversationResolution,
         enforceAdmins = enforceAdmins,
-        requireSignatures = requireSignatures
+        requireSignatures = requireSignatures,
+        requiredLinearHistory = requiredLinearHistory,
+        blockCreations = blockCreations,
+        lockBranch = lockBranch,
+        requiredDeployments = requiredDeployments
     )
     val hasUnsavedChanges = loadedState != null && currentState != loadedState
 
@@ -168,11 +189,15 @@ internal fun BranchProtectionScreen(
                         dismissStaleReviews = dismissStaleReviews,
                         requireCodeOwnerReviews = requireCodeOwnerReviews
                     ) else null,
-                    restrictions = null, // Simplified for now
+                    restrictions = null,
                     allowForcePushes = allowForcePushes,
                     allowDeletions = allowDeletions,
                     requiredConversationResolution = requireConversationResolution,
-                    enforceAdmins = enforceAdmins
+                    enforceAdmins = enforceAdmins,
+                    requiredLinearHistory = requiredLinearHistory,
+                    blockCreations = blockCreations,
+                    lockBranch = lockBranch,
+                    requiredDeployments = requiredDeployments
                 )
                 val signatureChanged = loadedState?.requireSignatures != requireSignatures
                 val signaturesOk = if (signatureChanged) {
@@ -211,32 +236,33 @@ internal fun BranchProtectionScreen(
         },
     ) {
 
-        // Branch selector
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            branches.forEach { branch ->
-                BranchChip(
-                    name = branch,
-                    selected = branch == selectedBranch,
-                    protected = branch == selectedBranch && enabled
-                ) {
-                    selectedBranch = branch
+        Column(Modifier.fillMaxSize()) {
+            // Branch selector
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                branches.forEach { branch ->
+                    BranchChip(
+                        name = branch,
+                        selected = branch == selectedBranch,
+                        protected = branch == selectedBranch && enabled
+                    ) {
+                        selectedBranch = branch
+                    }
                 }
             }
-        }
 
-        if (loading) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                AiModuleSpinner(label = "loading…")
-            }
-        } else {
-            LazyColumn(
-                Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
+            if (loading) {
+                Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                    AiModuleSpinner(label = "loading…")
+                }
+            } else {
+                LazyColumn(
+                    Modifier.fillMaxWidth().weight(1f),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
                 item {
                     BranchProtectionSummaryCard(
                         branch = selectedBranch,
@@ -425,12 +451,75 @@ internal fun BranchProtectionScreen(
                                     enabled = requireSignatures,
                                     onToggle = { requireSignatures = !requireSignatures }
                                 )
+
+                                ToggleRow(
+                                    "Require linear history",
+                                    requiredLinearHistory,
+                                    Icons.Rounded.MergeType
+                                ) { requiredLinearHistory = it }
+
+                                ToggleRow(
+                                    "Block creations",
+                                    blockCreations,
+                                    Icons.Rounded.Block
+                                ) { blockCreations = it }
+
+                                ToggleRow(
+                                    "Lock branch",
+                                    lockBranch,
+                                    Icons.Rounded.Lock
+                                ) { lockBranch = it }
+                            }
+                        }
+                    }
+
+                    // Required Deployments
+                    item { SectionHeader("Required Deployments") }
+                    item {
+                        SettingsCard {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                if (requiredDeployments.isNotEmpty()) {
+                                    Row(
+                                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        requiredDeployments.forEach { env ->
+                                            ContextChip(env) {
+                                                requiredDeployments = requiredDeployments - env
+                                            }
+                                        }
+                                    }
+                                }
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    AiModuleTextField(
+                                        value = newDeployment,
+                                        onValueChange = { newDeployment = it },
+                                        label = "Environment name",
+                                        modifier = Modifier.weight(1f),
+                                        singleLine = true
+                                    )
+                                    AiModulePillButton(
+                                        label = "add",
+                                        onClick = {
+                                            if (newDeployment.isNotBlank() && newDeployment !in requiredDeployments) {
+                                                requiredDeployments = requiredDeployments + newDeployment
+                                                newDeployment = ""
+                                            }
+                                        },
+                                        enabled = newDeployment.isNotBlank()
+                                    )
+                                }
                             }
                         }
                     }
                 }
 
                 item { Spacer(Modifier.height(32.dp)) }
+            }
             }
         }
     }
@@ -477,7 +566,11 @@ private data class BranchProtectionEditState(
     val allowDeletions: Boolean,
     val requireConversationResolution: Boolean,
     val enforceAdmins: Boolean,
-    val requireSignatures: Boolean
+    val requireSignatures: Boolean,
+    val requiredLinearHistory: Boolean,
+    val blockCreations: Boolean,
+    val lockBranch: Boolean,
+    val requiredDeployments: List<String>
 )
 
 @Composable
@@ -511,6 +604,10 @@ private fun BranchProtectionSummaryCard(branch: String, state: BranchProtectionE
                 if (state.requireConversationResolution) MiniProtectionBadge("Conversations", Color(0xFFFF9500))
                 if (state.enforceAdmins) MiniProtectionBadge("Admins", Color(0xFFFF3B30))
                 if (state.requireSignatures) MiniProtectionBadge("Signatures", AiModuleTheme.colors.accent)
+                if (state.requiredLinearHistory) MiniProtectionBadge("Linear", AiModuleTheme.colors.accent)
+                if (state.blockCreations) MiniProtectionBadge("Blocked", Color(0xFFFF3B30))
+                if (state.lockBranch) MiniProtectionBadge("Locked", Color(0xFFFF9500))
+                if (state.requiredDeployments.isNotEmpty()) MiniProtectionBadge("Deployments", Color(0xFF5856D6))
             }
         }
     }
