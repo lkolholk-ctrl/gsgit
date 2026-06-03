@@ -342,7 +342,7 @@ private fun GitHubAppInstallationRow(installation: GHAppInstallation, onClick: (
         AsyncImage(
             model = installation.targetAvatarUrl,
             contentDescription = installation.targetLogin,
-            modifier = Modifier.size(30.dp).clip(RoundedCornerShape(4.dp)),
+            modifier = Modifier.size(30.dp).clip(RoundedCornerShape(GitHubControlRadius)),
         )
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -397,7 +397,7 @@ private fun GitHubAppInstallationHeader(installation: GHAppInstallation) {
             AsyncImage(
                 model = installation.targetAvatarUrl,
                 contentDescription = installation.targetLogin,
-                modifier = Modifier.size(36.dp).clip(RoundedCornerShape(4.dp)),
+                modifier = Modifier.size(36.dp).clip(RoundedCornerShape(GitHubControlRadius)),
             )
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(

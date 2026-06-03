@@ -324,7 +324,7 @@ private fun RenderMarkdownBlock(block: MarkdownBlock) {
                     )
                     Row(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
+                            .clip(RoundedCornerShape(GitHubControlRadius))
                             .clickable {
                                 clipboard.setText(androidx.compose.ui.text.AnnotatedString(block.codeText))
                                 Toast.makeText(context, Strings.copied, Toast.LENGTH_SHORT).show()
@@ -395,7 +395,7 @@ private fun RenderMarkdownBlock(block: MarkdownBlock) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(4.dp))
+                    .clip(RoundedCornerShape(GitHubControlRadius))
                     .background(palette.surfaceElevated.copy(alpha = 0.5f))
                     .padding(vertical = 4.dp)
             ) {

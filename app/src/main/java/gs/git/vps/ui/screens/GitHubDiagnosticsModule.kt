@@ -246,8 +246,8 @@ private fun GitHubApiErrorRow(item: GHApiErrorLogEntry) {
     Column(
         Modifier
             .fillMaxWidth()
-            .border(1.dp, palette.border, RoundedCornerShape(3.dp))
-            .background(palette.background, RoundedCornerShape(3.dp))
+            .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
+            .background(palette.background, RoundedCornerShape(GitHubControlRadius))
             .padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
@@ -369,8 +369,8 @@ private fun GitHubDiagnosticPanel(content: @Composable () -> Unit) {
     Box(
         Modifier
             .fillMaxWidth()
-            .border(1.dp, palette.border, RoundedCornerShape(4.dp))
-            .background(palette.surface.copy(alpha = 0.72f), RoundedCornerShape(4.dp))
+            .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
+            .background(palette.surface.copy(alpha = 0.72f), RoundedCornerShape(GitHubControlRadius))
             .padding(12.dp),
     ) {
         Column(Modifier.fillMaxWidth()) { content() }
@@ -383,8 +383,8 @@ private fun GitHubRateBox(label: String, value: String) {
     Column(
         Modifier
             .widthIn(min = 92.dp)
-            .border(1.dp, palette.border, RoundedCornerShape(3.dp))
-            .background(palette.background, RoundedCornerShape(3.dp))
+            .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
+            .background(palette.background, RoundedCornerShape(GitHubControlRadius))
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
@@ -398,7 +398,7 @@ private fun GitHubDiagnosticStatus(status: String, color: Color) {
     Box(
         Modifier
             .width(54.dp)
-            .border(1.dp, color, RoundedCornerShape(2.dp))
+            .border(1.dp, color, RoundedCornerShape(GitHubControlRadius))
             .padding(horizontal = 8.dp, vertical = 4.dp),
         contentAlignment = Alignment.Center,
     ) {

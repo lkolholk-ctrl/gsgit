@@ -564,7 +564,7 @@ private fun WorkflowDetailInfoCard(workflow: GHWorkflow) {
     Column(
         Modifier
             .fillMaxWidth()
-            .border(1.dp, palette.border, RoundedCornerShape(3.dp))
+            .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
             .background(palette.surface)
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -612,7 +612,7 @@ private fun WorkflowDetailRunRow(run: GHWorkflowRun, nowMs: Long, onClick: () ->
     Column(
         Modifier
             .fillMaxWidth()
-            .border(1.dp, palette.border, RoundedCornerShape(3.dp))
+            .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
             .background(palette.surface)
             .clickable(onClick = onClick)
             .padding(12.dp),
@@ -1220,9 +1220,9 @@ private fun ActionsOverviewHeader(
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(4.dp))
+                        .clip(RoundedCornerShape(GitHubControlRadius))
                         .background(palette.surfaceElevated)
-                        .border(1.dp, palette.border, RoundedCornerShape(4.dp))
+                        .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
                         .padding(horizontal = 10.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -2012,7 +2012,7 @@ private fun RunnerGroupRow(group: GHActionRunnerGroup, selected: Boolean, onOpen
     Column(
         Modifier
             .fillMaxWidth()
-            .border(1.dp, tint.copy(alpha = 0.45f), RoundedCornerShape(4.dp))
+            .border(1.dp, tint.copy(alpha = 0.45f), RoundedCornerShape(GitHubControlRadius))
             .clickable(onClick = onOpen)
             .padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -2044,7 +2044,7 @@ private fun RunnerGroupRow(group: GHActionRunnerGroup, selected: Boolean, onOpen
 @Composable
 private fun RunnerInlineRow(runner: GHActionRunner) {
     Row(
-        Modifier.fillMaxWidth().border(1.dp, SeparatorColor, RoundedCornerShape(3.dp)).padding(8.dp),
+        Modifier.fillMaxWidth().border(1.dp, SeparatorColor, RoundedCornerShape(GitHubControlRadius)).padding(8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -4109,9 +4109,9 @@ private fun WorkflowJobCard(
                         }
                         Box(
                             Modifier.fillMaxWidth().padding(start = 28.dp, top = 4.dp, bottom = 8.dp)
-                                .clip(RoundedCornerShape(4.dp))
+                                .clip(RoundedCornerShape(GitHubControlRadius))
                                 .background(palette.surfaceElevated)
-                                .border(1.dp, palette.border, RoundedCornerShape(4.dp))
+                                .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
                                 .padding(8.dp)
                         ) {
                             if (jobLogs[job.id] == null || loadingJobId == job.id) {
@@ -4176,9 +4176,9 @@ private fun WorkflowJobCard(
                 Spacer(Modifier.height(8.dp))
                 Box(
                     Modifier.fillMaxWidth().heightIn(max = 420.dp)
-                        .clip(RoundedCornerShape(4.dp))
+                        .clip(RoundedCornerShape(GitHubControlRadius))
                         .background(palette.surfaceElevated)
-                        .border(1.dp, palette.border, RoundedCornerShape(4.dp))
+                        .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
                         .padding(10.dp)
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -4290,7 +4290,7 @@ private fun LogLinesView(log: String, modifier: Modifier = Modifier) {
             
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
+                    .clip(RoundedCornerShape(GitHubControlRadius))
                     .background(if (isRegex) palette.accent.copy(alpha = 0.20f) else palette.border)
                     .clickable { isRegex = !isRegex }
                     .padding(horizontal = 8.dp, vertical = 5.dp)
@@ -4300,7 +4300,7 @@ private fun LogLinesView(log: String, modifier: Modifier = Modifier) {
             
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
+                    .clip(RoundedCornerShape(GitHubControlRadius))
                     .background(if (filterOnlyMatches) palette.accent.copy(alpha = 0.20f) else palette.border)
                     .clickable { filterOnlyMatches = !filterOnlyMatches }
                     .padding(horizontal = 8.dp, vertical = 5.dp)
@@ -4310,7 +4310,7 @@ private fun LogLinesView(log: String, modifier: Modifier = Modifier) {
             
             Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
+                    .clip(RoundedCornerShape(GitHubControlRadius))
                     .background(palette.error.copy(alpha = 0.16f))
                     .clickable {
                         scope.launch {

@@ -288,7 +288,7 @@ private fun GitHubTroubleFindingRow(finding: ActionsTroubleFinding) {
 private fun GitHubTroubleApiErrorRow(error: GHApiErrorLogEntry) {
     val palette = AiModuleTheme.colors
     Column(
-        Modifier.fillMaxWidth().border(1.dp, palette.border, RoundedCornerShape(3.dp)).background(palette.background, RoundedCornerShape(3.dp)).padding(10.dp),
+        Modifier.fillMaxWidth().border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius)).background(palette.background, RoundedCornerShape(GitHubControlRadius)).padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Text("${error.method} HTTP ${error.statusCode}", color = GitHubWarningAmber(), fontFamily = JetBrainsMono, fontWeight = FontWeight.Medium, fontSize = 11.sp)
@@ -301,7 +301,7 @@ private fun GitHubTroubleApiErrorRow(error: GHApiErrorLogEntry) {
 private fun GitHubTroublePanel(content: @Composable () -> Unit) {
     val palette = AiModuleTheme.colors
     Box(
-        Modifier.fillMaxWidth().border(1.dp, palette.border, RoundedCornerShape(4.dp)).background(palette.surface.copy(alpha = 0.72f), RoundedCornerShape(4.dp)).padding(12.dp),
+        Modifier.fillMaxWidth().border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius)).background(palette.surface.copy(alpha = 0.72f), RoundedCornerShape(GitHubControlRadius)).padding(12.dp),
     ) {
         Column(Modifier.fillMaxWidth()) { content() }
     }
@@ -311,7 +311,7 @@ private fun GitHubTroublePanel(content: @Composable () -> Unit) {
 private fun GitHubTroubleMetric(label: String, value: String, color: Color) {
     val palette = AiModuleTheme.colors
     Column(
-        Modifier.widthIn(min = 88.dp).border(1.dp, color.copy(alpha = 0.55f), RoundedCornerShape(3.dp)).background(palette.background, RoundedCornerShape(3.dp)).padding(horizontal = 10.dp, vertical = 8.dp),
+        Modifier.widthIn(min = 88.dp).border(1.dp, color.copy(alpha = 0.55f), RoundedCornerShape(GitHubControlRadius)).background(palette.background, RoundedCornerShape(GitHubControlRadius)).padding(horizontal = 10.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
         Text(label, color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 10.sp)
@@ -321,7 +321,7 @@ private fun GitHubTroubleMetric(label: String, value: String, color: Color) {
 
 @Composable
 private fun GitHubTroubleBadge(label: String, color: Color) {
-    Box(Modifier.border(1.dp, color, RoundedCornerShape(2.dp)).padding(horizontal = 7.dp, vertical = 3.dp), contentAlignment = Alignment.Center) {
+    Box(Modifier.border(1.dp, color, RoundedCornerShape(GitHubControlRadius)).padding(horizontal = 7.dp, vertical = 3.dp), contentAlignment = Alignment.Center) {
         Text(label.uppercase(Locale.US), color = color, fontFamily = JetBrainsMono, fontSize = 10.sp, fontWeight = FontWeight.Medium)
     }
 }

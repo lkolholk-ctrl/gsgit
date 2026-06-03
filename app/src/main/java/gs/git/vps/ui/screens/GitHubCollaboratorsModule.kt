@@ -391,7 +391,7 @@ private fun RepoInvitationsSection(
     Column(
         Modifier
             .fillMaxWidth()
-            .border(1.dp, palette.border, RoundedCornerShape(3.dp))
+            .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
             .background(palette.surface)
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -420,7 +420,7 @@ private fun RepoInvitationRow(
     Column(
         Modifier
             .fillMaxWidth()
-            .border(1.dp, palette.border.copy(alpha = 0.75f), RoundedCornerShape(2.dp))
+            .border(1.dp, palette.border.copy(alpha = 0.75f), RoundedCornerShape(GitHubControlRadius))
             .background(palette.background.copy(alpha = 0.35f))
             .padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -453,7 +453,7 @@ private fun InvitationPermissionBadge(permission: String) {
         fontFamily = JetBrainsMono,
         fontSize = 10.sp,
         modifier = Modifier
-            .border(1.dp, color.copy(alpha = 0.55f), RoundedCornerShape(2.dp))
+            .border(1.dp, color.copy(alpha = 0.55f), RoundedCornerShape(GitHubControlRadius))
             .padding(horizontal = 6.dp, vertical = 3.dp),
     )
 }

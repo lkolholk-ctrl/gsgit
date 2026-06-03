@@ -1020,7 +1020,7 @@ private fun TerminalAdminSection(
     Column(
         Modifier
             .fillMaxWidth()
-            .border(1.dp, borderColor, RoundedCornerShape(2.dp))
+            .border(1.dp, borderColor, RoundedCornerShape(GitHubControlRadius))
             .background(palette.surface)
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),

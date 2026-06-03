@@ -1936,7 +1936,7 @@ private fun EditorMiniMap(
                     translationY = scrollFraction * maxScrollY
                 }
                 .background(palette.accent.copy(alpha = 0.12f))
-                .border(0.5.dp, palette.accent.copy(alpha = 0.4f), RoundedCornerShape(2.dp))
+                .border(0.5.dp, palette.accent.copy(alpha = 0.4f), RoundedCornerShape(GitHubControlRadius))
         )
     }
 }
@@ -2610,7 +2610,7 @@ private fun EditorStatusBar(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
+                    .clip(RoundedCornerShape(GitHubControlRadius))
                     .clickable { onBranchClick() }
                     .padding(horizontal = 4.dp, vertical = 2.dp)
             ) {

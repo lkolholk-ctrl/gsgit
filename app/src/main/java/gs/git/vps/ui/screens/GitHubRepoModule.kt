@@ -1335,8 +1335,8 @@ internal fun FilesTab(
                         Modifier
                             .align(Alignment.TopEnd)
                             .width(164.dp)
-                            .background(palette.surface, RoundedCornerShape(4.dp))
-                            .border(1.dp, palette.border, RoundedCornerShape(4.dp))
+                            .background(palette.surface, RoundedCornerShape(GitHubControlRadius))
+                            .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
                             .padding(vertical = 4.dp),
                     ) {
                         Text(
@@ -1617,8 +1617,8 @@ private fun IssueEventRow(
     Column(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(3.dp))
-            .border(1.dp, palette.border, RoundedCornerShape(3.dp))
+            .clip(RoundedCornerShape(GitHubControlRadius))
+            .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
             .background(palette.surface)
             .let {
                 if (event.issueNumber > 0) it.clickable { onOpenIssue(event.issueNumber, event.issueTitle) } else it
@@ -1730,7 +1730,7 @@ private fun IssueEventChip(label: String, color: Color) {
         fontSize = 10.sp,
         maxLines = 1,
         modifier = Modifier
-            .border(1.dp, color.copy(alpha = 0.55f), RoundedCornerShape(2.dp))
+            .border(1.dp, color.copy(alpha = 0.55f), RoundedCornerShape(GitHubControlRadius))
             .background(color.copy(alpha = 0.08f))
             .padding(horizontal = 6.dp, vertical = 3.dp),
     )
@@ -1856,7 +1856,7 @@ private fun RepoInsightMetric(label: String, count: Int, uniques: Int) {
     Column(
         Modifier
             .widthIn(min = 118.dp)
-            .border(1.dp, palette.border, RoundedCornerShape(3.dp))
+            .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
             .background(palette.surface)
             .padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -1928,7 +1928,7 @@ private fun RepoEventRow(event: GHRepoEvent) {
     Column(
         Modifier
             .fillMaxWidth()
-            .border(1.dp, palette.border, RoundedCornerShape(3.dp))
+            .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
             .background(palette.surface)
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(5.dp),
@@ -1953,7 +1953,7 @@ private fun TerminalInsightCard(title: String, content: @Composable ColumnScope.
     Column(
         Modifier
             .fillMaxWidth()
-            .border(1.dp, palette.border, RoundedCornerShape(3.dp))
+            .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
             .background(palette.surface)
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -2568,7 +2568,7 @@ private fun GitBlobCard(blob: GHGitBlob) {
                 .fillMaxWidth()
                 .heightIn(max = 260.dp)
                 .verticalScroll(rememberScrollState())
-                .border(1.dp, AiModuleTheme.colors.border, RoundedCornerShape(2.dp))
+                .border(1.dp, AiModuleTheme.colors.border, RoundedCornerShape(GitHubControlRadius))
                 .padding(8.dp),
         )
     }
@@ -3224,8 +3224,8 @@ private fun PullMergeabilityCard(
     Column(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(3.dp))
-            .border(1.dp, palette.border, RoundedCornerShape(3.dp))
+            .clip(RoundedCornerShape(GitHubControlRadius))
+            .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
             .background(palette.surface)
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -3322,7 +3322,7 @@ private fun pullMergeText(pr: GHPullRequest): String = when {
 internal fun ReleasesTab(releases: List<GHRelease>, repo: GHRepo) { val context = LocalContext.current; val scope = rememberCoroutineScope()
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) { items(releases) { r -> Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 7.dp).ghGlassCard(14.dp).padding(14.dp)) {
         val colors = AiModuleTheme.colors
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { Icon(Icons.Rounded.NewReleases, null, Modifier.size(20.dp), tint = if (r.prerelease) GitHubWarningAmber() else GitHubSuccessGreen); Text(r.name.ifBlank { r.tag }, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = colors.textPrimary); if (r.prerelease) Text(Strings.ghPrerelease, fontSize = 10.sp, color = GitHubWarningAmber(), modifier = Modifier.background(GitHubWarningAmber().copy(0.1f), RoundedCornerShape(4.dp)).padding(horizontal = 5.dp, vertical = 1.dp)) }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { Icon(Icons.Rounded.NewReleases, null, Modifier.size(20.dp), tint = if (r.prerelease) GitHubWarningAmber() else GitHubSuccessGreen); Text(r.name.ifBlank { r.tag }, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = colors.textPrimary); if (r.prerelease) Text(Strings.ghPrerelease, fontSize = 10.sp, color = GitHubWarningAmber(), modifier = Modifier.background(GitHubWarningAmber().copy(0.1f), RoundedCornerShape(GitHubControlRadius)).padding(horizontal = 5.dp, vertical = 1.dp)) }
         Text(r.tag, fontSize = 12.sp, color = colors.textMuted, fontFamily = FontFamily.Monospace)
         if (r.body.isNotBlank()) {
             Spacer(Modifier.height(8.dp))
@@ -4055,7 +4055,7 @@ internal fun ReadmeBlockView(block: ReadmeRenderBlock, imageLoader: ImageLoader,
         is ReadmeRenderBlock.Paragraph -> ReadmeText(block.text, onLinkClick = onLinkClick)
         is ReadmeRenderBlock.Bullet -> ReadmeBullet(block.text, block.ordered, block.checked, block.level, block.marker, onLinkClick = onLinkClick)
         is ReadmeRenderBlock.Quote -> Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Box(Modifier.width(4.dp).heightIn(min = 28.dp).background(AiModuleTheme.colors.border, RoundedCornerShape(2.dp)))
+            Box(Modifier.width(4.dp).heightIn(min = 28.dp).background(AiModuleTheme.colors.border, RoundedCornerShape(GitHubControlRadius)))
             ReadmeText(block.text, modifier = Modifier.weight(1f), onLinkClick = onLinkClick)
         }
         is ReadmeRenderBlock.Rule -> Box(Modifier.fillMaxWidth().padding(vertical = 18.dp).height(1.dp).background(AiModuleTheme.colors.border.copy(alpha = 0.62f)))
@@ -4339,7 +4339,7 @@ private fun InlineReadmeImage(block: ReadmeRenderBlock.Image, imageLoader: Image
         contentDescription = block.alt,
         imageLoader = imageLoader,
         contentScale = ContentScale.Fit,
-        modifier = Modifier.height(height).widthIn(min = 16.dp, max = 220.dp).clip(RoundedCornerShape(3.dp)),
+        modifier = Modifier.height(height).widthIn(min = 16.dp, max = 220.dp).clip(RoundedCornerShape(GitHubControlRadius)),
         onError = { failed = true }
     )
 }

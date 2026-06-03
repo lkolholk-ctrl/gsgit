@@ -336,7 +336,7 @@ private fun OrgRow(org: GHOrg, onClick: () -> Unit) {
         AsyncImage(
             org.avatarUrl,
             org.login,
-            Modifier.size(28.dp).clip(RoundedCornerShape(4.dp)),
+            Modifier.size(28.dp).clip(RoundedCornerShape(GitHubControlRadius)),
         )
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {

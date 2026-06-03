@@ -371,7 +371,7 @@ private fun OAuthTokenCard(token: GHOAuthTokenInfo) {
 private fun GitHubAdminCard(title: String, content: @Composable ColumnScope.() -> Unit) {
     val palette = AiModuleTheme.colors
     Column(
-        Modifier.fillMaxWidth().border(1.dp, palette.border, RoundedCornerShape(4.dp)).background(palette.surface).padding(12.dp),
+        Modifier.fillMaxWidth().border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius)).background(palette.surface).padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(7.dp),
     ) {
         Text(title, color = palette.textPrimary, fontFamily = JetBrainsMono, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -392,7 +392,7 @@ private fun GitHubAdminKv(label: String, value: String) {
 private fun GitHubAdminEmpty(text: String, error: Boolean = false) {
     val palette = AiModuleTheme.colors
     Box(
-        Modifier.fillMaxWidth().heightIn(min = 76.dp).border(1.dp, if (error) palette.error else palette.border, RoundedCornerShape(4.dp)).background(palette.surface).padding(14.dp),
+        Modifier.fillMaxWidth().heightIn(min = 76.dp).border(1.dp, if (error) palette.error else palette.border, RoundedCornerShape(GitHubControlRadius)).background(palette.surface).padding(14.dp),
         contentAlignment = Alignment.CenterStart,
     ) {
         Text(

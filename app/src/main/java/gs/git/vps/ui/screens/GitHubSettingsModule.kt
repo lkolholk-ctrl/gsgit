@@ -828,7 +828,7 @@ internal fun GitHubSettingsScreen(
                                 ) {
                                     Box(
                                         modifier = Modifier
-                                            .clip(RoundedCornerShape(4.dp))
+                                            .clip(RoundedCornerShape(GitHubControlRadius))
                                             .background(AiModuleTheme.colors.border)
                                             .clickable {
                                                 if (gs.git.vps.ui.theme.ThemeState.fileFontSize > 10) {
@@ -841,7 +841,7 @@ internal fun GitHubSettingsScreen(
                                     }
                                     Box(
                                         modifier = Modifier
-                                            .clip(RoundedCornerShape(4.dp))
+                                            .clip(RoundedCornerShape(GitHubControlRadius))
                                             .background(AiModuleTheme.colors.border)
                                             .clickable {
                                                 if (gs.git.vps.ui.theme.ThemeState.fileFontSize < 28) {

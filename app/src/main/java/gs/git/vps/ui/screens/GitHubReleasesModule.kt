@@ -198,10 +198,10 @@ private fun ReleaseCard(
                 Text(release.tag, fontSize = 12.sp, color = colors.textMuted)
             }
             if (release.draft) {
-                Text("Draft", fontSize = 10.sp, color = colors.textMuted, modifier = Modifier.background(colors.background, RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp))
+                Text("Draft", fontSize = 10.sp, color = colors.textMuted, modifier = Modifier.background(colors.background, RoundedCornerShape(GitHubControlRadius)).padding(horizontal = 6.dp, vertical = 2.dp))
             }
             if (release.prerelease) {
-                Text("Pre", fontSize = 10.sp, color = GitHubWarningAmber(), modifier = Modifier.background(GitHubWarningAmber().copy(0.1f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp))
+                Text("Pre", fontSize = 10.sp, color = GitHubWarningAmber(), modifier = Modifier.background(GitHubWarningAmber().copy(0.1f), RoundedCornerShape(GitHubControlRadius)).padding(horizontal = 6.dp, vertical = 2.dp))
             }
             IconButton(onClick = { expanded = !expanded }, modifier = Modifier.size(32.dp)) {
                 Icon(
