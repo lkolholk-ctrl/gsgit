@@ -1070,10 +1070,6 @@ internal fun RepoDetailScreen(
             RepoTab.RELEASES -> ReleasesTab(releases, repo)
             RepoTab.ACTIONS -> ActionsTab(workflowRuns, repo) { selectedRunId = it.id }
             RepoTab.HISTORY -> ActionsHistoryTab(workflowRuns, repo) { selectedRunId = it.id }
-                    workflows = GitHubManager.getWorkflows(context, repo.owner, repo.name)
-                }
-            }
-            RepoTab.HISTORY -> ActionsHistoryTab(workflowRuns, repo) { selectedRunId = it.id }
             RepoTab.PROJECTS -> ProjectsTab(repo)
             RepoTab.README -> ReadmeTab(readme, readmeHtml, readmeBlocks, readmeError, languages, contributors, releases, repo, { readmeReloadNonce++ }, onOpenFile = { path ->
                 scope.launch {
