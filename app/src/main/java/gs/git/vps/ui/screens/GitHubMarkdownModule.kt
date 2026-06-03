@@ -261,11 +261,11 @@ private fun RenderMarkdownBlock(block: MarkdownBlock) {
     when (block) {
         is MarkdownBlock.Heading -> {
             val fontSize = when (block.level) {
-                1 -> 24.sp
+                1 -> 28.sp
                 2 -> 20.sp
-                3 -> 17.sp
-                4 -> 15.sp
-                else -> 13.sp
+                3 -> 18.sp
+                4 -> 14.sp
+                else -> 14.sp
             }
             val fontWeight = if (block.level <= 2) FontWeight.ExtraBold else FontWeight.Bold
             Column(modifier = Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 4.dp)) {
@@ -288,8 +288,8 @@ private fun RenderMarkdownBlock(block: MarkdownBlock) {
                 style = TextStyle(
                     color = palette.textPrimary,
                     fontFamily = JetBrainsMono,
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp
+                    fontSize = 14.sp,
+                    lineHeight = 19.sp
                 ),
                 onClick = { offset ->
                     buildMdAnnotated(block.text, palette).getStringAnnotations("URL", offset, offset)
@@ -353,9 +353,9 @@ private fun RenderMarkdownBlock(block: MarkdownBlock) {
                     block.codeText.lines().forEach { line ->
                         Text(
                             text = highlightLine(line, block.lang),
-                            fontSize = 12.sp,
+                            fontSize = 14.sp,
                             fontFamily = JetBrainsMono,
-                            lineHeight = 16.sp
+                            lineHeight = 19.sp
                         )
                     }
                 }
@@ -369,7 +369,7 @@ private fun RenderMarkdownBlock(block: MarkdownBlock) {
             ) {
                 Text(
                     text = "  \u2022  ",
-                    fontSize = 13.sp,
+                    fontSize = 14.sp,
                     color = palette.accent,
                     fontFamily = JetBrainsMono
                 )
@@ -378,8 +378,8 @@ private fun RenderMarkdownBlock(block: MarkdownBlock) {
                     style = TextStyle(
                         color = palette.textPrimary,
                         fontFamily = JetBrainsMono,
-                        fontSize = 13.sp,
-                        lineHeight = 18.sp
+                        fontSize = 14.sp,
+                        lineHeight = 19.sp
                     ),
                     modifier = Modifier.weight(1f),
                     onClick = { offset ->
@@ -410,10 +410,10 @@ private fun RenderMarkdownBlock(block: MarkdownBlock) {
                     block.text.lines().forEach { line ->
                         Text(
                             text = buildMdAnnotated(line, palette),
-                            fontSize = 13.sp,
+                            fontSize = 14.sp,
                             color = palette.textSecondary,
                             fontFamily = JetBrainsMono,
-                            lineHeight = 18.sp
+                            lineHeight = 19.sp
                         )
                     }
                 }
