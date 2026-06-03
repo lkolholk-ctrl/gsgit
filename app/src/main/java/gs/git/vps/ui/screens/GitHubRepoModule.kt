@@ -89,7 +89,7 @@ import org.json.JSONObject
 
 // Compact mode — propagates through all sub-screens automatically
 
-internal enum class RepoTab { FILES, COMMITS, ISSUES, PULLS, RELEASES, ACTIONS, BUILDS, HISTORY, PROJECTS, README, CODE_SEARCH }
+internal enum class RepoTab { FILES, COMMITS, ISSUES, PULLS, RELEASES, ACTIONS, HISTORY, PROJECTS, README, CODE_SEARCH }
 
 private const val README_RENDER_TAG = "ReadmeRender"
 private const val README_MAX_RENDER_BYTES = 500 * 1024
@@ -313,7 +313,7 @@ internal fun RepoDetailScreen(
         RepoTab.ISSUES -> { issuesPage = 1; val r = GitHubManager.getIssues(context, repo.owner, repo.name, page = 1); issues = r; issuesHasMore = r.size >= 30 }
         RepoTab.PULLS -> { pullsPage = 1; val r = GitHubManager.getPullRequests(context, repo.owner, repo.name, page = 1); pulls = r; pullsHasMore = r.size >= 30 }
         RepoTab.RELEASES -> releases = GitHubManager.getReleases(context, repo.owner, repo.name)
-        RepoTab.ACTIONS, RepoTab.BUILDS, RepoTab.HISTORY -> { workflowRuns = GitHubManager.getWorkflowRuns(context, repo.owner, repo.name); workflows = GitHubManager.getWorkflows(context, repo.owner, repo.name) }
+        RepoTab.ACTIONS, RepoTab.HISTORY -> { workflowRuns = GitHubManager.getWorkflowRuns(context, repo.owner, repo.name); workflows = GitHubManager.getWorkflows(context, repo.owner, repo.name) }
         RepoTab.PROJECTS -> { /* loaded inside ProjectsTab */ }
         RepoTab.README -> {
             readmeError = null
@@ -953,7 +953,6 @@ internal fun RepoDetailScreen(
                     RepoTab.PULLS -> "pulls"
                     RepoTab.RELEASES -> "releases"
                     RepoTab.ACTIONS -> "actions"
-                    RepoTab.BUILDS -> "builds"
                     RepoTab.HISTORY -> "history"
                     RepoTab.PROJECTS -> "projects"
                     RepoTab.README -> "readme"
@@ -1070,16 +1069,7 @@ internal fun RepoDetailScreen(
             RepoTab.PULLS -> PullsTab(filteredPulls, repo, { scope.launch { pulls = GitHubManager.getPullRequests(context, repo.owner, repo.name) } }, listState = pullsListState, onOpenDetail = { selectedPullNumber = it.number }) { prNumber -> selectedPRNumber = prNumber }
             RepoTab.RELEASES -> ReleasesTab(releases, repo)
             RepoTab.ACTIONS -> ActionsTab(workflowRuns, repo) { selectedRunId = it.id }
-            RepoTab.BUILDS -> BuildsScreen(
-                repo = repo,
-                branches = branches,
-                workflows = workflows,
-                selectedBranch = selectedBranch
-            ) { runId ->
-                selectedTab = RepoTab.ACTIONS
-                if (runId != null) selectedRunId = runId
-                scope.launch {
-                    workflowRuns = GitHubManager.getWorkflowRuns(context, repo.owner, repo.name)
+            RepoTab.HISTORY -> ActionsHistoryTab(workflowRuns, repo) { selectedRunId = it.id }
                     workflows = GitHubManager.getWorkflows(context, repo.owner, repo.name)
                 }
             }
