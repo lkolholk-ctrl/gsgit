@@ -47,6 +47,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
 import coil.ImageLoader
 import coil.compose.AsyncImage
 import coil.decode.SvgDecoder
@@ -646,14 +650,36 @@ internal fun RepoDetailScreen(
                 },
             )
             if (isImage) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(
-                        "Image preview not available\nUse Download to save",
-                        fontSize = 12.sp,
-                        fontFamily = JetBrainsMono,
-                        color = viewerPalette.textMuted,
-                        textAlign = TextAlign.Center,
-                    )
+                var imgScale by remember { mutableFloatStateOf(1f) }
+                var imgOffset by remember { mutableStateOf(Offset.Zero) }
+                val imgState = rememberTransformableState { zoomChange, panChange, _ ->
+                    imgScale = (imgScale * zoomChange).coerceIn(0.75f, 6f)
+                    imgOffset += panChange
+                }
+                Box(Modifier.fillMaxSize().background(Color.Black)) {
+                    if (safeOpenedFile.downloadUrl.isBlank()) {
+                        Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Icon(Icons.Rounded.Image, null, tint = Color.White.copy(alpha = 0.85f), modifier = Modifier.size(34.dp))
+                            Text("Image preview unavailable", color = Color.White.copy(alpha = 0.85f), fontSize = 13.sp)
+                        }
+                    } else {
+                        AsyncImage(
+                            model = safeOpenedFile.downloadUrl,
+                            contentDescription = safeOpenedFile.name,
+                            modifier = Modifier.fillMaxSize().graphicsLayer(
+                                scaleX = imgScale, scaleY = imgScale,
+                                translationX = imgOffset.x, translationY = imgOffset.y
+                            ).transformable(imgState)
+                        )
+                    }
+                    Row(
+                        Modifier.align(Alignment.TopCenter).padding(top = 12.dp).clip(RoundedCornerShape(14.dp)).background(Color.Black.copy(alpha = 0.55f)).padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("IMAGE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF58A6FF))
+                        Text(safeOpenedFile.name, color = Color.White, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Icon(Icons.Rounded.ZoomOutMap, null, tint = Color.White.copy(alpha = 0.85f), modifier = Modifier.size(18.dp))
+                    }
                 }
             } else if (isMd) {
                 var mdHtml by remember(safeFileContent) { mutableStateOf("") }
