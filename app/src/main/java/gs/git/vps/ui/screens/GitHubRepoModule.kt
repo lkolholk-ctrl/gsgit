@@ -3750,21 +3750,21 @@ private fun buildGitHubReadmeHtmlPage(
   html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-    font-size: 16px;
-    line-height: 1.62;
+    font-size: 14px;
+    line-height: 1.45;
     overflow-wrap: anywhere;
   }
   #readme { background: var(--bg); }
   .markdown-body {
     max-width: 100%;
-    padding: 86px 48px 32px 48px;
+    padding: 48px 20px 24px 20px;
     color: var(--text);
     background: var(--bg);
   }
   .markdown-heading {
     position: relative;
-    margin-top: 30px;
-    margin-bottom: 16px;
+    margin-top: 16px;
+    margin-bottom: 8px;
   }
   .markdown-heading:first-child { margin-top: 0; }
   .markdown-heading .anchor {
@@ -3784,24 +3784,24 @@ private fun buildGitHubReadmeHtmlPage(
     letter-spacing: 0;
   }
   h1 {
-    font-size: 44px;
-    padding-bottom: 22px;
+    font-size: 28px;
+    padding-bottom: 10px;
     border-bottom: 1px solid var(--border);
   }
   h2 {
-    font-size: 36px;
-    padding-bottom: 14px;
+    font-size: 20px;
+    padding-bottom: 8px;
     border-bottom: 1px solid var(--border);
   }
-  h3 { font-size: 28px; padding-bottom: 10px; border-bottom: 1px solid rgba(48, 54, 61, .75); }
-  h4 { font-size: 22px; }
-  h5 { font-size: 18px; }
-  h6 { font-size: 16px; color: var(--muted); }
-  p, ul, ol, blockquote, pre, table { margin-top: 0; margin-bottom: 18px; }
+  h3 { font-size: 18px; padding-bottom: 6px; border-bottom: 1px solid rgba(48, 54, 61, .75); }
+  h4 { font-size: 16px; }
+  h5 { font-size: 14px; }
+  h6 { font-size: 13px; color: var(--muted); }
+  p, ul, ol, blockquote, pre, table { margin-top: 0; margin-bottom: 10px; }
   a { color: var(--link); text-decoration: underline; text-underline-offset: 2px; font-weight: 650; }
   strong { font-weight: 700; }
   ul, ol { padding-left: 29px; }
-  li { margin: 10px 0; padding-left: 4px; }
+  li { margin: 4px 0; padding-left: 4px; }
   li::marker { color: var(--text); }
   code {
     padding: .18em .42em;
@@ -3853,10 +3853,10 @@ private fun buildGitHubReadmeHtmlPage(
     font: 12px ui-monospace, SFMono-Regular, SFMono, Consolas, monospace;
   }
   @media (max-width: 430px) {
-    .markdown-body { padding: 72px 48px 28px 48px; }
-    h1 { font-size: 42px; }
-    h2 { font-size: 34px; }
-    h3 { font-size: 27px; }
+    .markdown-body { padding: 36px 16px 20px 16px; }
+    h1 { font-size: 26px; }
+    h2 { font-size: 20px; }
+    h3 { font-size: 18px; }
   }
 </style>
 </head>
