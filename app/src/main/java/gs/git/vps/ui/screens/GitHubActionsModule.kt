@@ -331,9 +331,9 @@ internal fun ActionsTab(
             Row(
                 Modifier.fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 8.dp)
-                    .clip(RoundedCornerShape(6.dp))
+                    .clip(RoundedCornerShape(GitHubControlRadius))
                     .background(palette.surface)
-                    .border(1.dp, palette.warning.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
+                    .border(1.dp, palette.warning.copy(alpha = 0.45f), RoundedCornerShape(GitHubControlRadius))
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -1184,9 +1184,9 @@ private fun ActionsOverviewHeader(
             Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp)
-                .clip(RoundedCornerShape(6.dp))
+                .clip(RoundedCornerShape(GitHubControlRadius))
                 .background(palette.surface)
-                .border(1.dp, palette.border, RoundedCornerShape(6.dp))
+                .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
                 .padding(horizontal = 12.dp, vertical = 12.dp),
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1785,7 +1785,7 @@ private fun ActionsVariablesPanel(repo: GHRepo) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
             ActionsPanelHeader("Actions variables", "Create, update and delete repository variables.", loading) { scope.launch { load() } }
-            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(SurfaceWhite).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 AiModuleTextField(name, { name = it }, label = "Name", modifier = Modifier.fillMaxWidth(), singleLine = true)
                 AiModuleTextField(value, { value = it }, label = "Value", modifier = Modifier.fillMaxWidth(), minLines = 1, maxLines = 3)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
@@ -1843,7 +1843,7 @@ private fun ActionsSecretsPanel(repo: GHRepo) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
             ActionsPanelHeader("Actions secrets", "Create, update and delete repository secrets.", loading || saving) { scope.launch { load() } }
-            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(SurfaceWhite).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 AiModuleTextField(
                     value = name,
                     onValueChange = { name = it.trim() },
@@ -1928,7 +1928,7 @@ private fun ActionsRunnersPanel(repo: GHRepo) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
             ActionsPanelHeader("Self-hosted runners", "Repository self-hosted runner status, labels and registration tokens.", loading) { scope.launch { load() } }
-            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(SurfaceWhite).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Chip(Icons.Rounded.PlayArrow, "Registration token") {
                         scope.launch {
@@ -1951,7 +1951,7 @@ private fun ActionsRunnersPanel(repo: GHRepo) {
             }
         }
         item {
-            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(SurfaceWhite).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Icon(Icons.Rounded.Timeline, null, tint = Purple, modifier = Modifier.size(18.dp))
                     Column(Modifier.weight(1f)) {
@@ -2240,7 +2240,7 @@ private fun normalizeWorkflowTokenPermission(value: String?): String =
 
 @Composable
 private fun ActionsPanelHeader(title: String, subtitle: String, loading: Boolean, onRefresh: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(SurfaceWhite).padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Icon(Icons.Rounded.Timeline, null, tint = Blue, modifier = Modifier.size(20.dp))
         Column(Modifier.weight(1f)) {
             Text(title, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
@@ -2263,7 +2263,7 @@ private fun ArtifactRow(
     onDownload: () -> Unit,
     onDelete: () -> Unit
 ) {
-    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(SurfaceWhite).padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         GitHubTerminalCheckbox("", selected, onToggleSelected, enabled = !busy && !disabled)
         Icon(Icons.Rounded.Article, null, tint = if (artifact.expired) TextTertiary else Blue, modifier = Modifier.size(20.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -2296,7 +2296,7 @@ private fun ActionsCacheRow(
     onToggleSelected: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(SurfaceWhite).padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         GitHubTerminalCheckbox("", selected, onToggleSelected, enabled = !deleting && !disabled)
         Icon(Icons.Rounded.Article, null, tint = Blue, modifier = Modifier.size(20.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -2325,7 +2325,7 @@ private fun ActionsBulkToolbar(
     onClear: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(SurfaceWhite).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Column {
             Text("bulk cleanup", fontSize = 13.sp, color = TextPrimary, fontFamily = JetBrainsMono, fontWeight = FontWeight.SemiBold)
             Text("selected $selectedCount / $totalCount", fontSize = 11.sp, color = TextTertiary, fontFamily = JetBrainsMono)
@@ -2402,7 +2402,7 @@ private fun ActionInfoCard(
     actionTint: Color = Blue,
     onAction: () -> Unit
 ) {
-    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(SurfaceWhite).padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Icon(Icons.Rounded.Article, null, tint = Blue, modifier = Modifier.size(20.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -2421,7 +2421,7 @@ private fun ActionInfoCard(
 
 @Composable
 private fun EmptyActionsText(text: String) {
-    Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(SurfaceWhite).padding(18.dp), contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(SurfaceWhite).padding(18.dp), contentAlignment = Alignment.Center) {
         Text(text, fontSize = 13.sp, color = TextTertiary)
     }
 }
@@ -2756,9 +2756,9 @@ private fun MiniActionsBadge(text: String, color: Color) {
     val colors = AiModuleTheme.colors
     Box(
         Modifier
-            .clip(RoundedCornerShape(6.dp))
+            .clip(RoundedCornerShape(GitHubControlRadius))
             .background(colors.background)
-            .border(1.dp, colors.border.copy(alpha = 0.10f), RoundedCornerShape(6.dp))
+            .border(1.dp, colors.border.copy(alpha = 0.10f), RoundedCornerShape(GitHubControlRadius))
             .padding(horizontal = 8.dp, vertical = 3.dp)
     ) {
         Text(
@@ -3138,9 +3138,9 @@ internal fun WorkflowRunDetailScreen(
                     Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp, vertical = 6.dp)
-                        .clip(RoundedCornerShape(10.dp))
+                        .clip(RoundedCornerShape(GitHubControlRadius))
                         .background(AiModuleTheme.colors.surface)
-                        .border(1.dp, Orange.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
+                        .border(1.dp, Orange.copy(alpha = 0.35f), RoundedCornerShape(GitHubControlRadius))
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -3538,9 +3538,9 @@ private fun WorkflowRunDetailHeader(run: GHWorkflowRun, nowMs: Long) {
     Column(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(6.dp))
+            .clip(RoundedCornerShape(GitHubControlRadius))
             .background(palette.surface)
-            .border(1.dp, palette.border, RoundedCornerShape(6.dp))
+            .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
@@ -3636,9 +3636,9 @@ private fun FailureDiagnosisCard(
     Column(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(GitHubControlRadius))
             .background(AiModuleTheme.colors.surface)
-            .border(1.dp, Red.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+            .border(1.dp, Red.copy(alpha = 0.35f), RoundedCornerShape(GitHubControlRadius))
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
@@ -3674,9 +3674,9 @@ private fun FailureDiagnosisCard(
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(6.dp))
+                    .clip(RoundedCornerShape(GitHubControlRadius))
                     .background(AiModuleTheme.colors.background)
-                    .border(1.dp, Red.copy(alpha = 0.22f), RoundedCornerShape(6.dp))
+                    .border(1.dp, Red.copy(alpha = 0.22f), RoundedCornerShape(GitHubControlRadius))
                     .padding(10.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
@@ -3894,7 +3894,7 @@ private fun ReviewHistoryCard(reviews: List<GHWorkflowRunReview>) {
             Text("Deployment review history", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary)
         }
         reviews.forEach { review ->
-            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(SurfaceLight).padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(SurfaceLight).padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     MiniActionsBadge(review.state.ifBlank { "reviewed" }, if (review.state == "approved") Green else Orange)
                     Text(review.user.ifBlank { "GitHub" }, fontSize = 12.sp, color = TextPrimary, fontWeight = FontWeight.Medium)
@@ -4030,9 +4030,9 @@ private fun WorkflowJobCard(
         Modifier
             .fillMaxWidth()
             .padding(bottom = 8.dp)
-            .clip(RoundedCornerShape(6.dp))
+            .clip(RoundedCornerShape(GitHubControlRadius))
             .background(palette.surface)
-            .border(1.dp, palette.border, RoundedCornerShape(6.dp)),
+            .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius)),
     ) {
         Box(
             Modifier.width(2.dp).fillMaxHeight().background(statusBarColor)
@@ -4080,7 +4080,7 @@ private fun WorkflowJobCard(
                 val stepLog = jobStepLogs[job.id]?.get(step.number)
                 Column(Modifier.fillMaxWidth()) {
                     Row(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(9.dp)).clickable {
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).clickable {
                             onExpandedStepChange(if (expandedStepKey == stepKey) null else stepKey)
                         }.padding(horizontal = 8.dp, vertical = 5.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -4274,9 +4274,9 @@ private fun LogLinesView(log: String, modifier: Modifier = Modifier) {
                 cursorBrush = SolidColor(palette.accent),
                 modifier = Modifier
                     .weight(1f)
-                    .clip(RoundedCornerShape(6.dp))
+                    .clip(RoundedCornerShape(GitHubControlRadius))
                     .background(palette.surfaceElevated)
-                    .border(1.dp, palette.border, RoundedCornerShape(6.dp))
+                    .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
                     .padding(horizontal = 8.dp, vertical = 6.dp),
                 decorationBox = { inner ->
                     Box {
@@ -4332,8 +4332,8 @@ private fun LogLinesView(log: String, modifier: Modifier = Modifier) {
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .background(palette.surface, RoundedCornerShape(8.dp))
-                .border(1.dp, palette.border, RoundedCornerShape(8.dp))
+                .background(palette.surface, RoundedCornerShape(GitHubControlRadius))
+                .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
                 .padding(8.dp)
         ) {
             items(displayLines) { (originalIdx, line) ->

@@ -303,9 +303,9 @@ private fun RenderMarkdownBlock(block: MarkdownBlock) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(RoundedCornerShape(GitHubControlRadius))
                     .background(palette.surfaceElevated)
-                    .border(0.5.dp, palette.border, RoundedCornerShape(10.dp))
+                    .border(0.5.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
             ) {
                 Row(
                     modifier = Modifier

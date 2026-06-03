@@ -211,7 +211,7 @@ internal fun DiscussionsScreen(
 private fun DiscussionsSummaryCard(discussions: List<GHDiscussion>, categories: List<GHDiscussionCategory>) {
     val answered = discussions.count { it.isAnswered }
     val closed = discussions.count { it.state == "closed" }
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(AiModuleTheme.colors.surface).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(Icons.Rounded.Forum, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.accent)
             Column(Modifier.weight(1f)) {
@@ -246,7 +246,7 @@ private fun DiscussionCategoryFilters(
 @Composable
 private fun DiscussionCard(discussion: GHDiscussion, onClick: () -> Unit) {
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(AiModuleTheme.colors.surface).clickable(onClick = onClick).padding(14.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).clickable(onClick = onClick).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -356,7 +356,7 @@ private fun DiscussionDetailScreen(
         ) {
             item { DiscussionBodyCard(discussion) }
             item {
-                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(AiModuleTheme.colors.surface).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     AiModuleTextField(
                         value = newComment,
                         onValueChange = { newComment = it },
@@ -466,7 +466,7 @@ private fun DiscussionDetailScreen(
 
 @Composable
 private fun DiscussionBodyCard(discussion: GHDiscussion) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(AiModuleTheme.colors.surface).padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             if (discussion.avatarUrl.isNotBlank()) {
                 AsyncImage(discussion.avatarUrl, discussion.author, Modifier.size(34.dp).clip(CircleShape))
@@ -493,7 +493,7 @@ private fun DiscussionBodyCard(discussion: GHDiscussion) {
 
 @Composable
 private fun DiscussionCommentCard(comment: GHComment) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(AiModuleTheme.colors.surface).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (comment.avatarUrl.isNotBlank()) {
                 AsyncImage(comment.avatarUrl, comment.author, Modifier.size(28.dp).clip(CircleShape))
@@ -575,7 +575,7 @@ private fun DiscussionEditorDialog(
 @Composable
 private fun SelectChip(label: String, selected: Boolean, onClick: () -> Unit) {
     Box(
-        Modifier.clip(RoundedCornerShape(8.dp))
+        Modifier.clip(RoundedCornerShape(GitHubControlRadius))
             .background(if (selected) AiModuleTheme.colors.accent.copy(0.15f) else AiModuleTheme.colors.surface)
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 7.dp)
@@ -587,7 +587,7 @@ private fun SelectChip(label: String, selected: Boolean, onClick: () -> Unit) {
 @Composable
 private fun CountChip(label: String, count: Int, color: Color, showCount: Boolean = true) {
     Row(
-        Modifier.clip(RoundedCornerShape(8.dp)).background(color.copy(0.10f)).padding(horizontal = 8.dp, vertical = 4.dp),
+        Modifier.clip(RoundedCornerShape(GitHubControlRadius)).background(color.copy(0.10f)).padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
@@ -599,7 +599,7 @@ private fun CountChip(label: String, count: Int, color: Color, showCount: Boolea
 @Composable
 private fun EmptyDiscussionsCard(message: String) {
     Box(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(AiModuleTheme.colors.surface).padding(28.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).padding(28.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(message, fontSize = 14.sp, color = AiModuleTheme.colors.textMuted)

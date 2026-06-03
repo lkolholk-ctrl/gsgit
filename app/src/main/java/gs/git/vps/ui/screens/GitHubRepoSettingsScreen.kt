@@ -215,12 +215,12 @@ fun GitHubRepoSettingsScreen(
                 val selected = selectedTab == tab
                 Box(
                     Modifier
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(GitHubControlRadius))
                         .background(if (selected) AiModuleTheme.colors.accent.copy(0.12f) else Color.Transparent)
                         .border(
                             1.dp,
                             if (selected) AiModuleTheme.colors.accent.copy(0.35f) else AiModuleTheme.colors.border,
-                            RoundedCornerShape(8.dp)
+                            RoundedCornerShape(GitHubControlRadius)
                         )
                         .clickable { selectedTab = tab }
                         .padding(horizontal = 10.dp, vertical = 6.dp)
@@ -240,7 +240,7 @@ fun GitHubRepoSettingsScreen(
                 Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp)
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(RoundedCornerShape(GitHubControlRadius))
                     .background(Color(0xFFFF3B30).copy(0.10f))
                     .padding(12.dp)
             ) {
@@ -859,7 +859,7 @@ private fun MiniTag(label: String) {
     Box(
         Modifier
             .padding(top = 6.dp)
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(GitHubControlRadius))
             .background(AiModuleTheme.colors.accent.copy(0.10f))
             .padding(horizontal = 8.dp, vertical = 5.dp)
     ) {
@@ -899,9 +899,9 @@ private fun AddCollaboratorDialog(
                 options.forEach { item ->
                     Box(
                         Modifier
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(GitHubControlRadius))
                             .background(if (permission == item) AiModuleTheme.colors.accent.copy(0.12f) else AiModuleTheme.colors.background)
-                            .border(1.dp, if (permission == item) AiModuleTheme.colors.accent.copy(0.35f) else AiModuleTheme.colors.border, RoundedCornerShape(8.dp))
+                            .border(1.dp, if (permission == item) AiModuleTheme.colors.accent.copy(0.35f) else AiModuleTheme.colors.border, RoundedCornerShape(GitHubControlRadius))
                             .clickable { permission = item }
                             .padding(horizontal = 8.dp, vertical = 5.dp),
                     ) {

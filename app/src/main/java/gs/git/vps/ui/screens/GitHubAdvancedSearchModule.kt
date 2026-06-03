@@ -212,7 +212,7 @@ internal fun AdvancedSearchScreen(
                 Column(
                     Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(GitHubControlRadius))
                         .background(AiModuleTheme.colors.surface)
                         .padding(12.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -271,7 +271,7 @@ internal fun AdvancedSearchScreen(
                 if (searched && resultCount > 0 && selectedKind !in listOf(AdvancedSearchKind.REPOS, AdvancedSearchKind.USERS)) {
                     item {
                         Box(
-                            Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(AiModuleTheme.colors.surface).clickable { runSearch(page + 1) }.padding(12.dp),
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).clickable { runSearch(page + 1) }.padding(12.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Text("Load more", color = AiModuleTheme.colors.accent, fontSize = 14.sp, fontWeight = FontWeight.Medium)
@@ -286,7 +286,7 @@ internal fun AdvancedSearchScreen(
 @Composable
 private fun SearchSummary(kind: AdvancedSearchKind, count: Int, searched: Boolean, searching: Boolean) {
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(AiModuleTheme.colors.surface).padding(12.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -369,7 +369,7 @@ private fun LabelSearchCard(label: GHLabelSearchResult) {
 @Composable
 private fun SearchUserCard(user: GHUser, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(AiModuleTheme.colors.surface).clickable(onClick = onClick).padding(12.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).clickable(onClick = onClick).padding(12.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -385,7 +385,7 @@ private fun SearchUserCard(user: GHUser, onClick: () -> Unit) {
 @Composable
 private fun SearchCard(icon: ImageVector, tint: Color, content: @Composable RowScope.() -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(AiModuleTheme.colors.surface).padding(12.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).padding(12.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -418,7 +418,7 @@ private fun SearchPill(label: String, color: Color) {
 
 @Composable
 private fun EmptySearchCard(message: String) {
-    Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(AiModuleTheme.colors.surface).padding(28.dp), contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).padding(28.dp), contentAlignment = Alignment.Center) {
         Text(message, fontSize = 14.sp, color = AiModuleTheme.colors.textSecondary)
     }
 }

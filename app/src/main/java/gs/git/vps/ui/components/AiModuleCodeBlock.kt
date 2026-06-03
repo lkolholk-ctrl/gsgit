@@ -38,6 +38,7 @@ import androidx.compose.ui.window.DialogProperties
 import gs.git.vps.ui.theme.AiModuleTheme
 import gs.git.vps.ui.theme.JetBrainsMono
 import gs.git.vps.ui.theme.toCodeColors
+import gs.git.vps.ui.screens.GitHubControlRadius
 
 /**
  * AI-module twin of
@@ -77,9 +78,9 @@ fun AiModuleCodeBlock(
     Column(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(GitHubControlRadius))
             .background(colors.surface)
-            .border(1.dp, colors.border, RoundedCornerShape(12.dp)),
+            .border(1.dp, colors.border, RoundedCornerShape(GitHubControlRadius)),
     ) {
         AiModuleCodeHeader(
             lang = lang,

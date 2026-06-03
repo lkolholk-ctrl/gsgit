@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.sp
 import gs.git.vps.ui.theme.AiModuleSurface
 import gs.git.vps.ui.theme.AiModuleTheme
 import gs.git.vps.ui.theme.JetBrainsMono
+import gs.git.vps.ui.screens.GitHubControlRadius
 
 @Composable
 fun AiModuleText(
@@ -143,7 +144,7 @@ fun AiModuleIconButton(
 ) {
     Box(
         modifier
-            .clip(RoundedCornerShape(4.dp))
+            .clip(RoundedCornerShape(GitHubControlRadius))
             .clickable(enabled = enabled) { onClick() },
         contentAlignment = Alignment.Center,
     ) {
@@ -232,7 +233,7 @@ fun AiModuleGlyphAction(
     Box(
         modifier
             .size(36.dp)
-            .clip(RoundedCornerShape(6.dp))
+            .clip(RoundedCornerShape(GitHubControlRadius))
             .let { if (enabled) it.clickable(onClick = onClick) else it },
         contentAlignment = Alignment.Center,
     ) {
@@ -301,9 +302,9 @@ fun AiModuleCard(
     Box(
         modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(GitHubControlRadius))
             .background(if (elevated) colors.surfaceElevated else colors.surface)
-            .border(1.dp, colors.border, RoundedCornerShape(8.dp)),
+            .border(1.dp, colors.border, RoundedCornerShape(GitHubControlRadius)),
     ) {
         content()
     }
@@ -334,8 +335,8 @@ fun AiModulePillButton(
     }
     Row(
         modifier
-            .clip(RoundedCornerShape(6.dp))
-            .border(1.dp, border, RoundedCornerShape(6.dp))
+            .clip(RoundedCornerShape(GitHubControlRadius))
+            .border(1.dp, border, RoundedCornerShape(GitHubControlRadius))
             .clickable(enabled = enabled) { onClick() }
             .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -497,9 +498,9 @@ fun AiModuleChip(
     val tint = color ?: colors.textSecondary
     Box(
         modifier
-            .clip(RoundedCornerShape(4.dp))
+            .clip(RoundedCornerShape(GitHubControlRadius))
             .background(if (filled) tint else Color.Transparent)
-            .border(1.dp, tint, RoundedCornerShape(4.dp))
+            .border(1.dp, tint, RoundedCornerShape(GitHubControlRadius))
             .padding(horizontal = 6.dp, vertical = 1.dp),
     ) {
         AiModuleText(
@@ -636,7 +637,7 @@ private fun AiModuleButtonImpl(
         kind == AiModuleButtonKind.SECONDARY -> Triple(Color.Transparent, colors.accent, colors.accent)
         else /* DESTRUCTIVE */ -> Triple(Color.Transparent, colors.error, colors.error)
     }
-    val shape = RoundedCornerShape(6.dp)
+    val shape = RoundedCornerShape(GitHubControlRadius)
     Box(
         modifier
             .heightIn(min = 36.dp)

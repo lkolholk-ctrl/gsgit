@@ -676,7 +676,7 @@ private fun ProjectV2FieldsCard(
         } else {
             fields.forEach { field ->
                 Row(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(AiModuleTheme.colors.background).padding(10.dp),
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.background).padding(10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -708,7 +708,7 @@ private fun ProjectV2ViewsCard(views: List<GHProjectV2View>) {
             Text("No Project V2 views returned", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted)
         } else {
             views.forEach { view ->
-                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(AiModuleTheme.colors.background).padding(10.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.background).padding(10.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(view.name.ifBlank { "View #${view.number}" }, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = AiModuleTheme.colors.textPrimary, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                         CountPill(view.layout.ifBlank { "layout" }, 0, AiModuleTheme.colors.accent, showCount = false)
@@ -739,7 +739,7 @@ private fun ProjectV2WorkflowsCard(workflows: List<GHProjectV2Workflow>) {
         } else {
             workflows.forEach { workflow ->
                 Row(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(AiModuleTheme.colors.background).padding(10.dp),
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.background).padding(10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -1296,7 +1296,7 @@ private fun ProjectColumnCard(
             IconButton(onClick = onAddCard) { Icon(Icons.Rounded.Add, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.accent) }
         }
         if (cards.isEmpty()) {
-            Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(AiModuleTheme.colors.background).padding(16.dp), contentAlignment = Alignment.Center) {
+            Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.background).padding(16.dp), contentAlignment = Alignment.Center) {
                 Text("No cards", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted)
             }
         } else {
@@ -1310,7 +1310,7 @@ private fun ProjectColumnCard(
 @Composable
 private fun ProjectCardRow(card: GHProjectCard, canMove: Boolean, onMove: () -> Unit, onDelete: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(9.dp)).background(AiModuleTheme.colors.background).padding(10.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.background).padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -1428,7 +1428,7 @@ private fun MoveCardDialog(
             )
             columns.filter { it.id != fromColumn.id }.forEach { column ->
                 Row(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(AiModuleTheme.colors.background).clickable { onMove(column) }.padding(10.dp),
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.background).clickable { onMove(column) }.padding(10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
@@ -1448,7 +1448,7 @@ private fun ProjectChip(label: String, selected: Boolean, onClick: () -> Unit) {
 @Composable
 private fun ProjectChip(label: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
     Box(
-        Modifier.clip(RoundedCornerShape(8.dp))
+        Modifier.clip(RoundedCornerShape(GitHubControlRadius))
             .background(if (selected) AiModuleTheme.colors.accent.copy(0.15f) else AiModuleTheme.colors.surface)
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 7.dp)
@@ -1460,7 +1460,7 @@ private fun ProjectChip(label: String, selected: Boolean, enabled: Boolean, onCl
 @Composable
 private fun CountPill(label: String, count: Int, color: Color, showCount: Boolean = true) {
     Row(
-        Modifier.clip(RoundedCornerShape(8.dp)).background(color.copy(0.10f)).padding(horizontal = 8.dp, vertical = 4.dp),
+        Modifier.clip(RoundedCornerShape(GitHubControlRadius)).background(color.copy(0.10f)).padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {

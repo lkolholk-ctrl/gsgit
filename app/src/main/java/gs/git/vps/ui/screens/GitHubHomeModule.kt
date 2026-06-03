@@ -109,8 +109,8 @@ internal fun LoginScreen(onBack: () -> Unit, onMinimize: () -> Unit, onClose: ((
                 Box(
                     Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(6.dp))
-                        .border(1.dp, if (error.isNotBlank()) palette.error else palette.border, RoundedCornerShape(6.dp))
+                        .clip(RoundedCornerShape(GitHubControlRadius))
+                        .border(1.dp, if (error.isNotBlank()) palette.error else palette.border, RoundedCornerShape(GitHubControlRadius))
                         .background(palette.surface)
                         .padding(horizontal = 10.dp, vertical = 10.dp),
                 ) {
@@ -158,8 +158,8 @@ internal fun LoginScreen(onBack: () -> Unit, onMinimize: () -> Unit, onClose: ((
                 Box(
                     Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(6.dp))
-                        .border(1.dp, palette.accent, RoundedCornerShape(6.dp))
+                        .clip(RoundedCornerShape(GitHubControlRadius))
+                        .border(1.dp, palette.accent, RoundedCornerShape(GitHubControlRadius))
                         .background(if (!testing) palette.accent else palette.surface)
                         .clickable(enabled = !testing) {
                             if (token.isBlank()) {

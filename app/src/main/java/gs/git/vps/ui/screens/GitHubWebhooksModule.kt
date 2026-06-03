@@ -308,7 +308,7 @@ private fun WebhooksAdminRequiredState() {
         Column(
             Modifier
                 .fillMaxWidth()
-                .border(1.dp, palette.border, RoundedCornerShape(6.dp))
+                .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
                 .background(palette.surface)
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -337,7 +337,7 @@ private fun WebhooksSummaryCard(webhooks: List<GHWebhook>) {
     val inactive = webhooks.size - active
     val failing = webhooks.count { it.lastResponseCode >= 400 || it.lastResponseStatus.equals("failed", ignoreCase = true) }
 
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(AiModuleTheme.colors.surface).padding(14.dp)) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).padding(14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Icon(Icons.Rounded.Webhook, null, Modifier.size(20.dp), tint = AiModuleTheme.colors.accent)
             Text("Delivery endpoints", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = AiModuleTheme.colors.textPrimary, modifier = Modifier.weight(1f))
@@ -367,7 +367,7 @@ private fun WebhookCard(
     val responseColor = webhookResponseColor(hook)
     Column(
         Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(GitHubControlRadius))
             .background(AiModuleTheme.colors.surface)
             .clickable(enabled = !disabled, onClick = onOpen)
             .padding(14.dp)
@@ -404,7 +404,7 @@ private fun WebhookCard(
 
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(8.dp).clip(RoundedCornerShape(8.dp)).background(responseColor))
+            Box(Modifier.size(8.dp).clip(RoundedCornerShape(GitHubControlRadius)).background(responseColor))
             Text(webhookLastResponseLabel(hook), fontSize = 12.sp, color = responseColor, fontWeight = FontWeight.Medium)
             if (hook.updatedAt.isNotBlank()) Text("Updated ${hook.updatedAt.take(10)}", fontSize = 11.sp, color = AiModuleTheme.colors.textMuted)
         }
@@ -765,7 +765,7 @@ private fun DeliverySummaryCard(deliveries: List<GHWebhookDelivery>) {
     val success = deliveries.count { it.statusCode in 200..299 }
     val failed = deliveries.count { it.statusCode >= 300 || it.status.equals("failed", ignoreCase = true) }
     val redeliveries = deliveries.count { it.redelivery }
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(AiModuleTheme.colors.surface).padding(14.dp)) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).padding(14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Icon(Icons.Rounded.History, null, Modifier.size(20.dp), tint = AiModuleTheme.colors.accent)
             Text("Recent deliveries", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = AiModuleTheme.colors.textPrimary, modifier = Modifier.weight(1f))
@@ -788,7 +788,7 @@ private fun DeliveryCard(
     onRedeliver: () -> Unit
 ) {
     val color = deliveryStatusColor(delivery)
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(AiModuleTheme.colors.surface).padding(14.dp)) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).padding(14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Icon(if (delivery.statusCode in 200..299) Icons.Rounded.CheckCircle else Icons.Rounded.Error, null, Modifier.size(18.dp), tint = color)
             Column(Modifier.weight(1f)) {
@@ -847,7 +847,7 @@ private fun DeliveryDetailDialog(
 private fun DeliveryBlock(title: String, body: String) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(title, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = AiModuleTheme.colors.textPrimary)
-        Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(AiModuleTheme.colors.background).padding(8.dp)) {
+        Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.background).padding(8.dp)) {
             Text(body.ifBlank { "No data" }, fontSize = 10.sp, color = AiModuleTheme.colors.textSecondary, lineHeight = 14.sp)
         }
     }
@@ -860,14 +860,14 @@ private fun WebhookPill(label: String, color: Color) {
         fontSize = 11.sp,
         color = color,
         fontWeight = FontWeight.Medium,
-        modifier = Modifier.background(color.copy(alpha = 0.1f), RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 4.dp)
+        modifier = Modifier.background(color.copy(alpha = 0.1f), RoundedCornerShape(GitHubControlRadius)).padding(horizontal = 8.dp, vertical = 4.dp)
     )
 }
 
 @Composable
 private fun WebhookChoiceChip(label: String, selected: Boolean, onClick: () -> Unit) {
     Box(
-        Modifier.clip(RoundedCornerShape(8.dp))
+        Modifier.clip(RoundedCornerShape(GitHubControlRadius))
             .background(if (selected) AiModuleTheme.colors.accent.copy(alpha = 0.14f) else AiModuleTheme.colors.background)
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 6.dp)

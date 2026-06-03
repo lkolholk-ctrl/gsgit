@@ -673,7 +673,7 @@ internal fun RepoDetailScreen(
                         )
                     }
                     Row(
-                        Modifier.align(Alignment.TopCenter).padding(top = 12.dp).clip(RoundedCornerShape(14.dp)).background(Color.Black.copy(alpha = 0.55f)).padding(horizontal = 12.dp, vertical = 8.dp),
+                        Modifier.align(Alignment.TopCenter).padding(top = 12.dp).clip(RoundedCornerShape(GitHubControlRadius)).background(Color.Black.copy(alpha = 0.55f)).padding(horizontal = 12.dp, vertical = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text("IMAGE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF58A6FF))
@@ -1139,7 +1139,7 @@ private fun GitHubAdminRequiredScreen(title: String, repoFullName: String, onBac
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .border(1.dp, palette.border, RoundedCornerShape(6.dp))
+                    .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
                     .background(palette.surface)
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -1384,7 +1384,7 @@ internal fun FilesTab(
     }
 }
 
-@Composable internal fun Chip(icon: ImageVector, label: String, tint: Color? = null, onClick: () -> Unit) { val chipTint = tint ?: AiModuleTheme.colors.accent; Row(Modifier.clip(RoundedCornerShape(6.dp)).background(chipTint.copy(0.08f)).clickable(onClick = onClick).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) { Icon(icon, null, Modifier.size(12.dp), tint = chipTint); Text(label, fontSize = 10.sp, color = chipTint, fontWeight = FontWeight.Medium, fontFamily = JetBrainsMono) } }
+@Composable internal fun Chip(icon: ImageVector, label: String, tint: Color? = null, onClick: () -> Unit) { val chipTint = tint ?: AiModuleTheme.colors.accent; Row(Modifier.clip(RoundedCornerShape(GitHubControlRadius)).background(chipTint.copy(0.08f)).clickable(onClick = onClick).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) { Icon(icon, null, Modifier.size(12.dp), tint = chipTint); Text(label, fontSize = 10.sp, color = chipTint, fontWeight = FontWeight.Medium, fontFamily = JetBrainsMono) } }
 
 private fun fileIcon(name: String): ImageVector = when (name.substringAfterLast(".", "").lowercase()) {
     "kt", "java", "js", "ts", "tsx", "jsx", "py", "rb", "go", "rs", "swift", "c", "cpp", "h", "html", "css", "json", "xml", "yml", "yaml" -> Icons.Rounded.Code
@@ -3190,7 +3190,7 @@ private fun PullBadge(text: String, color: Color) {
         fontSize = 10.sp,
         color = color,
         fontWeight = FontWeight.Medium,
-        modifier = Modifier.clip(RoundedCornerShape(5.dp)).background(color.copy(0.1f)).padding(horizontal = 7.dp, vertical = 3.dp)
+        modifier = Modifier.clip(RoundedCornerShape(GitHubControlRadius)).background(color.copy(0.1f)).padding(horizontal = 7.dp, vertical = 3.dp)
     )
 }
 
@@ -3331,7 +3331,7 @@ internal fun ReleasesTab(releases: List<GHRelease>, repo: GHRepo) { val context 
         if (r.assets.isNotEmpty()) {
             Spacer(Modifier.height(8.dp))
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                r.assets.forEach { a -> Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(colors.background).clickable { scope.launch { val dest = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "GlassFiles_Git/${a.name}"); GitHubManager.downloadFile(context, repo.owner, repo.name, a.downloadUrl, dest) } }.padding(9.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                r.assets.forEach { a -> Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(colors.background).clickable { scope.launch { val dest = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "GlassFiles_Git/${a.name}"); GitHubManager.downloadFile(context, repo.owner, repo.name, a.downloadUrl, dest) } }.padding(9.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Icon(releaseAssetIcon(a.name), null, Modifier.size(24.dp), tint = colors.accent.copy(alpha = 0.72f)); Column(Modifier.weight(1f)) { Text(a.name, fontSize = 12.sp, color = colors.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis); Text("${ghFmtSize(a.size)} · ${formatGitHubNumber(a.downloadCount)} downloads", fontSize = 10.sp, color = colors.textMuted) }; Icon(Icons.Rounded.Download, null, Modifier.size(16.dp), tint = colors.textMuted) } }
             }
         }
@@ -3614,7 +3614,7 @@ private fun ReadmeHtmlDocument(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(16.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(GitHubControlRadius))
                     .background(colors.accent.copy(alpha = 0.90f))
                     .clickable { showToCDrawer = true }
                     .padding(horizontal = 14.dp, vertical = 9.dp)
@@ -3644,7 +3644,7 @@ private fun ReadmeHtmlDocument(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(start = indent)
-                                    .clip(RoundedCornerShape(6.dp))
+                                    .clip(RoundedCornerShape(GitHubControlRadius))
                                     .background(colors.surfaceElevated)
                                     .clickable {
                                         showToCDrawer = false
@@ -4111,7 +4111,7 @@ private fun ReadmeHeading(block: ReadmeRenderBlock.Heading) {
 private fun ReadmeErrorCard(message: String, raw: String, repo: GHRepo, onViewRaw: (() -> Unit)? = null, onRetry: (() -> Unit)? = null) {
     val context = LocalContext.current
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(AiModuleTheme.colors.background).padding(12.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.background).padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Text(message, fontSize = 14.sp, color = AiModuleTheme.colors.textPrimary, fontWeight = FontWeight.SemiBold)
@@ -4130,9 +4130,9 @@ private fun ReadmeRawBlock(markdown: String) {
     Column(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(6.dp))
+            .clip(RoundedCornerShape(GitHubControlRadius))
             .background(AiModuleTheme.colors.surface)
-            .border(1.dp, AiModuleTheme.colors.border.copy(alpha = 0.55f), RoundedCornerShape(6.dp))
+            .border(1.dp, AiModuleTheme.colors.border.copy(alpha = 0.55f), RoundedCornerShape(GitHubControlRadius))
             .padding(12.dp)
     ) {
         Text(
@@ -4175,7 +4175,7 @@ private fun ReadmeText(text: String, modifier: Modifier = Modifier, onLinkClick:
                             color = AiModuleTheme.colors.textPrimary,
                             lineHeight = 17.sp,
                             modifier = Modifier
-                                .clip(RoundedCornerShape(5.dp))
+                                .clip(RoundedCornerShape(GitHubControlRadius))
                                 .background(AiModuleTheme.colors.surface)
                                 .padding(horizontal = 5.dp, vertical = 2.dp)
                         )
@@ -4297,7 +4297,7 @@ private fun ReadmeImage(block: ReadmeRenderBlock.Image, imageLoader: ImageLoader
                     .fillMaxWidth()
                     .aspectRatio(block.aspectRatio.coerceIn(0.5f, 3f))
                     .heightIn(min = 200.dp, max = 360.dp)
-                    .clip(RoundedCornerShape(6.dp)),
+                    .clip(RoundedCornerShape(GitHubControlRadius)),
                 onSuccess = { loaded = true },
                 onError = {
                     loaded = true
@@ -4378,9 +4378,9 @@ private fun ReadmeCodeBlock(block: ReadmeRenderBlock.Code) {
         Modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp)
-            .clip(RoundedCornerShape(6.dp))
+            .clip(RoundedCornerShape(GitHubControlRadius))
             .background(Color(0xFF161B22))
-            .border(1.dp, colors.border.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
+            .border(1.dp, colors.border.copy(alpha = 0.5f), RoundedCornerShape(GitHubControlRadius))
     ) {
         Column(
             Modifier
@@ -4427,8 +4427,8 @@ private fun ReadmeTable(rows: List<List<String>>, onLinkClick: (String) -> Unit 
             .fillMaxWidth()
             .padding(vertical = 8.dp)
             .horizontalScroll(rememberScrollState())
-            .clip(RoundedCornerShape(6.dp))
-            .border(1.dp, colors.border.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
+            .clip(RoundedCornerShape(GitHubControlRadius))
+            .border(1.dp, colors.border.copy(alpha = 0.6f), RoundedCornerShape(GitHubControlRadius))
     ) {
         Column {
             visibleRows.forEachIndexed { rowIndex, row ->
@@ -4468,7 +4468,7 @@ private fun ReadmeLinkCard(text: String, url: String, onLinkClick: (String) -> U
     Row(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(5.dp))
+            .clip(RoundedCornerShape(GitHubControlRadius))
             .clickable { onLinkClick(url) }
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -5403,7 +5403,7 @@ private fun IssueMetaCard(detail: GHIssueDetail, onEdit: () -> Unit) {
         if (detail.labels.isNotEmpty()) {
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 detail.labels.forEach { label ->
-                    Text(label, fontSize = 11.sp, color = Blue, modifier = Modifier.clip(RoundedCornerShape(5.dp)).background(Blue.copy(0.1f)).padding(horizontal = 7.dp, vertical = 3.dp))
+                    Text(label, fontSize = 11.sp, color = Blue, modifier = Modifier.clip(RoundedCornerShape(GitHubControlRadius)).background(Blue.copy(0.1f)).padding(horizontal = 7.dp, vertical = 3.dp))
                 }
             }
         }
@@ -5508,7 +5508,7 @@ private fun IssueLockDialog(repo: GHRepo, detail: GHIssueDetail, onDismiss: () -
                         listOf("resolved", "off-topic", "too heated", "spam").forEach { value ->
                             val selected = reason == value
                             Box(
-                                Modifier.clip(RoundedCornerShape(6.dp))
+                                Modifier.clip(RoundedCornerShape(GitHubControlRadius))
                                     .background(if (selected) Blue.copy(0.15f) else SurfaceLight)
                                     .clickable { reason = value }
                                     .padding(horizontal = 8.dp, vertical = 4.dp)
@@ -5623,7 +5623,7 @@ private fun IssueMetaDialog(repo: GHRepo, detail: GHIssueDetail, onDismiss: () -
                         labels.forEach { label ->
                             val selected = label.name in selectedLabels
                             Box(
-                                Modifier.clip(RoundedCornerShape(6.dp))
+                                Modifier.clip(RoundedCornerShape(GitHubControlRadius))
                                     .background(if (selected) Blue.copy(0.15f) else SurfaceLight)
                                     .clickable {
                                         if (selected) selectedLabels.remove(label.name) else selectedLabels.add(label.name)
@@ -5637,13 +5637,13 @@ private fun IssueMetaDialog(repo: GHRepo, detail: GHIssueDetail, onDismiss: () -
 
                     Text("Assignee", fontSize = 12.sp, color = TextSecondary)
                     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Box(Modifier.clip(RoundedCornerShape(6.dp)).background(if (selectedAssignee.isBlank()) Blue.copy(0.15f) else SurfaceLight).clickable { selectedAssignee = "" }.padding(horizontal = 8.dp, vertical = 4.dp)) {
+                        Box(Modifier.clip(RoundedCornerShape(GitHubControlRadius)).background(if (selectedAssignee.isBlank()) Blue.copy(0.15f) else SurfaceLight).clickable { selectedAssignee = "" }.padding(horizontal = 8.dp, vertical = 4.dp)) {
                             Text("None", fontSize = 12.sp, color = if (selectedAssignee.isBlank()) Blue else TextSecondary)
                         }
                         assignees.forEach { user ->
                             val selected = selectedAssignee == user.login
                             Box(
-                                Modifier.clip(RoundedCornerShape(6.dp))
+                                Modifier.clip(RoundedCornerShape(GitHubControlRadius))
                                     .background(if (selected) Blue.copy(0.15f) else SurfaceLight)
                                     .clickable { selectedAssignee = user.login }
                                     .padding(horizontal = 8.dp, vertical = 4.dp)
@@ -5655,13 +5655,13 @@ private fun IssueMetaDialog(repo: GHRepo, detail: GHIssueDetail, onDismiss: () -
 
                     Text("Milestone", fontSize = 12.sp, color = TextSecondary)
                     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Box(Modifier.clip(RoundedCornerShape(6.dp)).background(if (selectedMilestone.isBlank()) Blue.copy(0.15f) else SurfaceLight).clickable { selectedMilestone = "" }.padding(horizontal = 8.dp, vertical = 4.dp)) {
+                        Box(Modifier.clip(RoundedCornerShape(GitHubControlRadius)).background(if (selectedMilestone.isBlank()) Blue.copy(0.15f) else SurfaceLight).clickable { selectedMilestone = "" }.padding(horizontal = 8.dp, vertical = 4.dp)) {
                             Text("None", fontSize = 12.sp, color = if (selectedMilestone.isBlank()) Blue else TextSecondary)
                         }
                         milestones.forEach { milestone ->
                             val selected = selectedMilestone == milestone.title
                             Box(
-                                Modifier.clip(RoundedCornerShape(6.dp))
+                                Modifier.clip(RoundedCornerShape(GitHubControlRadius))
                                     .background(if (selected) Blue.copy(0.15f) else SurfaceLight)
                                     .clickable { selectedMilestone = milestone.title }
                                     .padding(horizontal = 8.dp, vertical = 4.dp)
@@ -5725,7 +5725,7 @@ private fun PullEditDialog(repo: GHRepo, pr: GHPullRequest, onDismiss: () -> Uni
                     listOf("open" to "Open", "closed" to "Closed").forEach { (value, label) ->
                         val selected = state == value
                         Box(
-                            Modifier.clip(RoundedCornerShape(6.dp))
+                            Modifier.clip(RoundedCornerShape(GitHubControlRadius))
                                 .background(if (selected) Blue.copy(0.15f) else SurfaceLight)
                                 .clickable { state = value }
                                 .padding(horizontal = 8.dp, vertical = 4.dp)
@@ -5857,7 +5857,7 @@ private fun PullReviewHistoryDialog(
                         val canMutate = review.state.equals("PENDING", ignoreCase = true)
                         Column(
                             Modifier.fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
+                                .clip(RoundedCornerShape(GitHubControlRadius))
                                 .background(SurfaceLight)
                                 .clickable {
                                     scope.launch {
@@ -6042,7 +6042,7 @@ private fun PullMergeDialog(
                     listOf("merge" to "Merge", "squash" to "Squash", "rebase" to "Rebase").forEach { (value, label) ->
                         val selected = method == value
                         Box(
-                            Modifier.clip(RoundedCornerShape(6.dp))
+                            Modifier.clip(RoundedCornerShape(GitHubControlRadius))
                                 .background(if (selected) Blue.copy(0.15f) else SurfaceLight)
                                 .clickable { method = value }
                                 .padding(horizontal = 8.dp, vertical = 4.dp)
@@ -6088,7 +6088,7 @@ private fun PullReviewDialog(repo: GHRepo, pr: GHPullRequest, onDismiss: () -> U
                     listOf("COMMENT" to "Comment", "APPROVE" to "Approve", "REQUEST_CHANGES" to "Request changes").forEach { (value, label) ->
                         val selected = event == value
                         Box(
-                            Modifier.clip(RoundedCornerShape(6.dp))
+                            Modifier.clip(RoundedCornerShape(GitHubControlRadius))
                                 .background(if (selected) Blue.copy(0.15f) else SurfaceLight)
                                 .clickable { event = value }
                                 .padding(horizontal = 8.dp, vertical = 4.dp)
@@ -6146,13 +6146,13 @@ private fun PullFilesDialog(repo: GHRepo, pr: GHPullRequest, onDismiss: () -> Un
                 LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(files) { file ->
                         Column(
-                            Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(SurfaceLight).padding(10.dp)
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(SurfaceLight).padding(10.dp)
                         ) {
                             Text(file.filename, fontSize = 13.sp, color = TextPrimary, fontWeight = FontWeight.Medium)
                             Text("${file.status}  +${file.additions}  -${file.deletions}", fontSize = 10.sp, color = TextSecondary)
                             if (file.patch.isNotBlank()) {
                                 Spacer(Modifier.height(6.dp))
-                                Box(Modifier.fillMaxWidth().background(Color(0xFF1E1E22), RoundedCornerShape(6.dp)).padding(8.dp)) {
+                                Box(Modifier.fillMaxWidth().background(Color(0xFF1E1E22), RoundedCornerShape(GitHubControlRadius)).padding(8.dp)) {
                                     Text(file.patch.take(1200), fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = Color(0xFFD4D4D4))
                                 }
                             }
@@ -6199,8 +6199,8 @@ internal fun CommitDiffScreen(repo: GHRepo, sha: String, onBack: () -> Unit) { v
                             Spacer(Modifier.height(4.dp))
                             Box(
                                 Modifier.fillMaxWidth()
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .border(1.dp, commitPalette.border, RoundedCornerShape(6.dp))
+                                    .clip(RoundedCornerShape(GitHubControlRadius))
+                                    .border(1.dp, commitPalette.border, RoundedCornerShape(GitHubControlRadius))
                                     .background(commitPalette.surface)
                                     .horizontalScroll(rememberScrollState())
                                     .padding(8.dp),

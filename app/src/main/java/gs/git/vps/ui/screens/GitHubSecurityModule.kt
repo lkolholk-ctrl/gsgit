@@ -533,7 +533,7 @@ private fun RulesetRulesCard(rules: List<GHRulesetRule>) {
             Text("No rules returned", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted)
         } else {
             rules.forEach { rule ->
-                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(AiModuleTheme.colors.background).padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.background).padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(rule.type.replace('_', ' ').ifBlank { "rule" }, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = AiModuleTheme.colors.textPrimary)
                     rule.parameters.take(6).forEach { (key, value) ->
                         Text("$key: ${value.take(160)}", fontSize = 11.sp, color = AiModuleTheme.colors.textSecondary, maxLines = 3, overflow = TextOverflow.Ellipsis)
@@ -575,7 +575,7 @@ private fun RuleSuitesCard(suites: List<GHRuleSuite>, onOpen: (GHRuleSuite) -> U
                 val color = ruleSuiteColor(suite)
                 Column(
                     Modifier.fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
+                        .clip(RoundedCornerShape(GitHubControlRadius))
                         .background(AiModuleTheme.colors.background)
                         .clickable { onOpen(suite) }
                         .padding(10.dp),
@@ -1134,7 +1134,7 @@ private fun CommunityProfileCard(profile: GHCommunityProfile?, onOpenDocs: () ->
             Modifier
                 .fillMaxWidth()
                 .height(6.dp)
-                .clip(RoundedCornerShape(6.dp))
+                .clip(RoundedCornerShape(GitHubControlRadius))
                 .background(AiModuleTheme.colors.background)
         ) {
             Box(
@@ -1167,7 +1167,7 @@ private fun CommunityChecklistCard(profile: GHCommunityProfile?) {
         } else {
             files.sortedBy { !it.present }.forEach { file ->
                 Row(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(AiModuleTheme.colors.background).padding(10.dp),
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.background).padding(10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -1192,7 +1192,7 @@ private fun SecurityToggleRow(
     onToggle: (Boolean) -> Unit
 ) {
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(AiModuleTheme.colors.background).padding(12.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.background).padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -1480,7 +1480,7 @@ private fun RepositoryAdvisoryDetailDialog(advisory: GHRepositorySecurityAdvisor
             if (advisory.vulnerabilities.isNotEmpty()) {
                 Text("Vulnerabilities", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted, fontWeight = FontWeight.Medium, fontFamily = JetBrainsMono)
                 advisory.vulnerabilities.forEach { vulnerability ->
-                    Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(AiModuleTheme.colors.background).padding(8.dp)) {
+                    Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.background).padding(8.dp)) {
                         Text(
                             cleanJoin(listOf(vulnerability.ecosystem, vulnerability.packageName, vulnerability.vulnerableRange, vulnerability.patchedVersions.takeIf { it.isNotBlank() }?.let { "patched $it" } ?: "")),
                             fontSize = 12.sp,
@@ -1514,7 +1514,7 @@ private fun EmptySecurityResult(emptySource: Boolean, emptyText: String, noMatch
 @Composable
 private fun GitHubSmallChoice(label: String, selected: Boolean, onClick: () -> Unit) {
     Box(
-        Modifier.clip(RoundedCornerShape(8.dp))
+        Modifier.clip(RoundedCornerShape(GitHubControlRadius))
             .background(if (selected) AiModuleTheme.colors.accent.copy(alpha = 0.14f) else AiModuleTheme.colors.surface)
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 6.dp)
@@ -1530,7 +1530,7 @@ private fun SecurityPill(label: String, color: Color) {
         fontSize = 11.sp,
         color = color,
         fontWeight = FontWeight.Medium,
-        modifier = Modifier.background(color.copy(alpha = 0.1f), RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 4.dp)
+        modifier = Modifier.background(color.copy(alpha = 0.1f), RoundedCornerShape(GitHubControlRadius)).padding(horizontal = 8.dp, vertical = 4.dp)
     )
 }
 

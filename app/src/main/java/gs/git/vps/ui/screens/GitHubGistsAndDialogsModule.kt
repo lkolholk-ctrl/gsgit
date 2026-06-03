@@ -127,8 +127,8 @@ internal fun GistsScreen(
                             Box(
                                 Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .border(1.dp, palette.border, RoundedCornerShape(6.dp))
+                                    .clip(RoundedCornerShape(GitHubControlRadius))
+                                    .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
                                     .background(palette.surface)
                                     .horizontalScroll(rememberScrollState())
                                     .padding(10.dp),
@@ -718,7 +718,7 @@ internal fun DispatchWorkflowDialog(
                 Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     workflows.forEach { wf ->
                         Row(
-                            Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp))
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius))
                                 .background(if (selectedWf == wf) palette.accent.copy(alpha = 0.10f) else Color.Transparent)
                                 .clickable { selectedWf = wf }
                                 .padding(horizontal = 10.dp, vertical = 8.dp),

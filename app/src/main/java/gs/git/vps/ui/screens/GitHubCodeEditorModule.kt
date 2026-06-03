@@ -554,7 +554,7 @@ fun CodeEditorScreen(
                             Row(
                                 Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
+                                    .clip(RoundedCornerShape(GitHubControlRadius))
                                     .background(Color(0xFF111B2E))
                                     .clickable {
                                         goToLine(symbol.line + 1)
@@ -717,7 +717,7 @@ fun CodeEditorScreen(
                         }
                         Row(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
+                                .clip(RoundedCornerShape(GitHubControlRadius))
                                 .background(palette.surfaceElevated)
                                 .clickable {
                                     scope.launch {
@@ -727,7 +727,7 @@ fun CodeEditorScreen(
                                         verticalScrollState.animateScrollTo(scrollY)
                                     }
                                 }
-                                .border(0.5.dp, palette.border, RoundedCornerShape(6.dp))
+                                .border(0.5.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
                                 .padding(horizontal = 8.dp, vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -839,9 +839,9 @@ fun CodeEditorScreen(
                 autocompleteSuggestions.forEach { suggestion ->
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
+                            .clip(RoundedCornerShape(GitHubControlRadius))
                             .background(palette.accent.copy(alpha = 0.12f))
-                            .border(0.5.dp, palette.accent, RoundedCornerShape(6.dp))
+                            .border(0.5.dp, palette.accent, RoundedCornerShape(GitHubControlRadius))
                             .clickable { insertSuggestion(suggestion) }
                             .padding(horizontal = 8.dp, vertical = 4.dp),
                         contentAlignment = Alignment.Center
@@ -949,9 +949,9 @@ fun CodeEditorScreen(
                         .align(Alignment.TopEnd)
                         .statusBarsPadding()
                         .padding(12.dp)
-                        .clip(RoundedCornerShape(10.dp))
+                        .clip(RoundedCornerShape(GitHubControlRadius))
                         .background(palette.surface.copy(alpha = 0.7f))
-                        .border(0.5.dp, palette.border.copy(alpha = 0.7f), RoundedCornerShape(10.dp))
+                        .border(0.5.dp, palette.border.copy(alpha = 0.7f), RoundedCornerShape(GitHubControlRadius))
                         .clickable { zenMode = false }
                         .padding(horizontal = 10.dp, vertical = 6.dp),
                     contentAlignment = Alignment.Center
@@ -1047,7 +1047,7 @@ fun CodeEditorScreen(
                             Row(
                                 Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(10.dp))
+                                    .clip(RoundedCornerShape(GitHubControlRadius))
                                     .background(if (active) palette.accent.copy(alpha = 0.12f) else palette.surfaceElevated)
                                     .clickable {
                                         if (!active) {
@@ -1080,7 +1080,7 @@ fun CodeEditorScreen(
                                             showBranchSwitcher = false
                                         }
                                     }
-                                    .border(0.5.dp, if (active) palette.accent else palette.border, RoundedCornerShape(10.dp))
+                                    .border(0.5.dp, if (active) palette.accent else palette.border, RoundedCornerShape(GitHubControlRadius))
                                     .padding(horizontal = 12.dp, vertical = 10.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
@@ -1284,9 +1284,9 @@ private fun EditorMoreMenu(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 4.dp)
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(GitHubControlRadius))
             .background(palette.surfaceElevated)
-            .border(1.dp, palette.border, RoundedCornerShape(12.dp))
+            .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
             .padding(10.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1329,9 +1329,9 @@ private fun EditorMoreMenu(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(GitHubControlRadius))
                         .background(if (lineNumbers) palette.accent.copy(alpha = 0.12f) else palette.surface)
-                        .border(0.5.dp, if (lineNumbers) palette.accent else palette.border, RoundedCornerShape(8.dp))
+                        .border(0.5.dp, if (lineNumbers) palette.accent else palette.border, RoundedCornerShape(GitHubControlRadius))
                         .clickable { onToggleLineNumbers() }
                         .padding(vertical = 8.dp),
                     contentAlignment = Alignment.Center
@@ -1348,9 +1348,9 @@ private fun EditorMoreMenu(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(GitHubControlRadius))
                         .background(if (wrapLines) palette.accent.copy(alpha = 0.12f) else palette.surface)
-                        .border(0.5.dp, if (wrapLines) palette.accent else palette.border, RoundedCornerShape(8.dp))
+                        .border(0.5.dp, if (wrapLines) palette.accent else palette.border, RoundedCornerShape(GitHubControlRadius))
                         .clickable { onToggleWrap() }
                         .padding(vertical = 8.dp),
                     contentAlignment = Alignment.Center
@@ -1373,9 +1373,9 @@ private fun EditorMoreMenu(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(GitHubControlRadius))
                         .background(if (zenMode) palette.accent.copy(alpha = 0.12f) else palette.surface)
-                        .border(0.5.dp, if (zenMode) palette.accent else palette.border, RoundedCornerShape(8.dp))
+                        .border(0.5.dp, if (zenMode) palette.accent else palette.border, RoundedCornerShape(GitHubControlRadius))
                         .clickable { onToggleZen() }
                         .padding(vertical = 8.dp),
                     contentAlignment = Alignment.Center
@@ -1392,9 +1392,9 @@ private fun EditorMoreMenu(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(GitHubControlRadius))
                         .background(if (showSearch) palette.accent.copy(alpha = 0.12f) else palette.surface)
-                        .border(0.5.dp, if (showSearch) palette.accent else palette.border, RoundedCornerShape(8.dp))
+                        .border(0.5.dp, if (showSearch) palette.accent else palette.border, RoundedCornerShape(GitHubControlRadius))
                         .clickable { onToggleSearch() }
                         .padding(vertical = 8.dp),
                     contentAlignment = Alignment.Center
@@ -1417,9 +1417,9 @@ private fun EditorMoreMenu(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(GitHubControlRadius))
                         .background(if (showBlame) palette.accent.copy(alpha = 0.12f) else palette.surface)
-                        .border(0.5.dp, if (showBlame) palette.accent else palette.border, RoundedCornerShape(8.dp))
+                        .border(0.5.dp, if (showBlame) palette.accent else palette.border, RoundedCornerShape(GitHubControlRadius))
                         .clickable { onToggleBlame() }
                         .padding(vertical = 8.dp),
                     contentAlignment = Alignment.Center
@@ -1438,9 +1438,9 @@ private fun EditorMoreMenu(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(GitHubControlRadius))
                     .background(palette.surface)
-                    .border(0.5.dp, palette.border, RoundedCornerShape(8.dp))
+                    .border(0.5.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
                     .clickable { onCycleMode() }
                     .padding(vertical = 8.dp),
                 contentAlignment = Alignment.Center
@@ -1464,9 +1464,9 @@ private fun EditorMoreMenu(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(GitHubControlRadius))
                     .background(palette.surface)
-                    .border(0.5.dp, palette.border, RoundedCornerShape(8.dp))
+                    .border(0.5.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
                     .padding(horizontal = 10.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
@@ -1481,9 +1481,9 @@ private fun EditorMoreMenu(
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
+                            .clip(RoundedCornerShape(GitHubControlRadius))
                             .background(palette.surfaceElevated)
-                            .border(0.5.dp, palette.border, RoundedCornerShape(6.dp))
+                            .border(0.5.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
                             .clickable { onFontSizeChange((fontSize - 1).coerceAtLeast(9)) }
                             .padding(horizontal = 10.dp, vertical = 4.dp),
                         contentAlignment = Alignment.Center
@@ -1492,9 +1492,9 @@ private fun EditorMoreMenu(
                     }
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
+                            .clip(RoundedCornerShape(GitHubControlRadius))
                             .background(palette.surfaceElevated)
-                            .border(0.5.dp, palette.border, RoundedCornerShape(6.dp))
+                            .border(0.5.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
                             .clickable { onFontSizeChange((fontSize + 1).coerceAtMost(24)) }
                             .padding(horizontal = 10.dp, vertical = 4.dp),
                         contentAlignment = Alignment.Center
@@ -1514,9 +1514,9 @@ private fun EditorMoreMenu(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(GitHubControlRadius))
                         .background(palette.surface)
-                        .border(0.5.dp, palette.border, RoundedCornerShape(8.dp))
+                        .border(0.5.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
                         .clickable { onGoToLine() }
                         .padding(vertical = 8.dp),
                     contentAlignment = Alignment.Center
@@ -1533,9 +1533,9 @@ private fun EditorMoreMenu(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(GitHubControlRadius))
                         .background(palette.surface)
-                        .border(0.5.dp, palette.border, RoundedCornerShape(8.dp))
+                        .border(0.5.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
                         .clickable { onOutline() }
                         .padding(vertical = 8.dp),
                     contentAlignment = Alignment.Center
@@ -1552,9 +1552,9 @@ private fun EditorMoreMenu(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(GitHubControlRadius))
                         .background(palette.surface)
-                        .border(0.5.dp, palette.border, RoundedCornerShape(8.dp))
+                        .border(0.5.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
                         .clickable { onCopy() }
                         .padding(vertical = 8.dp),
                     contentAlignment = Alignment.Center
@@ -1571,9 +1571,9 @@ private fun EditorMoreMenu(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(GitHubControlRadius))
                         .background(palette.surface)
-                        .border(0.5.dp, palette.border, RoundedCornerShape(8.dp))
+                        .border(0.5.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
                         .clickable { onFormat() }
                         .padding(vertical = 8.dp),
                     contentAlignment = Alignment.Center
@@ -1629,7 +1629,7 @@ private fun ModePill(label: String, selected: Boolean, onClick: () -> Unit) {
     val palette = AiModuleTheme.colors
     Box(
         Modifier
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(GitHubControlRadius))
             .background(if (selected) palette.accent.copy(alpha = 0.16f) else palette.surfaceElevated)
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 6.dp)
@@ -1642,7 +1642,7 @@ private fun ModePill(label: String, selected: Boolean, onClick: () -> Unit) {
 private fun MetaPill(text: String, color: Color) {
     Box(
         Modifier
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(GitHubControlRadius))
             .background(color.copy(alpha = 0.14f))
             .padding(horizontal = 8.dp, vertical = 5.dp)
     ) {
@@ -1701,9 +1701,9 @@ private fun SearchOptionChip(label: String, selected: Boolean, onClick: () -> Un
     val palette = AiModuleTheme.colors
     Box(
         Modifier
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(GitHubControlRadius))
             .background(if (selected) palette.accent.copy(alpha = 0.24f) else palette.surfaceElevated)
-            .border(0.5.dp, if (selected) palette.accent else palette.border, RoundedCornerShape(8.dp))
+            .border(0.5.dp, if (selected) palette.accent else palette.border, RoundedCornerShape(GitHubControlRadius))
             .clickable(onClick = onClick)
             .padding(horizontal = 8.dp, vertical = 5.dp)
     ) {
@@ -1716,9 +1716,9 @@ private fun SearchBox(value: TextFieldValue, onValueChange: (TextFieldValue) -> 
     val palette = AiModuleTheme.colors
     Box(
         modifier
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(GitHubControlRadius))
             .background(palette.surfaceElevated)
-            .border(0.5.dp, palette.border, RoundedCornerShape(12.dp))
+            .border(0.5.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
             .padding(horizontal = 12.dp, vertical = 10.dp)
     ) {
         if (value.text.isEmpty()) Text(hint, color = palette.textMuted, fontSize = 13.sp)
@@ -1737,7 +1737,7 @@ private fun SmallPillButton(label: String, onClick: () -> Unit) {
     val palette = AiModuleTheme.colors
     Box(
         Modifier
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(GitHubControlRadius))
             .background(palette.accent.copy(alpha = 0.16f))
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 8.dp)
@@ -1797,9 +1797,9 @@ private fun EditorActionChip(text: String, onClick: () -> Unit) {
     val palette = AiModuleTheme.colors
     Box(
         Modifier
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(GitHubControlRadius))
             .background(palette.surfaceElevated)
-            .border(0.5.dp, palette.border, RoundedCornerShape(10.dp))
+            .border(0.5.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 7.dp)
     ) {
@@ -2019,7 +2019,7 @@ private fun ModernImageCanvas(file: GHContent) {
         }
 
         Row(
-            Modifier.align(Alignment.TopCenter).padding(top = 12.dp).clip(RoundedCornerShape(14.dp)).background(Color.Black.copy(alpha = 0.55f)).padding(horizontal = 12.dp, vertical = 8.dp),
+            Modifier.align(Alignment.TopCenter).padding(top = 12.dp).clip(RoundedCornerShape(GitHubControlRadius)).background(Color.Black.copy(alpha = 0.55f)).padding(horizontal = 12.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -2272,12 +2272,12 @@ private fun AiQuickActionsRow(
             }
             Box(
                 Modifier
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(RoundedCornerShape(GitHubControlRadius))
                     .background(colors.accent.copy(alpha = 0.14f))
                     .border(
                         0.5.dp,
                         colors.border,
-                        RoundedCornerShape(14.dp),
+                        RoundedCornerShape(GitHubControlRadius),
                     )
                     .clickable { onSendPrompt(prompt) }
                     .padding(horizontal = 10.dp, vertical = 6.dp),
@@ -2293,9 +2293,9 @@ private fun AiQuickActionsRow(
         actions.forEach { (label, prompt) ->
             Box(
                 Modifier
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(RoundedCornerShape(GitHubControlRadius))
                     .background(colors.surface)
-                    .border(0.5.dp, colors.border, RoundedCornerShape(14.dp))
+                    .border(0.5.dp, colors.border, RoundedCornerShape(GitHubControlRadius))
                     .clickable { onSendPrompt(prompt) }
                     .padding(horizontal = 10.dp, vertical = 6.dp),
             ) {
@@ -2417,9 +2417,9 @@ private fun UpgradedEditorAccessoryBar(
             modifier = Modifier
                 .height(34.dp)
                 .width(40.dp)
-                .clip(RoundedCornerShape(6.dp))
+                .clip(RoundedCornerShape(GitHubControlRadius))
                 .background(palette.surface)
-                .border(0.5.dp, palette.border, RoundedCornerShape(6.dp))
+                .border(0.5.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
                 .clickable { onLeftArrow() },
             contentAlignment = Alignment.Center
         ) {
@@ -2431,9 +2431,9 @@ private fun UpgradedEditorAccessoryBar(
             modifier = Modifier
                 .height(34.dp)
                 .width(40.dp)
-                .clip(RoundedCornerShape(6.dp))
+                .clip(RoundedCornerShape(GitHubControlRadius))
                 .background(palette.surface)
-                .border(0.5.dp, palette.border, RoundedCornerShape(6.dp))
+                .border(0.5.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
                 .clickable { onRightArrow() },
             contentAlignment = Alignment.Center
         ) {
@@ -2446,9 +2446,9 @@ private fun UpgradedEditorAccessoryBar(
         Box(
             modifier = Modifier
                 .height(34.dp)
-                .clip(RoundedCornerShape(6.dp))
+                .clip(RoundedCornerShape(GitHubControlRadius))
                 .background(if (canUndo) palette.surface else palette.surface.copy(alpha = 0.4f))
-                .border(0.5.dp, palette.border, RoundedCornerShape(6.dp))
+                .border(0.5.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
                 .clickable(enabled = canUndo) { onUndo() }
                 .padding(horizontal = 8.dp),
             contentAlignment = Alignment.Center
@@ -2460,9 +2460,9 @@ private fun UpgradedEditorAccessoryBar(
         Box(
             modifier = Modifier
                 .height(34.dp)
-                .clip(RoundedCornerShape(6.dp))
+                .clip(RoundedCornerShape(GitHubControlRadius))
                 .background(if (canRedo) palette.surface else palette.surface.copy(alpha = 0.4f))
-                .border(0.5.dp, palette.border, RoundedCornerShape(6.dp))
+                .border(0.5.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
                 .clickable(enabled = canRedo) { onRedo() }
                 .padding(horizontal = 8.dp),
             contentAlignment = Alignment.Center
@@ -2474,9 +2474,9 @@ private fun UpgradedEditorAccessoryBar(
         Box(
             modifier = Modifier
                 .height(34.dp)
-                .clip(RoundedCornerShape(6.dp))
+                .clip(RoundedCornerShape(GitHubControlRadius))
                 .background(palette.surface)
-                .border(0.5.dp, palette.border, RoundedCornerShape(6.dp))
+                .border(0.5.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
                 .clickable { onFormat() }
                 .padding(horizontal = 8.dp),
             contentAlignment = Alignment.Center
@@ -2490,9 +2490,9 @@ private fun UpgradedEditorAccessoryBar(
         Box(
             modifier = Modifier
                 .height(34.dp)
-                .clip(RoundedCornerShape(6.dp))
+                .clip(RoundedCornerShape(GitHubControlRadius))
                 .background(palette.surface)
-                .border(0.5.dp, palette.border, RoundedCornerShape(6.dp))
+                .border(0.5.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
                 .clickable { onComment() }
                 .padding(horizontal = 8.dp),
             contentAlignment = Alignment.Center
@@ -2504,9 +2504,9 @@ private fun UpgradedEditorAccessoryBar(
         Box(
             modifier = Modifier
                 .height(34.dp)
-                .clip(RoundedCornerShape(6.dp))
+                .clip(RoundedCornerShape(GitHubControlRadius))
                 .background(palette.surface)
-                .border(0.5.dp, palette.border, RoundedCornerShape(6.dp))
+                .border(0.5.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
                 .clickable { onDuplicate() }
                 .padding(horizontal = 8.dp),
             contentAlignment = Alignment.Center
@@ -2522,9 +2522,9 @@ private fun UpgradedEditorAccessoryBar(
                 Box(
                     modifier = Modifier
                         .height(34.dp)
-                        .clip(RoundedCornerShape(6.dp))
+                        .clip(RoundedCornerShape(GitHubControlRadius))
                         .background(palette.surfaceElevated)
-                        .border(0.5.dp, palette.accent.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
+                        .border(0.5.dp, palette.accent.copy(alpha = 0.5f), RoundedCornerShape(GitHubControlRadius))
                         .clickable { onInsert(snippet) }
                         .padding(horizontal = 8.dp),
                     contentAlignment = Alignment.Center
@@ -2549,9 +2549,9 @@ private fun UpgradedEditorAccessoryBar(
                 modifier = Modifier
                     .height(34.dp)
                     .width(if (char == "\t") 44.dp else 34.dp)
-                    .clip(RoundedCornerShape(6.dp))
+                    .clip(RoundedCornerShape(GitHubControlRadius))
                     .background(palette.surface)
-                    .border(0.5.dp, palette.border, RoundedCornerShape(6.dp))
+                    .border(0.5.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
                     .clickable {
                         if (char in listOf("{", "[", "(", "\"", "'")) {
                             val closing = when (char) {

@@ -461,7 +461,7 @@ private fun InvitationPermissionBadge(permission: String) {
 @Composable
 private fun CollaboratorsSummaryCard(collaborators: List<GHCollaborator>) {
     val grouped = collaborators.groupingBy { normalizeCollaboratorPermission(it.role) }.eachCount()
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(AiModuleTheme.colors.surface).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(Icons.Rounded.Group, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.accent)
             Text("${collaborators.size} collaborators", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = AiModuleTheme.colors.textPrimary)
@@ -478,7 +478,7 @@ private fun CollaboratorsSummaryCard(collaborators: List<GHCollaborator>) {
 @Composable
 private fun PermissionCountChip(label: String, count: Int, color: Color) {
     Row(
-        Modifier.clip(RoundedCornerShape(8.dp)).background(color.copy(0.10f)).padding(horizontal = 8.dp, vertical = 4.dp),
+        Modifier.clip(RoundedCornerShape(GitHubControlRadius)).background(color.copy(0.10f)).padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
@@ -497,7 +497,7 @@ private fun CollaboratorCard(
     val roleColor = collaboratorRoleColor(permission)
 
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(AiModuleTheme.colors.surface)
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface)
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -550,7 +550,7 @@ private fun collaboratorRoleColor(permission: String): Color = when (normalizeCo
 @Composable
 private fun PermissionChip(label: String, selected: Boolean, onClick: () -> Unit) {
     Box(
-        Modifier.clip(RoundedCornerShape(8.dp))
+        Modifier.clip(RoundedCornerShape(GitHubControlRadius))
             .background(if (selected) AiModuleTheme.colors.accent.copy(0.15f) else AiModuleTheme.colors.background)
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp)

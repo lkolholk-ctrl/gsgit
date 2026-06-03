@@ -300,7 +300,7 @@ internal fun RepoTeamsScreen(
 @Composable
 private fun RepoTeamsSummaryCard(repoTeams: List<GHRepoTeam>, orgTeams: List<GHOrgTeam>) {
     val grouped = repoTeams.groupingBy { normalizeTeamPermission(it.permission) }.eachCount()
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(AiModuleTheme.colors.surface).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(Icons.Rounded.Group, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.accent)
             Column(Modifier.weight(1f)) {
@@ -326,7 +326,7 @@ private fun RepoTeamCard(
     val permission = normalizeTeamPermission(team.permission)
     val color = teamPermissionColor(permission)
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(AiModuleTheme.colors.surface).padding(12.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -359,7 +359,7 @@ private fun RepoTeamCard(
 @Composable
 private fun SelectableTeamRow(team: GHOrgTeam, selected: Boolean, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(9.dp))
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius))
             .background(if (selected) AiModuleTheme.colors.accent.copy(0.12f) else AiModuleTheme.colors.background)
             .clickable(onClick = onClick)
             .padding(10.dp),
@@ -393,7 +393,7 @@ private fun PermissionChipRow(selectedPermission: String, onSelect: (String) -> 
 @Composable
 private fun TeamPermissionChip(label: String, selected: Boolean, onClick: () -> Unit) {
     Box(
-        Modifier.clip(RoundedCornerShape(8.dp))
+        Modifier.clip(RoundedCornerShape(GitHubControlRadius))
             .background(if (selected) AiModuleTheme.colors.accent.copy(0.15f) else AiModuleTheme.colors.background)
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp)
@@ -410,7 +410,7 @@ private fun TeamPermissionChip(label: String, selected: Boolean, onClick: () -> 
 @Composable
 private fun TeamPermissionCountChip(label: String, count: Int, color: Color) {
     Row(
-        Modifier.clip(RoundedCornerShape(8.dp)).background(color.copy(0.10f)).padding(horizontal = 8.dp, vertical = 4.dp),
+        Modifier.clip(RoundedCornerShape(GitHubControlRadius)).background(color.copy(0.10f)).padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
@@ -422,7 +422,7 @@ private fun TeamPermissionCountChip(label: String, count: Int, color: Color) {
 @Composable
 private fun EmptyTeamsCard(message: String) {
     Box(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(AiModuleTheme.colors.surface).padding(28.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).padding(28.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(message, fontSize = 14.sp, color = AiModuleTheme.colors.textMuted)

@@ -360,7 +360,7 @@ internal fun BranchProtectionScreen(
                                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                             (1..6).forEach { count ->
                                                 Box(
-                                                    Modifier.size(32.dp).clip(RoundedCornerShape(8.dp))
+                                                    Modifier.size(32.dp).clip(RoundedCornerShape(GitHubControlRadius))
                                                         .background(if (count == requiredApprovalCount) AiModuleTheme.colors.accent.copy(0.15f) else AiModuleTheme.colors.background)
                                                         .clickable { requiredApprovalCount = count },
                                                     contentAlignment = Alignment.Center
@@ -499,7 +499,7 @@ private fun BranchProtectionSummaryCard(branch: String, state: BranchProtectionE
                     "Unsaved",
                     fontSize = 10.sp,
                     color = Color(0xFFFF9500),
-                    modifier = Modifier.clip(RoundedCornerShape(5.dp)).background(Color(0xFFFF9500).copy(0.12f)).padding(horizontal = 7.dp, vertical = 3.dp)
+                    modifier = Modifier.clip(RoundedCornerShape(GitHubControlRadius)).background(Color(0xFFFF9500).copy(0.12f)).padding(horizontal = 7.dp, vertical = 3.dp)
                 )
             }
         }
@@ -522,14 +522,14 @@ private fun MiniProtectionBadge(label: String, color: Color) {
         label,
         fontSize = 10.sp,
         color = color,
-        modifier = Modifier.clip(RoundedCornerShape(5.dp)).background(color.copy(0.10f)).padding(horizontal = 7.dp, vertical = 3.dp)
+        modifier = Modifier.clip(RoundedCornerShape(GitHubControlRadius)).background(color.copy(0.10f)).padding(horizontal = 7.dp, vertical = 3.dp)
     )
 }
 
 @Composable
 private fun BranchChip(name: String, selected: Boolean, protected: Boolean, onClick: () -> Unit) {
     Row(
-        Modifier.clip(RoundedCornerShape(8.dp))
+        Modifier.clip(RoundedCornerShape(GitHubControlRadius))
             .background(if (selected) AiModuleTheme.colors.accent.copy(0.15f) else AiModuleTheme.colors.surface)
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -557,7 +557,7 @@ private fun BranchChip(name: String, selected: Boolean, protected: Boolean, onCl
 @Composable
 private fun ContextChip(name: String, onRemove: () -> Unit) {
     Row(
-        Modifier.clip(RoundedCornerShape(8.dp)).background(AiModuleTheme.colors.accent.copy(0.1f))
+        Modifier.clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.accent.copy(0.1f))
             .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -602,7 +602,7 @@ private fun SignatureProtectionRow(enabled: Boolean, onToggle: () -> Unit) {
 @Composable
 private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(AiModuleTheme.colors.surface).padding(16.dp)
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).padding(16.dp)
     ) { content() }
 }
 
@@ -623,7 +623,7 @@ private fun TerminalToggleIndicator(
         fontSize = 12.sp,
         fontWeight = FontWeight.Medium,
         modifier = Modifier
-            .clip(RoundedCornerShape(5.dp))
+            .clip(RoundedCornerShape(GitHubControlRadius))
             .background(color.copy(alpha = 0.10f))
             .padding(horizontal = 8.dp, vertical = 4.dp),
     )

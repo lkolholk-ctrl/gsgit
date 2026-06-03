@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import gs.git.vps.ui.theme.AiModuleTheme
+import gs.git.vps.ui.screens.GitHubControlRadius
 import gs.git.vps.ui.theme.JetBrainsMono
 
 /**
@@ -59,9 +60,9 @@ fun AiModuleAlertDialog(
         Column(
             Modifier
                 .widthIn(min = 280.dp, max = 480.dp)
-                .clip(RoundedCornerShape(10.dp))
+                .clip(RoundedCornerShape(GitHubControlRadius))
                 .background(palette.surface)
-                .border(1.dp, palette.border, RoundedCornerShape(10.dp))
+                .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
                 .padding(horizontal = 16.dp, vertical = 14.dp),
         ) {
             if (!title.isNullOrBlank()) {
@@ -141,9 +142,9 @@ fun AiModuleTextField(
             Modifier
                 .fillMaxWidth()
                 .heightIn(min = 38.dp)
-                .clip(RoundedCornerShape(6.dp))
+                .clip(RoundedCornerShape(GitHubControlRadius))
                 .background(palette.surface)
-                .border(1.dp, palette.border, RoundedCornerShape(6.dp))
+                .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
                 .padding(horizontal = 10.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -239,7 +240,7 @@ fun AiModuleTextAction(
     val effective = if (enabled) tint else palette.textMuted
     Box(
         modifier
-            .clip(RoundedCornerShape(4.dp))
+            .clip(RoundedCornerShape(GitHubControlRadius))
             .let { if (enabled) it.clickable(onClick = onClick) else it }
             .padding(horizontal = 8.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center,

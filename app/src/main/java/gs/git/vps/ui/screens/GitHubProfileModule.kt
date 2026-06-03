@@ -167,7 +167,7 @@ private fun ProfileHeader(profile: GHUserProfile) {
         AsyncImage(
             profile.avatarUrl,
             profile.login,
-            Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)),
+            Modifier.size(56.dp).clip(RoundedCornerShape(GitHubControlRadius)),
         )
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {

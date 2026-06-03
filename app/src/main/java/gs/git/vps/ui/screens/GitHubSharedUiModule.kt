@@ -266,7 +266,7 @@ internal fun GitHubTopBarTextAction(
     Box(
         Modifier
             .height(36.dp)
-            .clip(RoundedCornerShape(6.dp))
+            .clip(RoundedCornerShape(GitHubControlRadius))
             .let { if (enabled) it.clickable(onClick = onClick) else it }
             .padding(horizontal = 10.dp),
         contentAlignment = Alignment.Center,
@@ -334,7 +334,8 @@ internal fun GitHubTerminalTextField(
         modifier
             .fillMaxWidth()
             .heightIn(min = minHeight)
-            .border(1.dp, palette.textMuted)
+            .clip(RoundedCornerShape(GitHubControlRadius))
+            .border(1.dp, palette.textMuted, RoundedCornerShape(GitHubControlRadius))
             .background(palette.surface)
             .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {

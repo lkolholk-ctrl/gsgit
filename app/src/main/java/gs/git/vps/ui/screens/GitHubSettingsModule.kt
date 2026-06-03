@@ -730,12 +730,12 @@ internal fun GitHubSettingsScreen(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clip(RoundedCornerShape(8.dp))
+                                        .clip(RoundedCornerShape(GitHubControlRadius))
                                         .background(if (selected) AiModuleTheme.colors.accent.copy(alpha = 0.14f) else AiModuleTheme.colors.surfaceElevated)
                                         .border(
                                             width = 1.dp,
                                             color = if (selected) AiModuleTheme.colors.accent else AiModuleTheme.colors.border,
-                                            shape = RoundedCornerShape(8.dp)
+                                            shape = RoundedCornerShape(GitHubControlRadius)
                                         )
                                         .clickable {
                                             gs.git.vps.ui.theme.ThemeState.saveTheme(context, mode)
@@ -801,9 +801,9 @@ internal fun GitHubSettingsScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(8.dp))
+                                    .clip(RoundedCornerShape(GitHubControlRadius))
                                     .background(AiModuleTheme.colors.surfaceElevated)
-                                    .border(1.dp, AiModuleTheme.colors.border, RoundedCornerShape(8.dp))
+                                    .border(1.dp, AiModuleTheme.colors.border, RoundedCornerShape(GitHubControlRadius))
                                     .padding(horizontal = 12.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -1354,7 +1354,7 @@ private fun HireableChooser(current: Boolean, onSet: (Boolean) -> Unit) {
 private fun ProfileChoiceChip(label: String, selected: Boolean, onClick: () -> Unit) {
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(6.dp))
+            .clip(RoundedCornerShape(GitHubControlRadius))
             .background(if (selected) AiModuleTheme.colors.accent.copy(alpha = 0.14f) else AiModuleTheme.colors.surfaceElevated)
             .clickable(onClick = onClick)
             .padding(horizontal = 9.dp, vertical = 6.dp),

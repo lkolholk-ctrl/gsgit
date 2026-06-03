@@ -126,7 +126,7 @@ private fun DiffFileCard(file: GHDiffFile, index: Int, total: Int, commentCount:
     }
 
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius))
             .background(AiModuleTheme.colors.surface).clickable(onClick = onClick)
             .padding(16.dp)
     ) {
@@ -428,7 +428,7 @@ private fun CommentBubble(
 ) {
     Column(
         Modifier.fillMaxWidth().padding(start = 48.dp, end = 8.dp, top = 4.dp, bottom = 4.dp)
-            .clip(RoundedCornerShape(8.dp)).background(AiModuleTheme.colors.surface)
+            .clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface)
             .padding(10.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -492,7 +492,7 @@ fun PRReviewCommentsScreen(
             ) {
                 items(comments) { comment ->
                     Column(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(AiModuleTheme.colors.surface).padding(14.dp)
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).padding(14.dp)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             Text(comment.path.substringAfterLast("/"), fontSize = 12.sp, color = AiModuleTheme.colors.accent, fontWeight = FontWeight.Medium)

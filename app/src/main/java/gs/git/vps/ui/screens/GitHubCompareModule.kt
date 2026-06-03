@@ -203,7 +203,7 @@ private fun CompareSelectorCard(
     onCompare: () -> Unit
 ) {
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(AiModuleTheme.colors.surface).padding(14.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Text("Compare branches", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = AiModuleTheme.colors.textPrimary)
@@ -225,7 +225,7 @@ private fun CompareSelectorCard(
 @Composable
 private fun CompareEmptyState() {
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(AiModuleTheme.colors.surface).padding(16.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Text("Choose two branches", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = AiModuleTheme.colors.textPrimary)
@@ -244,7 +244,7 @@ private fun CompareResultPanel(
 ) {
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Column(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(AiModuleTheme.colors.surface).padding(14.dp),
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -300,7 +300,7 @@ private fun CompareResultPanel(
 @Composable
 private fun CompareMetric(value: String, label: String, color: Color) {
     Row(
-        Modifier.clip(RoundedCornerShape(8.dp)).background(color.copy(alpha = 0.1f)).padding(horizontal = 10.dp, vertical = 6.dp),
+        Modifier.clip(RoundedCornerShape(GitHubControlRadius)).background(color.copy(alpha = 0.1f)).padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
@@ -312,7 +312,7 @@ private fun CompareMetric(value: String, label: String, color: Color) {
 @Composable
 private fun CompareCommitRow(commit: GHCommit) {
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(AiModuleTheme.colors.surface).padding(12.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         Text(commit.message.lineSequence().firstOrNull().orEmpty(), fontSize = 13.sp, color = AiModuleTheme.colors.textPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -327,7 +327,7 @@ private fun CompareCommitRow(commit: GHCommit) {
 private fun CompareFileCard(file: GHDiffFile) {
     val statusColor = diffStatusColor(file.status)
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(AiModuleTheme.colors.surface).padding(12.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(5.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -415,7 +415,7 @@ private fun BranchSelectorDropdown(
                 val active = branch == selected
                 Box(
                     Modifier
-                        .clip(RoundedCornerShape(7.dp))
+                        .clip(RoundedCornerShape(GitHubControlRadius))
                         .background(if (active) AiModuleTheme.colors.accent.copy(alpha = 0.15f) else AiModuleTheme.colors.background)
                         .clickable { onSelect(branch) }
                         .padding(horizontal = 10.dp, vertical = 7.dp)

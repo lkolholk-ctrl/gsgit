@@ -88,8 +88,8 @@ internal fun CodeSearchTab(repo: GHRepo) {
             Box(
                 Modifier
                     .weight(1f)
-                    .clip(RoundedCornerShape(6.dp))
-                    .border(1.dp, palette.border, RoundedCornerShape(6.dp))
+                    .clip(RoundedCornerShape(GitHubControlRadius))
+                    .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
                     .background(palette.surface)
                     .padding(horizontal = 10.dp, vertical = 8.dp),
                 contentAlignment = Alignment.CenterStart,
@@ -118,9 +118,9 @@ internal fun CodeSearchTab(repo: GHRepo) {
             Box(
                 Modifier
                     .size(36.dp)
-                    .clip(RoundedCornerShape(6.dp))
+                    .clip(RoundedCornerShape(GitHubControlRadius))
                     .background(if (query.length >= 2) palette.accent else palette.surface)
-                    .border(1.dp, palette.accent, RoundedCornerShape(6.dp))
+                    .border(1.dp, palette.accent, RoundedCornerShape(GitHubControlRadius))
                     .clickable(enabled = query.length >= 2 && !searching) {
                         searching = true
                         searched = true

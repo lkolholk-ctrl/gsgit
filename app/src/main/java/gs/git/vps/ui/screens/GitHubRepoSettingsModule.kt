@@ -286,7 +286,7 @@ internal fun RepoSettingsScreen(
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             // Branch protection button
                             Row(
-                                Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius))
                                     .background(AiModuleTheme.colors.background)
                                     .clickable { onBranchProtection() }
                                     .padding(12.dp),
@@ -303,7 +303,7 @@ internal fun RepoSettingsScreen(
 
                             // Collaborators button
                             Row(
-                                Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius))
                                     .background(AiModuleTheme.colors.background)
                                     .clickable { onCollaborators() }
                                     .padding(12.dp),
@@ -319,7 +319,7 @@ internal fun RepoSettingsScreen(
                             }
 
                             Row(
-                                Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius))
                                     .background(AiModuleTheme.colors.background)
                                     .clickable { onTeams() }
                                     .padding(12.dp),
@@ -339,7 +339,7 @@ internal fun RepoSettingsScreen(
 
                             // Webhooks button
                             Row(
-                                Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius))
                                     .background(AiModuleTheme.colors.background)
                                     .clickable { onWebhooks() }
                                     .padding(12.dp),
@@ -356,7 +356,7 @@ internal fun RepoSettingsScreen(
 
                             // Discussions button
                             Row(
-                                Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius))
                                     .background(AiModuleTheme.colors.background)
                                     .clickable { onDiscussions() }
                                     .padding(12.dp),
@@ -373,7 +373,7 @@ internal fun RepoSettingsScreen(
 
                             // Rulesets button
                             Row(
-                                Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius))
                                     .background(AiModuleTheme.colors.background)
                                     .clickable { onRulesets() }
                                     .padding(12.dp),
@@ -390,7 +390,7 @@ internal fun RepoSettingsScreen(
 
                             // Security button
                             Row(
-                                Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius))
                                     .background(AiModuleTheme.colors.background)
                                     .clickable { onSecurity() }
                                     .padding(12.dp),
@@ -407,7 +407,7 @@ internal fun RepoSettingsScreen(
 
                             // Archive toggle
                             Row(
-                                Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius))
                                     .background(if (archived) Color(0xFFFF3B30).copy(0.1f) else AiModuleTheme.colors.background)
                                     .clickable { showArchiveConfirm = !archived }
                                     .padding(12.dp),
@@ -742,7 +742,7 @@ private fun RepoSettingsSummaryCard(settings: GHRepoSettings?, tags: List<GHTag>
                     "Unsaved",
                     fontSize = 10.sp,
                     color = Color(0xFFFF9500),
-                    modifier = Modifier.clip(RoundedCornerShape(5.dp)).background(Color(0xFFFF9500).copy(0.12f)).padding(horizontal = 7.dp, vertical = 3.dp)
+                    modifier = Modifier.clip(RoundedCornerShape(GitHubControlRadius)).background(Color(0xFFFF9500).copy(0.12f)).padding(horizontal = 7.dp, vertical = 3.dp)
                 )
             }
         }
@@ -752,7 +752,7 @@ private fun RepoSettingsSummaryCard(settings: GHRepoSettings?, tags: List<GHTag>
                 "Repository is archived and read-only.",
                 fontSize = 12.sp,
                 color = Color(0xFFFF3B30),
-                modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(Color(0xFFFF3B30).copy(0.10f)).padding(horizontal = 10.dp, vertical = 7.dp)
+                modifier = Modifier.clip(RoundedCornerShape(GitHubControlRadius)).background(Color(0xFFFF3B30).copy(0.10f)).padding(horizontal = 10.dp, vertical = 7.dp)
             )
         }
     }
@@ -772,7 +772,7 @@ private fun SectionHeader(title: String, color: Color = AiModuleTheme.colors.tex
 @Composable
 private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(AiModuleTheme.colors.surface).padding(14.dp)
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).padding(14.dp)
     ) {
         content()
     }
@@ -781,7 +781,7 @@ private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
 @Composable
 private fun RepoTagRow(tag: GHTag) {
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(AiModuleTheme.colors.background).padding(horizontal = 10.dp, vertical = 8.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.background).padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -854,7 +854,7 @@ private fun DeployKeysSettingsCard(
 private fun DeployKeyRow(key: GHDeployKey, busy: Boolean, onDelete: (GHDeployKey) -> Unit) {
     val palette = AiModuleTheme.colors
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(palette.background).padding(10.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(palette.background).padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -893,7 +893,7 @@ private fun DeployKeyMiniTag(label: String) {
         fontFamily = JetBrainsMono,
         fontSize = 10.sp,
         modifier = Modifier
-            .clip(RoundedCornerShape(6.dp))
+            .clip(RoundedCornerShape(GitHubControlRadius))
             .background(AiModuleTheme.colors.surfaceElevated)
             .padding(horizontal = 7.dp, vertical = 4.dp),
         maxLines = 1,
@@ -1131,7 +1131,7 @@ internal fun ToggleRow(
     onToggle: (Boolean) -> Unit
 ) {
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius))
             .clickable { onToggle(!checked) }
             .padding(horizontal = 8.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -1155,7 +1155,7 @@ private fun TerminalToggleIndicator(
         fontSize = 12.sp,
         fontWeight = FontWeight.Medium,
         modifier = Modifier
-            .clip(RoundedCornerShape(5.dp))
+            .clip(RoundedCornerShape(GitHubControlRadius))
             .background(color.copy(alpha = 0.10f))
             .padding(horizontal = 8.dp, vertical = 4.dp),
     )
@@ -1171,7 +1171,7 @@ private fun normalizeRepoTopic(value: String): String =
 @Composable
 private fun TopicChip(topic: String, onRemove: () -> Unit) {
     Row(
-        Modifier.clip(RoundedCornerShape(8.dp)).background(AiModuleTheme.colors.accent.copy(0.1f))
+        Modifier.clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.accent.copy(0.1f))
             .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)
