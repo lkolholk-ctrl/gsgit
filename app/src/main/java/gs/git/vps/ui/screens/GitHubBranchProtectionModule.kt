@@ -274,32 +274,14 @@ internal fun BranchProtectionScreen(
                 // Enable/disable protection
                 item {
                     SettingsCard {
-                        Row(
-                            Modifier.fillMaxWidth().clickable { enabled = !enabled }.padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Icon(
-                                if (enabled) Icons.Rounded.Shield else Icons.Rounded.Shield,
-                                null,
-                                Modifier.size(24.dp),
-                                tint = if (enabled) Color(0xFF34C759) else AiModuleTheme.colors.textSecondary
-                            )
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    if (enabled) "Protection enabled" else "Protection disabled",
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = AiModuleTheme.colors.textPrimary
-                                )
-                                Text(
-                                    if (enabled) "Rules are enforced on this branch" else "No rules enforced",
-                                    fontSize = 12.sp,
-                                    color = AiModuleTheme.colors.textMuted
-                                )
-                            }
-                            TerminalToggleIndicator(checked = enabled, tint = Color(0xFF34C759))
-                        }
+                        ProtectionToggleRow(
+                            tag = "bp",
+                            label = if (enabled) "Protection enabled" else "Protection disabled",
+                            description = if (enabled) "Rules are enforced on this branch" else "No rules enforced",
+                            checked = enabled,
+                            onToggle = { enabled = !enabled },
+                            tagColor = Color(0xFF34C759)
+                        )
                     }
                 }
 
@@ -309,18 +291,24 @@ internal fun BranchProtectionScreen(
                     item {
                         SettingsCard {
                             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                ToggleRow(
-                                    "Require status checks",
-                                    requireStatusChecks,
-                                    Icons.Rounded.CheckCircle
-                                ) { requireStatusChecks = it }
+                                ProtectionToggleRow(
+                                    tag = "ci",
+                                    label = "Require status checks",
+                                    description = "Status checks must pass before merging",
+                                    checked = requireStatusChecks,
+                                    onToggle = { requireStatusChecks = it },
+                                    icon = Icons.Rounded.CheckCircle
+                                )
 
                                 if (requireStatusChecks) {
-                                    ToggleRow(
-                                        "Require branches to be up to date",
-                                        statusChecksStrict,
-                                        Icons.Rounded.Update
-                                    ) { statusChecksStrict = it }
+                                    ProtectionToggleRow(
+                                        tag = "up",
+                                        label = "Require branches to be up to date",
+                                        description = "Branch must be up to date with base",
+                                        checked = statusChecksStrict,
+                                        onToggle = { statusChecksStrict = it },
+                                        icon = Icons.Rounded.Update
+                                    )
 
                                     // Contexts
                                     if (statusCheckContexts.isNotEmpty()) {
@@ -369,11 +357,14 @@ internal fun BranchProtectionScreen(
                     item {
                         SettingsCard {
                             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                ToggleRow(
-                                    "Require pull request reviews",
-                                    requirePRReviews,
-                                    Icons.Rounded.Reviews
-                                ) { requirePRReviews = it }
+                                ProtectionToggleRow(
+                                    tag = "rv",
+                                    label = "Require pull request reviews",
+                                    description = "PRs must be reviewed before merging",
+                                    checked = requirePRReviews,
+                                    onToggle = { requirePRReviews = it },
+                                    icon = Icons.Rounded.Reviews
+                                )
 
                                 if (requirePRReviews) {
                                     // Approval count
@@ -382,37 +373,47 @@ internal fun BranchProtectionScreen(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
-                                        Text("Required approvals:", fontSize = 14.sp, color = AiModuleTheme.colors.textPrimary)
-                                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text("approvals:", fontSize = 12.sp, fontFamily = JetBrainsMono, color = AiModuleTheme.colors.textSecondary)
+                                        Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                                             (1..6).forEach { count ->
+                                                val sel = count == requiredApprovalCount
                                                 Box(
-                                                    Modifier.size(32.dp).clip(RoundedCornerShape(GitHubControlRadius))
-                                                        .background(if (count == requiredApprovalCount) AiModuleTheme.colors.accent.copy(0.15f) else AiModuleTheme.colors.background)
-                                                        .clickable { requiredApprovalCount = count },
+                                                    Modifier.clip(RoundedCornerShape(GitHubControlRadius))
+                                                        .border(1.dp, if (sel) AiModuleTheme.colors.accent else AiModuleTheme.colors.border, RoundedCornerShape(GitHubControlRadius))
+                                                        .background(if (sel) AiModuleTheme.colors.accent.copy(0.12f) else Color.Transparent)
+                                                        .clickable { requiredApprovalCount = count }
+                                                        .padding(horizontal = 8.dp, vertical = 4.dp),
                                                     contentAlignment = Alignment.Center
                                                 ) {
                                                     Text(
                                                         "$count",
-                                                        fontSize = 14.sp,
-                                                        fontWeight = if (count == requiredApprovalCount) FontWeight.Bold else FontWeight.Normal,
-                                                        color = if (count == requiredApprovalCount) AiModuleTheme.colors.accent else AiModuleTheme.colors.textPrimary
+                                                        fontSize = 12.sp,
+                                                        fontFamily = JetBrainsMono,
+                                                        fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal,
+                                                        color = if (sel) AiModuleTheme.colors.accent else AiModuleTheme.colors.textPrimary
                                                     )
                                                 }
                                             }
                                         }
                                     }
 
-                                    ToggleRow(
-                                        "Dismiss stale reviews",
-                                        dismissStaleReviews,
-                                        Icons.Rounded.AutoDelete
-                                    ) { dismissStaleReviews = it }
+                                    ProtectionToggleRow(
+                                        tag = "ds",
+                                        label = "Dismiss stale reviews",
+                                        description = "Dismiss approved reviews on new pushes",
+                                        checked = dismissStaleReviews,
+                                        onToggle = { dismissStaleReviews = it },
+                                        icon = Icons.Rounded.AutoDelete
+                                    )
 
-                                    ToggleRow(
-                                        "Require code owner reviews",
-                                        requireCodeOwnerReviews,
-                                        Icons.Rounded.VerifiedUser
-                                    ) { requireCodeOwnerReviews = it }
+                                    ProtectionToggleRow(
+                                        tag = "co",
+                                        label = "Require code owner reviews",
+                                        description = "Code owners must review changes",
+                                        checked = requireCodeOwnerReviews,
+                                        onToggle = { requireCodeOwnerReviews = it },
+                                        icon = Icons.Rounded.VerifiedUser
+                                    )
                                 }
                             }
                         }
@@ -423,52 +424,77 @@ internal fun BranchProtectionScreen(
                     item {
                         SettingsCard {
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                ToggleRow(
-                                    "Allow force pushes",
-                                    allowForcePushes,
-                                    Icons.Rounded.FlashOn
-                                ) { allowForcePushes = it }
-
-                                ToggleRow(
-                                    "Allow deletions",
-                                    allowDeletions,
-                                    Icons.Rounded.Delete
-                                ) { allowDeletions = it }
-
-                                ToggleRow(
-                                    "Require conversation resolution",
-                                    requireConversationResolution,
-                                    Icons.Rounded.MarkChatRead
-                                ) { requireConversationResolution = it }
-
-                                ToggleRow(
-                                    "Enforce for admins",
-                                    enforceAdmins,
-                                    Icons.Rounded.AdminPanelSettings
-                                ) { enforceAdmins = it }
-
-                                SignatureProtectionRow(
-                                    enabled = requireSignatures,
-                                    onToggle = { requireSignatures = !requireSignatures }
+                                ProtectionToggleRow(
+                                    tag = "fp",
+                                    label = "Allow force pushes",
+                                    description = "Permit force pushes to this branch",
+                                    checked = allowForcePushes,
+                                    onToggle = { allowForcePushes = it },
+                                    icon = Icons.Rounded.FlashOn
                                 )
 
-                                ToggleRow(
-                                    "Require linear history",
-                                    requiredLinearHistory,
-                                    Icons.Rounded.MergeType
-                                ) { requiredLinearHistory = it }
+                                ProtectionToggleRow(
+                                    tag = "dl",
+                                    label = "Allow deletions",
+                                    description = "Permit branch deletions",
+                                    checked = allowDeletions,
+                                    onToggle = { allowDeletions = it },
+                                    icon = Icons.Rounded.Delete
+                                )
 
-                                ToggleRow(
-                                    "Block creations",
-                                    blockCreations,
-                                    Icons.Rounded.Block
-                                ) { blockCreations = it }
+                                ProtectionToggleRow(
+                                    tag = "cr",
+                                    label = "Require conversation resolution",
+                                    description = "All conversations must be resolved before merge",
+                                    checked = requireConversationResolution,
+                                    onToggle = { requireConversationResolution = it },
+                                    icon = Icons.Rounded.MarkChatRead
+                                )
 
-                                ToggleRow(
-                                    "Lock branch",
-                                    lockBranch,
-                                    Icons.Rounded.Lock
-                                ) { lockBranch = it }
+                                ProtectionToggleRow(
+                                    tag = "ad",
+                                    label = "Enforce for admins",
+                                    description = "Rules apply to repository admins too",
+                                    checked = enforceAdmins,
+                                    onToggle = { enforceAdmins = it },
+                                    icon = Icons.Rounded.AdminPanelSettings
+                                )
+
+                                ProtectionToggleRow(
+                                    tag = "sig",
+                                    label = "Require signed commits",
+                                    description = "Reject unsigned commits on this protected branch",
+                                    checked = requireSignatures,
+                                    onToggle = { requireSignatures = !requireSignatures },
+                                    icon = Icons.Rounded.Verified
+                                )
+
+                                ProtectionToggleRow(
+                                    tag = "lh",
+                                    label = "Require linear history",
+                                    description = "Only allow merge commits or squash merging",
+                                    checked = requiredLinearHistory,
+                                    onToggle = { requiredLinearHistory = it },
+                                    icon = Icons.Rounded.MergeType
+                                )
+
+                                ProtectionToggleRow(
+                                    tag = "bc",
+                                    label = "Block creations",
+                                    description = "Prevent new branch creations matching patterns",
+                                    checked = blockCreations,
+                                    onToggle = { blockCreations = it },
+                                    icon = Icons.Rounded.Block
+                                )
+
+                                ProtectionToggleRow(
+                                    tag = "lk",
+                                    label = "Lock branch",
+                                    description = "Branch is read-only, no pushes allowed",
+                                    checked = lockBranch,
+                                    onToggle = { lockBranch = it },
+                                    icon = Icons.Rounded.Lock
+                                )
                             }
                         }
                     }
@@ -577,9 +603,16 @@ private data class BranchProtectionEditState(
 private fun BranchProtectionSummaryCard(branch: String, state: BranchProtectionEditState, hasUnsavedChanges: Boolean) {
     SettingsCard {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Icon(Icons.Rounded.Shield, null, Modifier.size(22.dp), tint = if (state.enabled) Color(0xFF34C759) else AiModuleTheme.colors.textSecondary)
+            Text(
+                "bp",
+                fontSize = 13.sp,
+                fontFamily = JetBrainsMono,
+                fontWeight = FontWeight.SemiBold,
+                color = if (state.enabled) Color(0xFF34C759) else AiModuleTheme.colors.textSecondary,
+                modifier = Modifier.width(24.dp)
+            )
             Column(Modifier.weight(1f)) {
-                Text(branch, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = AiModuleTheme.colors.textPrimary)
+                Text(branch, fontSize = 14.sp, fontFamily = JetBrainsMono, fontWeight = FontWeight.SemiBold, color = AiModuleTheme.colors.textPrimary)
                 Text(
                     if (state.enabled) "${state.statusCheckContexts.size} checks · ${if (state.requirePRReviews) "${state.requiredApprovalCount} approvals" else "no review requirement"}"
                     else "No branch protection enabled",
@@ -589,10 +622,11 @@ private fun BranchProtectionSummaryCard(branch: String, state: BranchProtectionE
             }
             if (hasUnsavedChanges) {
                 Text(
-                    "Unsaved",
+                    "unsaved",
                     fontSize = 10.sp,
+                    fontFamily = JetBrainsMono,
                     color = Color(0xFFFF9500),
-                    modifier = Modifier.clip(RoundedCornerShape(GitHubControlRadius)).background(Color(0xFFFF9500).copy(0.12f)).padding(horizontal = 7.dp, vertical = 3.dp)
+                    modifier = Modifier.clip(RoundedCornerShape(GitHubControlRadius)).border(1.dp, Color(0xFFFF9500), RoundedCornerShape(GitHubControlRadius)).background(Color(0xFFFF9500).copy(0.10f)).padding(horizontal = 6.dp, vertical = 2.dp)
                 )
             }
         }
@@ -615,84 +649,87 @@ private fun BranchProtectionSummaryCard(branch: String, state: BranchProtectionE
 
 @Composable
 private fun MiniProtectionBadge(label: String, color: Color) {
-    Text(
-        label,
-        fontSize = 10.sp,
-        color = color,
-        modifier = Modifier.clip(RoundedCornerShape(GitHubControlRadius)).background(color.copy(0.10f)).padding(horizontal = 7.dp, vertical = 3.dp)
-    )
+    Box(
+        Modifier.clip(RoundedCornerShape(GitHubControlRadius))
+            .border(1.dp, color, RoundedCornerShape(GitHubControlRadius))
+            .background(color.copy(0.08f))
+            .padding(horizontal = 6.dp, vertical = 2.dp)
+    ) {
+        Text(label, fontSize = 10.sp, fontFamily = JetBrainsMono, color = color, fontWeight = FontWeight.Medium)
+    }
 }
 
 @Composable
 private fun BranchChip(name: String, selected: Boolean, protected: Boolean, onClick: () -> Unit) {
+    val colors = AiModuleTheme.colors
+    val tint = if (selected) colors.accent else colors.textSecondary
     Row(
         Modifier.clip(RoundedCornerShape(GitHubControlRadius))
-            .background(if (selected) AiModuleTheme.colors.accent.copy(0.15f) else AiModuleTheme.colors.surface)
+            .border(1.dp, tint, RoundedCornerShape(GitHubControlRadius))
+            .background(if (selected) tint.copy(0.12f) else Color.Transparent)
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = 10.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
+        horizontalArrangement = Arrangement.spacedBy(5.dp)
     ) {
-        Icon(
-            Icons.Rounded.AccountTree,
-            null,
-            Modifier.size(14.dp),
-            tint = if (selected) AiModuleTheme.colors.accent else AiModuleTheme.colors.textSecondary
-        )
-        Text(name, fontSize = 13.sp, color = if (selected) AiModuleTheme.colors.accent else AiModuleTheme.colors.textPrimary)
+        Text(name, fontSize = 12.sp, fontFamily = JetBrainsMono, fontWeight = FontWeight.Medium, color = tint)
         if (protected) {
-            Icon(
-                Icons.Rounded.Shield,
-                null,
-                Modifier.size(12.dp),
-                tint = Color(0xFF34C759)
-            )
+            Text("●", fontSize = 8.sp, color = Color(0xFF34C759))
         }
     }
 }
 
 @Composable
 private fun ContextChip(name: String, onRemove: () -> Unit) {
+    val colors = AiModuleTheme.colors
     Row(
-        Modifier.clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.accent.copy(0.1f))
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+        Modifier.clip(RoundedCornerShape(GitHubControlRadius))
+            .border(1.dp, colors.accent, RoundedCornerShape(GitHubControlRadius))
+            .background(colors.accent.copy(0.08f))
+            .padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        Text(name, fontSize = 12.sp, color = AiModuleTheme.colors.accent, fontWeight = FontWeight.Medium)
-        Icon(
-            Icons.Rounded.Close,
-            null,
-            Modifier.size(14.dp).clickable { onRemove() },
-            tint = AiModuleTheme.colors.accent
-        )
+        Text(name, fontSize = 11.sp, fontFamily = JetBrainsMono, color = colors.accent, fontWeight = FontWeight.Medium)
+        Text("×", fontSize = 12.sp, fontFamily = JetBrainsMono, color = colors.accent, modifier = Modifier.clickable { onRemove() })
     }
 }
 
 @Composable
-private fun SignatureProtectionRow(enabled: Boolean, onToggle: () -> Unit) {
+private fun ProtectionToggleRow(
+    tag: String,
+    label: String,
+    description: String,
+    checked: Boolean,
+    onToggle: (Boolean) -> Unit,
+    tagColor: Color = AiModuleTheme.colors.accent,
+    icon: ImageVector? = null
+) {
     val palette = AiModuleTheme.colors
     Row(
-        Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onToggle)
-            .padding(vertical = 8.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius))
+            .clickable { onToggle(!checked) }
+            .padding(horizontal = 8.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text(
-            "sig",
-            fontSize = 12.sp,
-            fontFamily = JetBrainsMono,
-            fontWeight = FontWeight.SemiBold,
-            color = if (enabled) palette.accent else palette.textSecondary,
-            modifier = Modifier.width(24.dp),
-        )
-        Column(Modifier.weight(1f)) {
-            Text("Require signed commits", fontSize = 14.sp, color = palette.textPrimary)
-            Text("Reject unsigned commits on this protected branch", fontSize = 11.sp, color = palette.textMuted)
+        if (icon != null) {
+            Icon(icon, null, Modifier.size(20.dp), tint = if (checked) tagColor else palette.textSecondary)
+        } else {
+            Text(
+                tag,
+                fontSize = 12.sp,
+                fontFamily = JetBrainsMono,
+                fontWeight = FontWeight.SemiBold,
+                color = if (checked) tagColor else palette.textSecondary,
+                modifier = Modifier.width(24.dp),
+            )
         }
-        TerminalToggleIndicator(checked = enabled, tint = palette.accent)
+        Column(Modifier.weight(1f)) {
+            Text(label, fontSize = 14.sp, color = palette.textPrimary)
+            Text(description, fontSize = 11.sp, color = palette.textMuted)
+        }
+        TerminalToggleIndicator(checked = checked, tint = if (checked) tagColor else palette.accent)
     }
 }
 
