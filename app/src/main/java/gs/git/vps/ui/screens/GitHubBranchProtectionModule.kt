@@ -737,14 +737,19 @@ private fun ProtectionToggleRow(
 
 @Composable
 private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
+    val colors = AiModuleTheme.colors
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).padding(16.dp)
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(GitHubControlRadius))
+            .background(colors.surface)
+            .border(1.dp, colors.border, RoundedCornerShape(GitHubControlRadius))
+            .padding(16.dp)
     ) { content() }
 }
 
 @Composable
-private fun SectionHeader(title: String, color: Color = AiModuleTheme.colors.textPrimary) {
-    Text(title, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = color, modifier = Modifier.padding(bottom = 8.dp))
+private fun SectionHeader(title: String) {
+    AiModuleSectionLabel(text = title, modifier = Modifier.padding(bottom = 4.dp))
 }
 
 @Composable
