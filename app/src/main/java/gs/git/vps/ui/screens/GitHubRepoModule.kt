@@ -4155,7 +4155,7 @@ private fun ReadmeText(text: String, modifier: Modifier = Modifier, onLinkClick:
     val segments = remember(text) { readmeInlineSegments(text) }
     if (segments.size == 1 && segments.first() is ReadmeInlineSegment.Text) {
         val annotated = readmeInlineAnnotated(text)
-        Text(
+        androidx.compose.material3.Text(
             text = annotated,
             modifier = modifier,
             style = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = AiModuleTheme.colors.textPrimary, lineHeight = 19.sp)
@@ -4179,7 +4179,7 @@ private fun ReadmeText(text: String, modifier: Modifier = Modifier, onLinkClick:
                     }
                     is ReadmeInlineSegment.Text -> {
                         val annotated = readmeInlineAnnotated(segment.text)
-                        Text(
+                        androidx.compose.material3.Text(
                             text = annotated,
                             style = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = AiModuleTheme.colors.textPrimary, lineHeight = 19.sp)
                         )
@@ -4522,22 +4522,22 @@ private fun readmeInlineAnnotated(text: String): AnnotatedString {
                     if (closeParen > 0) {
                         val label = clean.substring(i + 1, closeBracket)
                         val url = clean.substring(openParen + 1, closeParen).substringBefore(' ').trim()
-                        pushLinkAnnotation(LinkAnnotation.Url(url))
+                        val start = length
                         pushStyle(androidx.compose.ui.text.SpanStyle(color = colors.accent, fontWeight = FontWeight.Medium, textDecoration = TextDecoration.Underline))
                         append(label)
                         pop()
-                        pop()
+                        addLink(LinkAnnotation.Url(url), start, length)
                         i = closeParen + 1
                     } else append(clean[i++])
                 }
                 README_PLAIN_URL_REGEX.find(clean, i)?.range?.first == i -> {
                     val rawUrl = README_PLAIN_URL_REGEX.find(clean, i)!!.value
                     val url = rawUrl.trimEnd('.', ',', ';', ':')
-                    pushLinkAnnotation(LinkAnnotation.Url(url))
+                    val start = length
                     pushStyle(androidx.compose.ui.text.SpanStyle(color = colors.accent, fontWeight = FontWeight.Medium, textDecoration = TextDecoration.Underline))
                     append(url)
                     pop()
-                    pop()
+                    addLink(LinkAnnotation.Url(url), start, length)
                     val trailing = rawUrl.drop(url.length)
                     if (trailing.isNotEmpty()) append(trailing)
                     i += rawUrl.length

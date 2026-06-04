@@ -284,7 +284,7 @@ private fun RenderMarkdownBlock(block: MarkdownBlock) {
             }
         }
         is MarkdownBlock.Paragraph -> {
-            Text(
+            androidx.compose.material3.Text(
                 text = buildMdAnnotated(block.text, palette),
                 style = TextStyle(
                     color = palette.textPrimary,
@@ -368,7 +368,7 @@ private fun RenderMarkdownBlock(block: MarkdownBlock) {
                     color = palette.accent,
                     fontFamily = JetBrainsMono
                 )
-                Text(
+                androidx.compose.material3.Text(
                     text = buildMdAnnotated(block.text, palette),
                     style = TextStyle(
                         color = palette.textPrimary,
@@ -506,11 +506,11 @@ internal fun buildMdAnnotated(text: String, palette: gs.git.vps.ui.theme.AiModul
                     if (closeParen > 0) {
                         val linkText = text.substring(i + 1, closeBracket)
                         val url = text.substring(openParen + 1, closeParen)
+                        val start = length
                         pushStyle(androidx.compose.ui.text.SpanStyle(color = linkColor, textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline))
-                        pushLinkAnnotation(LinkAnnotation.Url(url))
                         append(linkText)
                         pop()
-                        pop()
+                        addLink(LinkAnnotation.Url(url), start, length)
                         i = closeParen + 1
                     } else {
                         append(text[i])
