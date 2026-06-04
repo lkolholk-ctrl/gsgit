@@ -2482,6 +2482,115 @@ object GitHubManager {
         return request(context, "/repos/$owner/$repo/actions/secrets/$encodedName", "DELETE").let { it.code == 204 || it.success }
     }
 
+    // ═══════════════════════════════════
+    // Environments
+    // ═══════════════════════════════════
+
+    suspend fun getEnvironments(context: Context, owner: String, repo: String): List<GHEnvironment> {
+        val r = request(context, "/repos/$owner/$repo/environments?per_page=100")
+        if (!r.success) return emptyList()
+        return try {
+            val arr = JSONObject(r.body).optJSONArray("environments") ?: JSONArray()
+            (0 until arr.length()).map { i -> parseEnvironment(arr.getJSONObject(i)) }
+        } catch (e: Exception) { emptyList() }
+    }
+
+    suspend fun getEnvironment(context: Context, owner: String, repo: String, envName: String): GHEnvironment? {
+        val encoded = URLEncoder.encode(envName, "UTF-8")
+        val r = request(context, "/repos/$owner/$repo/environments/$encoded")
+        if (!r.success) return null
+        return try { parseEnvironment(JSONObject(r.body)) } catch (e: Exception) { null }
+    }
+
+    suspend fun createOrUpdateEnvironment(context: Context, owner: String, repo: String, envName: String, waitTimer: Int = 0, reviewers: List<Long> = emptyList(), deploymentBranchPolicy: String? = null): GHEnvironment? {
+        val encoded = URLEncoder.encode(envName, "UTF-8")
+        val body = JSONObject().apply {
+            if (waitTimer > 0) put("wait_timer", waitTimer)
+            if (reviewers.isNotEmpty()) {
+                val arr = JSONArray()
+                reviewers.forEach { arr.put(JSONObject().put("id", it).put("type", "User")) }
+                put("reviewers", arr)
+            }
+            if (deploymentBranchPolicy != null) {
+                put("deployment_branch_policy", JSONObject().put("protected_branches", deploymentBranchPolicy == "protected").put("custom_branch_policies", deploymentBranchPolicy == "custom"))
+            }
+        }.toString()
+        val r = request(context, "/repos/$owner/$repo/environments/$encoded", "PUT", body)
+        if (!r.success) return null
+        return try { parseEnvironment(JSONObject(r.body)) } catch (e: Exception) { null }
+    }
+
+    suspend fun deleteEnvironment(context: Context, owner: String, repo: String, envName: String): Boolean {
+        val encoded = URLEncoder.encode(envName, "UTF-8")
+        return request(context, "/repos/$owner/$repo/environments/$encoded", "DELETE").let { it.code == 204 || it.success }
+    }
+
+    private fun parseEnvironment(j: JSONObject): GHEnvironment {
+        val rules = j.optJSONArray("protection_rules") ?: JSONArray()
+        val protectionRules = (0 until rules.length()).mapNotNull { i ->
+            try {
+                val r = rules.getJSONObject(i)
+                GHEnvironmentProtectionRule(r.optLong("id", 0), r.optString("type", ""), r.optBoolean("enabled", false))
+            } catch (e: Exception) { null }
+        }
+        val dbp = j.optJSONObject("deployment_branch_policy")
+        val deploymentBranchPolicy = if (dbp != null) GHDeploymentBranchPolicy(dbp.optBoolean("protected_branches", false), dbp.optBoolean("custom_branch_policies", false)) else null
+        return GHEnvironment(
+            id = j.optLong("id", 0),
+            name = j.optString("name", ""),
+            url = j.optString("url", ""),
+            htmlUrl = j.optString("html_url", ""),
+            createdAt = j.optString("created_at", ""),
+            updatedAt = j.optString("updated_at", ""),
+            protectionRules = protectionRules,
+            deploymentBranchPolicy = deploymentBranchPolicy
+        )
+    }
+
+    // ═══════════════════════════════════
+    // Environment Secrets
+    // ═══════════════════════════════════
+
+    suspend fun getEnvironmentSecrets(context: Context, owner: String, repo: String, envName: String): List<GHEnvironmentSecret> {
+        val encoded = URLEncoder.encode(envName, "UTF-8")
+        val r = request(context, "/repos/$owner/$repo/environments/$encoded/secrets?per_page=100")
+        if (!r.success) return emptyList()
+        return try {
+            val arr = JSONObject(r.body).optJSONArray("secrets") ?: JSONArray()
+            (0 until arr.length()).map { i ->
+                val j = arr.getJSONObject(i)
+                GHEnvironmentSecret(j.optString("name"), j.optString("created_at", ""), j.optString("updated_at", ""))
+            }
+        } catch (e: Exception) { emptyList() }
+    }
+
+    suspend fun createOrUpdateEnvironmentSecret(context: Context, owner: String, repo: String, envName: String, secretName: String, value: String): Boolean {
+        return try {
+            val encodedEnv = URLEncoder.encode(envName, "UTF-8")
+            val encodedSecret = URLEncoder.encode(secretName, "UTF-8")
+            val pubKey = getRepoActionsPublicKey(context, owner, repo) ?: return false
+            val encrypted = withContext(Dispatchers.Default) {
+                GitHubSecretCrypto.encryptSecret(pubKey.key, value)
+            }
+            val body = JSONObject().apply {
+                put("encrypted_value", encrypted)
+                put("key_id", pubKey.keyId)
+            }.toString()
+            request(context, "/repos/$owner/$repo/environments/$encodedEnv/secrets/$encodedSecret", "PUT", body).let {
+                it.code == 201 || it.code == 204 || it.success
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Save env secret: ${e.message}")
+            false
+        }
+    }
+
+    suspend fun deleteEnvironmentSecret(context: Context, owner: String, repo: String, envName: String, secretName: String): Boolean {
+        val encodedEnv = URLEncoder.encode(envName, "UTF-8")
+        val encodedSecret = URLEncoder.encode(secretName, "UTF-8")
+        return request(context, "/repos/$owner/$repo/environments/$encodedEnv/secrets/$encodedSecret", "DELETE").let { it.code == 204 || it.success }
+    }
+
     suspend fun getRepoActionsVariables(context: Context, owner: String, repo: String): List<GHActionVariable> {
         val r = request(context, "/repos/$owner/$repo/actions/variables?per_page=100")
         if (!r.success) return emptyList()
@@ -7656,4 +7765,32 @@ data class GHLicenseDetail(
     val body: String,
     val htmlUrl: String,
     val featured: Boolean
+)
+
+data class GHEnvironment(
+    val id: Long,
+    val name: String,
+    val url: String,
+    val htmlUrl: String,
+    val createdAt: String,
+    val updatedAt: String,
+    val protectionRules: List<GHEnvironmentProtectionRule>,
+    val deploymentBranchPolicy: GHDeploymentBranchPolicy?
+)
+
+data class GHEnvironmentProtectionRule(
+    val id: Long,
+    val type: String,
+    val enabled: Boolean
+)
+
+data class GHDeploymentBranchPolicy(
+    val protectedBranches: Boolean,
+    val customBranchPolicies: Boolean
+)
+
+data class GHEnvironmentSecret(
+    val name: String,
+    val createdAt: String,
+    val updatedAt: String
 )
