@@ -27,6 +27,7 @@ import gs.git.vps.ui.components.AiModuleIcon as Icon
 import gs.git.vps.ui.components.AiModulePageBar
 import gs.git.vps.ui.components.AiModuleHairline
 import gs.git.vps.ui.components.AiModulePillButton
+import gs.git.vps.ui.components.AiModuleSectionLabel
 import gs.git.vps.ui.components.AiModuleSpinner
 import gs.git.vps.ui.components.AiModuleText as Text
 import gs.git.vps.ui.components.AiModuleTextAction
