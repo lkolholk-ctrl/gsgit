@@ -210,7 +210,7 @@ private fun CompareSelectorCard(
         Text("Compare branches", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = AiModuleTheme.colors.textPrimary)
         BranchSelectorDropdown(branches, baseBranch, onBaseChange, "Base")
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-            Icon(Icons.AutoMirrored.Rounded.ArrowForward, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.textMuted)
+            Icon(Icons.Rounded.ArrowForward, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.textMuted)
         }
         BranchSelectorDropdown(branches, headBranch, onHeadChange, "Compare")
         AiModulePillButton(
@@ -218,7 +218,7 @@ private fun CompareSelectorCard(
             onClick = onCompare,
             enabled = branches.isNotEmpty() && baseBranch.isNotBlank() && headBranch.isNotBlank() && baseBranch != headBranch && !loading,
             modifier = Modifier.fillMaxWidth(),
-            leadingIcon = Icons.AutoMirrored.Rounded.CompareArrows,
+            leadingIcon = Icons.Rounded.CompareArrows,
         )
     }
 }

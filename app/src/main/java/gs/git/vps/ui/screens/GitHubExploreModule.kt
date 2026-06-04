@@ -362,7 +362,7 @@ private fun OrgRow(org: GHOrg, onClick: () -> Unit) {
             }
         }
         Icon(
-            Icons.AutoMirrored.Rounded.ArrowForward,
+            Icons.Rounded.ArrowForward,
             contentDescription = null,
             modifier = Modifier.size(14.dp),
             tint = palette.textSecondary,
