@@ -77,6 +77,7 @@ import gs.git.vps.ui.components.AiModuleText as Text
 import gs.git.vps.ui.components.AiModuleTextAction
 import gs.git.vps.ui.components.AiModuleTextField
 import gs.git.vps.ui.theme.*
+import gs.git.vps.util.MdTranslator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -3520,6 +3521,8 @@ private fun ReadmeHtmlDocument(
     val context = LocalContext.current
     val colors = AiModuleTheme.colors
     val scope = rememberCoroutineScope()
+    var translating by remember { mutableStateOf(false) }
+    var isTranslated by remember { mutableStateOf(false) }
     
     val bgHex = colors.background.toHex()
     val textHex = colors.textPrimary.toHex()
@@ -3625,6 +3628,100 @@ private fun ReadmeHtmlDocument(
                     fontSize = 11.sp,
                     fontFamily = JetBrainsMono,
                     fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
+        // Translate button
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(16.dp)
+                .clip(RoundedCornerShape(GitHubControlRadius))
+                .border(1.dp, if (isTranslated) colors.accent else colors.border, RoundedCornerShape(GitHubControlRadius))
+                .background(if (isTranslated) colors.accent.copy(alpha = 0.12f) else colors.surface.copy(alpha = 0.90f))
+                .clickable(enabled = !translating) {
+                    if (isTranslated) {
+                        activeWebView?.loadDataWithBaseURL(baseUrl, pageHtml, "text/html", "UTF-8", null)
+                        isTranslated = false
+                    } else {
+                        translating = true
+                        scope.launch {
+                            val ok = MdTranslator.ensureModelDownloaded()
+                            if (!ok) {
+                                translating = false
+                                Toast.makeText(context, "Failed to download translation model", Toast.LENGTH_SHORT).show()
+                                return@launch
+                            }
+                            val wv = activeWebView
+                            if (wv == null) { translating = false; return@launch }
+                            // Extract text nodes via JS, translate, inject back
+                            wv.evaluateJavascript("""
+                                (function() {
+                                    var nodes = [];
+                                    var walker = document.createTreeWalker(
+                                        document.querySelector('.markdown-body') || document.body,
+                                        NodeFilter.SHOW_TEXT,
+                                        null
+                                    );
+                                    while (walker.nextNode()) {
+                                        var t = walker.currentNode.textContent.trim();
+                                        if (t.length > 0 && walker.currentNode.parentElement.tagName !== 'CODE' && walker.currentNode.parentElement.tagName !== 'PRE' && walker.currentNode.parentElement.tagName !== 'KBD' && walker.currentNode.parentElement.tagName !== 'A') {
+                                            nodes.push(t);
+                                        }
+                                    }
+                                    return JSON.stringify(nodes);
+                                })()
+                            """.trimIndent()) { result ->
+                                val json = result?.trim()?.removeSurrounding("\"") ?: run { translating = false; return@evaluateJavascript }
+                                val texts = try { org.json.JSONArray(json) } catch (e: Exception) { translating = false; return@evaluateJavascript }
+                                scope.launch {
+                                    val translated = (0 until texts.length()).map { i ->
+                                        MdTranslator.translateText(texts.getString(i))
+                                    }
+                                    val escJson = org.json.JSONArray(translated).toString()
+                                        .replace("\\", "\\\\")
+                                        .replace("'", "\\'")
+                                        .replace("\n", "\\n")
+                                    wv.post {
+                                        wv.evaluateJavascript("""
+                                            (function() {
+                                                var translated = JSON.parse('$escJson');
+                                                var idx = 0;
+                                                var walker = document.createTreeWalker(
+                                                    document.querySelector('.markdown-body') || document.body,
+                                                    NodeFilter.SHOW_TEXT,
+                                                    null
+                                                );
+                                                while (walker.nextNode()) {
+                                                    var t = walker.currentNode.textContent.trim();
+                                                    if (t.length > 0 && walker.currentNode.parentElement.tagName !== 'CODE' && walker.currentNode.parentElement.tagName !== 'PRE' && walker.currentNode.parentElement.tagName !== 'KBD' && walker.currentNode.parentElement.tagName !== 'A') {
+                                                        walker.currentNode.textContent = translated[idx] || t;
+                                                        idx++;
+                                                    }
+                                                }
+                                            })()
+                                        """.trimIndent()) {
+                                            isTranslated = true
+                                            translating = false
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(horizontal = 10.dp, vertical = 6.dp)
+        ) {
+            if (translating) {
+                AiModuleSpinner()
+            } else {
+                Text(
+                    text = if (isTranslated) "[ ru ]" else "[ en→ru ]",
+                    color = if (isTranslated) colors.accent else colors.textSecondary,
+                    fontSize = 11.sp,
+                    fontFamily = JetBrainsMono,
+                    fontWeight = FontWeight.Medium
                 )
             }
         }
