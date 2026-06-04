@@ -3523,6 +3523,9 @@ private fun ReadmeHtmlDocument(
     val scope = rememberCoroutineScope()
     var translating by remember { mutableStateOf(false) }
     var isTranslated by remember { mutableStateOf(false) }
+    var showLangPicker by remember { mutableStateOf(false) }
+    var selectedLangCode by remember { mutableStateOf<String?>(null) }
+    var downloadingModel by remember { mutableStateOf(false) }
     
     val bgHex = colors.background.toHex()
     val textHex = colors.textPrimary.toHex()
@@ -3640,90 +3643,140 @@ private fun ReadmeHtmlDocument(
                 .clip(RoundedCornerShape(GitHubControlRadius))
                 .border(1.dp, if (isTranslated) colors.accent else colors.border, RoundedCornerShape(GitHubControlRadius))
                 .background(if (isTranslated) colors.accent.copy(alpha = 0.12f) else colors.surface.copy(alpha = 0.90f))
-                .clickable(enabled = !translating) {
+                .clickable(enabled = !translating && !downloadingModel) {
                     if (isTranslated) {
                         activeWebView?.loadDataWithBaseURL(baseUrl, pageHtml, "text/html", "UTF-8", null)
                         isTranslated = false
+                        selectedLangCode = null
                     } else {
-                        translating = true
-                        scope.launch {
-                            val ok = MdTranslator.ensureModelDownloaded()
-                            if (!ok) {
-                                translating = false
-                                Toast.makeText(context, "Failed to download translation model", Toast.LENGTH_SHORT).show()
-                                return@launch
-                            }
-                            val wv = activeWebView
-                            if (wv == null) { translating = false; return@launch }
-                            // Extract text nodes via JS, translate, inject back
-                            wv.evaluateJavascript("""
-                                (function() {
-                                    var nodes = [];
-                                    var walker = document.createTreeWalker(
-                                        document.querySelector('.markdown-body') || document.body,
-                                        NodeFilter.SHOW_TEXT,
-                                        null
-                                    );
-                                    while (walker.nextNode()) {
-                                        var t = walker.currentNode.textContent.trim();
-                                        if (t.length > 0 && walker.currentNode.parentElement.tagName !== 'CODE' && walker.currentNode.parentElement.tagName !== 'PRE' && walker.currentNode.parentElement.tagName !== 'KBD' && walker.currentNode.parentElement.tagName !== 'A') {
-                                            nodes.push(t);
-                                        }
-                                    }
-                                    return JSON.stringify(nodes);
-                                })()
-                            """.trimIndent()) { result ->
-                                val json = result?.trim()?.removeSurrounding("\"") ?: run { translating = false; return@evaluateJavascript }
-                                val texts = try { org.json.JSONArray(json) } catch (e: Exception) { translating = false; return@evaluateJavascript }
-                                scope.launch {
-                                    val translated = (0 until texts.length()).map { i ->
-                                        MdTranslator.translateText(texts.getString(i))
-                                    }
-                                    val escJson = org.json.JSONArray(translated).toString()
-                                        .replace("\\", "\\\\")
-                                        .replace("'", "\\'")
-                                        .replace("\n", "\\n")
-                                    wv.post {
-                                        wv.evaluateJavascript("""
-                                            (function() {
-                                                var translated = JSON.parse('$escJson');
-                                                var idx = 0;
-                                                var walker = document.createTreeWalker(
-                                                    document.querySelector('.markdown-body') || document.body,
-                                                    NodeFilter.SHOW_TEXT,
-                                                    null
-                                                );
-                                                while (walker.nextNode()) {
-                                                    var t = walker.currentNode.textContent.trim();
-                                                    if (t.length > 0 && walker.currentNode.parentElement.tagName !== 'CODE' && walker.currentNode.parentElement.tagName !== 'PRE' && walker.currentNode.parentElement.tagName !== 'KBD' && walker.currentNode.parentElement.tagName !== 'A') {
-                                                        walker.currentNode.textContent = translated[idx] || t;
-                                                        idx++;
-                                                    }
-                                                }
-                                            })()
-                                        """.trimIndent()) {
-                                            isTranslated = true
-                                            translating = false
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        showLangPicker = true
                     }
                 }
                 .padding(horizontal = 10.dp, vertical = 6.dp)
         ) {
-            if (translating) {
+            if (translating || downloadingModel) {
                 AiModuleSpinner()
             } else {
+                val label = if (isTranslated && selectedLangCode != null) {
+                    "[ ${MdTranslator.langByCode(selectedLangCode!!).name.take(2).lowercase()} ]"
+                } else "[ translate ]"
                 Text(
-                    text = if (isTranslated) "[ ru ]" else "[ en→ru ]",
+                    text = label,
                     color = if (isTranslated) colors.accent else colors.textSecondary,
                     fontSize = 11.sp,
                     fontFamily = JetBrainsMono,
                     fontWeight = FontWeight.Medium
                 )
             }
+        }
+
+        if (showLangPicker) {
+            AiModuleAlertDialog(
+                onDismissRequest = { showLangPicker = false },
+                title = "translate to",
+                content = {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 350.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        items(MdTranslator.availableLanguages.size) { idx ->
+                            val lang = MdTranslator.availableLanguages[idx]
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(GitHubControlRadius))
+                                    .border(1.dp, colors.border, RoundedCornerShape(GitHubControlRadius))
+                                    .clickable {
+                                        showLangPicker = false
+                                        selectedLangCode = lang.code
+                                        downloadingModel = true
+                                        scope.launch {
+                                            val ok = MdTranslator.downloadModel(
+                                                from = com.google.mlkit.nl.translate.TranslateLanguage.ENGLISH,
+                                                to = lang.code
+                                            )
+                                            if (!ok) {
+                                                downloadingModel = false
+                                                Toast.makeText(context, "Failed to download ${lang.name} model", Toast.LENGTH_SHORT).show()
+                                                return@launch
+                                            }
+                                            downloadingModel = false
+                                            translating = true
+                                            val wv = activeWebView
+                                            if (wv == null) { translating = false; return@launch }
+                                            wv.evaluateJavascript("""
+                                                (function() {
+                                                    var nodes = [];
+                                                    var walker = document.createTreeWalker(
+                                                        document.querySelector('.markdown-body') || document.body,
+                                                        NodeFilter.SHOW_TEXT,
+                                                        null
+                                                    );
+                                                    while (walker.nextNode()) {
+                                                        var t = walker.currentNode.textContent.trim();
+                                                        if (t.length > 0 && walker.currentNode.parentElement.tagName !== 'CODE' && walker.currentNode.parentElement.tagName !== 'PRE' && walker.currentNode.parentElement.tagName !== 'KBD' && walker.currentNode.parentElement.tagName !== 'A') {
+                                                            nodes.push(t);
+                                                        }
+                                                    }
+                                                    return JSON.stringify(nodes);
+                                                })()
+                                            """.trimIndent()) { result ->
+                                                val json = result?.trim()?.removeSurrounding("\"") ?: run { translating = false; return@evaluateJavascript }
+                                                val texts = try { org.json.JSONArray(json) } catch (e: Exception) { translating = false; return@evaluateJavascript }
+                                                scope.launch {
+                                                    val translated = (0 until texts.length()).map { i ->
+                                                        MdTranslator.translateText(texts.getString(i), to = lang.code)
+                                                    }
+                                                    val escJson = org.json.JSONArray(translated).toString()
+                                                        .replace("\\", "\\\\")
+                                                        .replace("'", "\\'")
+                                                        .replace("\n", "\\n")
+                                                    wv.post {
+                                                        wv.evaluateJavascript("""
+                                                            (function() {
+                                                                var translated = JSON.parse('$escJson');
+                                                                var idx = 0;
+                                                                var walker = document.createTreeWalker(
+                                                                    document.querySelector('.markdown-body') || document.body,
+                                                                    NodeFilter.SHOW_TEXT,
+                                                                    null
+                                                                );
+                                                                while (walker.nextNode()) {
+                                                                    var t = walker.currentNode.textContent.trim();
+                                                                    if (t.length > 0 && walker.currentNode.parentElement.tagName !== 'CODE' && walker.currentNode.parentElement.tagName !== 'PRE' && walker.currentNode.parentElement.tagName !== 'KBD' && walker.currentNode.parentElement.tagName !== 'A') {
+                                                                        walker.currentNode.textContent = translated[idx] || t;
+                                                                        idx++;
+                                                                    }
+                                                                }
+                                                            })()
+                                                        """.trimIndent()) {
+                                                            isTranslated = true
+                                                            translating = false
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Text(
+                                    text = lang.name,
+                                    fontSize = 13.sp,
+                                    fontFamily = JetBrainsMono,
+                                    color = colors.textPrimary
+                                )
+                            }
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = {
+                    AiModuleTextAction(label = "cancel", onClick = { showLangPicker = false }, tint = colors.textSecondary)
+                }
+            )
         }
         
         if (showToCDrawer) {

@@ -1,6 +1,5 @@
 package gs.git.vps.util
 
-import android.content.Context
 import com.google.mlkit.common.model.DownloadConditions
 import com.google.mlkit.nl.translate.TranslateLanguage
 import com.google.mlkit.nl.translate.Translation
@@ -24,7 +23,29 @@ object MdTranslator {
         }
     }
 
-    suspend fun ensureModelDownloaded(from: String = TranslateLanguage.ENGLISH, to: String = TranslateLanguage.RUSSIAN): Boolean {
+    data class Lang(val code: String, val name: String)
+
+    val availableLanguages: List<Lang> = listOf(
+        Lang(TranslateLanguage.RUSSIAN, "Русский"),
+        Lang(TranslateLanguage.SPANISH, "Español"),
+        Lang(TranslateLanguage.FRENCH, "Français"),
+        Lang(TranslateLanguage.GERMAN, "Deutsch"),
+        Lang(TranslateLanguage.PORTUGUESE, "Português"),
+        Lang(TranslateLanguage.ITALIAN, "Italiano"),
+        Lang(TranslateLanguage.JAPANESE, "日本語"),
+        Lang(TranslateLanguage.KOREAN, "한국어"),
+        Lang(TranslateLanguage.CHINESE, "中文"),
+        Lang(TranslateLanguage.ARABIC, "العربية"),
+        Lang(TranslateLanguage.HINDI, "हिन्दी"),
+        Lang(TranslateLanguage.TURKISH, "Türkçe"),
+        Lang(TranslateLanguage.POLISH, "Polski"),
+        Lang(TranslateLanguage.DUTCH, "Nederlands"),
+        Lang(TranslateLanguage.UKRAINIAN, "Українська"),
+    )
+
+    fun langByCode(code: String): Lang = availableLanguages.find { it.code == code } ?: Lang(code, code)
+
+    suspend fun downloadModel(from: String, to: String): Boolean {
         return try {
             val t = getTranslator(from, to)
             t.downloadModelIfNeeded(DownloadConditions.Builder().build()).await()
@@ -32,55 +53,6 @@ object MdTranslator {
         } catch (e: Exception) {
             false
         }
-    }
-
-    suspend fun translateMarkdown(md: String, from: String = TranslateLanguage.ENGLISH, to: String = TranslateLanguage.RUSSIAN): String {
-        val lines = md.lines()
-        val result = mutableListOf<String>()
-        val codeBuffer = mutableListOf<String>()
-        var inCodeBlock = false
-
-        for (line in lines) {
-            if (line.trimStart().startsWith("```")) {
-                inCodeBlock = !inCodeBlock
-                codeBuffer.add(line)
-                if (!inCodeBlock) {
-                    result.addAll(codeBuffer)
-                    codeBuffer.clear()
-                }
-                continue
-            }
-            if (inCodeBlock) {
-                codeBuffer.add(line)
-                continue
-            }
-            if (line.isBlank()) {
-                result.add(line)
-                continue
-            }
-            if (line.trimStart().startsWith("#")) {
-                val m = Regex("^(#+\\s*)(.*)$").find(line.trimStart())!!
-                result.add(line.substring(0, line.length - line.trimStart().length) + m.groupValues[1] + translateText(m.groupValues[2], from, to))
-                continue
-            }
-            if (line.trimStart().startsWith("- ") || line.trimStart().startsWith("* ")) {
-                val prefix = line.substring(0, line.length - line.trimStart().length)
-                val bullet = line.trimStart().substring(0, 2)
-                result.add(prefix + bullet + translateText(line.trimStart().substring(2), from, to))
-                continue
-            }
-            if (line.trimStart().startsWith("> ")) {
-                val prefix = line.substring(0, line.length - line.trimStart().length)
-                result.add(prefix + "> " + translateText(line.trimStart().substring(2), from, to))
-                continue
-            }
-            if (line.trimStart().startsWith("|")) {
-                result.add(line.substring(0, line.length - line.trimStart().length) + translateText(line.trimStart(), from, to))
-                continue
-            }
-            result.add(translateText(line, from, to))
-        }
-        return result.joinToString("\n")
     }
 
     suspend fun translateText(text: String, from: String = TranslateLanguage.ENGLISH, to: String = TranslateLanguage.RUSSIAN): String {
