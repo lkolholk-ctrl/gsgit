@@ -337,7 +337,7 @@ private fun WebhooksSummaryCard(webhooks: List<GHWebhook>) {
     val inactive = webhooks.size - active
     val failing = webhooks.count { it.lastResponseCode >= 400 || it.lastResponseStatus.equals("failed", ignoreCase = true) }
 
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).padding(14.dp)) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).border(1.dp, AiModuleTheme.colors.border, RoundedCornerShape(GitHubControlRadius)).padding(14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Icon(Icons.Rounded.Webhook, null, Modifier.size(20.dp), tint = AiModuleTheme.colors.accent)
             Text("Delivery endpoints", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = AiModuleTheme.colors.textPrimary, modifier = Modifier.weight(1f))
@@ -765,7 +765,7 @@ private fun DeliverySummaryCard(deliveries: List<GHWebhookDelivery>) {
     val success = deliveries.count { it.statusCode in 200..299 }
     val failed = deliveries.count { it.statusCode >= 300 || it.status.equals("failed", ignoreCase = true) }
     val redeliveries = deliveries.count { it.redelivery }
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).padding(14.dp)) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).border(1.dp, AiModuleTheme.colors.border, RoundedCornerShape(GitHubControlRadius)).padding(14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Icon(Icons.Rounded.History, null, Modifier.size(20.dp), tint = AiModuleTheme.colors.accent)
             Text("Recent deliveries", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = AiModuleTheme.colors.textPrimary, modifier = Modifier.weight(1f))
@@ -788,7 +788,7 @@ private fun DeliveryCard(
     onRedeliver: () -> Unit
 ) {
     val color = deliveryStatusColor(delivery)
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).padding(14.dp)) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).border(1.dp, AiModuleTheme.colors.border, RoundedCornerShape(GitHubControlRadius)).padding(14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Icon(if (delivery.statusCode in 200..299) Icons.Rounded.CheckCircle else Icons.Rounded.Error, null, Modifier.size(18.dp), tint = color)
             Column(Modifier.weight(1f)) {

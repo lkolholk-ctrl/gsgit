@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -350,7 +351,7 @@ private fun PackageDetailScreen(owner: PackageOwner, pkg: GHPackage, onBack: () 
 private fun PackagesSummaryCard(packages: List<GHPackage>) {
     val publicCount = packages.count { it.visibility == "public" }
     val privateCount = packages.count { it.visibility == "private" }
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).border(1.dp, AiModuleTheme.colors.border, RoundedCornerShape(GitHubControlRadius)).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(Icons.Rounded.Archive, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.accent)
             Column(Modifier.weight(1f)) {
@@ -368,7 +369,7 @@ private fun PackagesSummaryCard(packages: List<GHPackage>) {
 
 @Composable
 private fun PackageHeaderCard(pkg: GHPackage, owner: PackageOwner) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).border(1.dp, AiModuleTheme.colors.border, RoundedCornerShape(GitHubControlRadius)).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Icon(Icons.Rounded.Archive, null, Modifier.size(22.dp), tint = AiModuleTheme.colors.accent)
             Column(Modifier.weight(1f)) {
@@ -388,7 +389,7 @@ private fun PackageHeaderCard(pkg: GHPackage, owner: PackageOwner) {
 @Composable
 private fun PackageCard(pkg: GHPackage, onClick: () -> Unit) {
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).clickable(onClick = onClick).padding(14.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).border(1.dp, AiModuleTheme.colors.border, RoundedCornerShape(GitHubControlRadius)).clickable(onClick = onClick).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -409,7 +410,7 @@ private fun PackageCard(pkg: GHPackage, onClick: () -> Unit) {
 
 @Composable
 private fun PackageVersionCard(version: GHPackageVersion, onOpen: () -> Unit, onDelete: () -> Unit) {
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).border(1.dp, AiModuleTheme.colors.border, RoundedCornerShape(GitHubControlRadius)).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Icon(Icons.Rounded.Archive, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.textSecondary)
             Column(Modifier.weight(1f)) {
@@ -435,7 +436,7 @@ private fun PackageVersionCard(version: GHPackageVersion, onOpen: () -> Unit, on
 @Composable
 private fun OwnerChip(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, selected: Boolean, onClick: () -> Unit) {
     Row(
-        Modifier.clip(RoundedCornerShape(GitHubControlRadius)).background(if (selected) AiModuleTheme.colors.accent.copy(alpha = 0.14f) else AiModuleTheme.colors.surface).clickable(onClick = onClick).padding(horizontal = 10.dp, vertical = 8.dp),
+        Modifier.clip(RoundedCornerShape(GitHubControlRadius)).background(if (selected) AiModuleTheme.colors.accent.copy(alpha = 0.14f) else AiModuleTheme.colors.surface).border(1.dp, if (selected) AiModuleTheme.colors.accent else AiModuleTheme.colors.border, RoundedCornerShape(GitHubControlRadius)).clickable(onClick = onClick).padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
@@ -447,7 +448,7 @@ private fun OwnerChip(icon: androidx.compose.ui.graphics.vector.ImageVector, lab
 @Composable
 private fun PackageFilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
     Box(
-        Modifier.clip(RoundedCornerShape(999.dp)).background(if (selected) AiModuleTheme.colors.accent.copy(alpha = 0.14f) else AiModuleTheme.colors.surface).clickable(onClick = onClick).padding(horizontal = 11.dp, vertical = 7.dp)
+        Modifier.clip(RoundedCornerShape(999.dp)).background(if (selected) AiModuleTheme.colors.accent.copy(alpha = 0.14f) else AiModuleTheme.colors.surface).border(1.dp, if (selected) AiModuleTheme.colors.accent else AiModuleTheme.colors.border, RoundedCornerShape(GitHubControlRadius)).clickable(onClick = onClick).padding(horizontal = 11.dp, vertical = 7.dp)
     ) {
         Text(label, fontSize = 12.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal, color = if (selected) AiModuleTheme.colors.accent else AiModuleTheme.colors.textSecondary)
     }
@@ -468,7 +469,7 @@ private fun PackagePill(label: String, color: Color) {
 @Composable
 private fun EmptyPackagesCard(text: String) {
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).padding(22.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).border(1.dp, AiModuleTheme.colors.border, RoundedCornerShape(GitHubControlRadius)).padding(22.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
