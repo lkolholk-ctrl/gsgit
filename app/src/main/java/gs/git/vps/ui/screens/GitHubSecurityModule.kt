@@ -217,7 +217,7 @@ internal fun RulesetsScreen(
 private fun RulesetsSummaryCard(rulesets: List<GHRuleset>) {
     Column(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Icon(Icons.AutoMirrored.Rounded.Rule, null, Modifier.size(20.dp), tint = AiModuleTheme.colors.accent)
+            Icon(Icons.Rounded.Rule, null, Modifier.size(20.dp), tint = AiModuleTheme.colors.accent)
             Text("Repository rules", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = AiModuleTheme.colors.textPrimary, modifier = Modifier.weight(1f))
             Text("${rulesets.size}", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = AiModuleTheme.colors.textPrimary)
         }
@@ -237,16 +237,16 @@ private fun RulesetCard(ruleset: GHRuleset, onDetails: () -> Unit, onOpen: () ->
         Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(14.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Icon(Icons.AutoMirrored.Rounded.Rule, null, Modifier.size(20.dp), tint = enforcementColor)
+            Icon(Icons.Rounded.Rule, null, Modifier.size(20.dp), tint = enforcementColor)
             Column(Modifier.weight(1f)) {
                 Text(ruleset.name.ifBlank { "Ruleset #${ruleset.id}" }, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = AiModuleTheme.colors.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(cleanJoin(listOf(ruleset.target, ruleset.sourceType)), fontSize = 11.sp, color = AiModuleTheme.colors.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             IconButton(onClick = onDetails) {
-                Icon(Icons.AutoMirrored.Rounded.Article, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.textSecondary)
+                Icon(Icons.Rounded.Article, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.textSecondary)
             }
             IconButton(onClick = onOpen, enabled = ruleset.htmlUrl.isNotBlank()) {
-                Icon(Icons.AutoMirrored.Rounded.OpenInNew, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.accent)
+                Icon(Icons.Rounded.OpenInNew, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.accent)
             }
         }
         Spacer(Modifier.height(8.dp))
@@ -497,7 +497,7 @@ private fun RulesetDetailSummaryCard(detail: GHRulesetDetail) {
     val color = rulesetColor(detail.enforcement)
     Column(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Icon(Icons.AutoMirrored.Rounded.Rule, null, Modifier.size(20.dp), tint = color)
+            Icon(Icons.Rounded.Rule, null, Modifier.size(20.dp), tint = color)
             Column(Modifier.weight(1f)) {
                 Text(detail.name.ifBlank { "Ruleset #${detail.id}" }, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = AiModuleTheme.colors.textPrimary)
                 Text(cleanJoin(listOf(detail.target, detail.sourceType, detail.source)), fontSize = 11.sp, color = AiModuleTheme.colors.textMuted)
@@ -1123,7 +1123,7 @@ private fun CommunityProfileCard(profile: GHCommunityProfile?, onOpenDocs: () ->
     }
     Column(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Icon(Icons.AutoMirrored.Rounded.FactCheck, null, Modifier.size(20.dp), tint = healthColor)
+            Icon(Icons.Rounded.FactCheck, null, Modifier.size(20.dp), tint = healthColor)
             Column(Modifier.weight(1f)) {
                 Text("Community profile", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = AiModuleTheme.colors.textPrimary)
                 Text(profile?.description?.takeIf { it.isNotBlank() } ?: "Repository health and community files", fontSize = 11.sp, color = AiModuleTheme.colors.textMuted, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -1223,10 +1223,10 @@ private fun AlertCard(alert: GHDependabotAlert, onDetails: () -> Unit, onOpen: (
                 Text(cleanJoin(listOf(alert.ecosystem, alert.manifestPath)), fontSize = 11.sp, color = AiModuleTheme.colors.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             IconButton(onClick = onDetails) {
-                Icon(Icons.AutoMirrored.Rounded.Article, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.textSecondary)
+                Icon(Icons.Rounded.Article, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.textSecondary)
             }
             IconButton(onClick = onOpen, enabled = alert.htmlUrl.isNotBlank()) {
-                Icon(Icons.AutoMirrored.Rounded.OpenInNew, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.accent)
+                Icon(Icons.Rounded.OpenInNew, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.accent)
             }
         }
         Spacer(Modifier.height(8.dp))
@@ -1265,10 +1265,10 @@ private fun RepositoryAdvisoryCard(advisory: GHRepositorySecurityAdvisory, onDet
                 Text(cleanJoin(listOf(advisory.ghsaId, advisory.cveId)), fontSize = 11.sp, color = AiModuleTheme.colors.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             IconButton(onClick = onDetails) {
-                Icon(Icons.AutoMirrored.Rounded.Article, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.textSecondary)
+                Icon(Icons.Rounded.Article, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.textSecondary)
             }
             IconButton(onClick = onOpen, enabled = advisory.htmlUrl.isNotBlank() || advisory.url.isNotBlank()) {
-                Icon(Icons.AutoMirrored.Rounded.OpenInNew, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.accent)
+                Icon(Icons.Rounded.OpenInNew, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.accent)
             }
         }
         Spacer(Modifier.height(8.dp))
@@ -1310,10 +1310,10 @@ private fun CodeScanningAlertCard(alert: GHCodeScanningAlert, onOpen: () -> Unit
                 Text(cleanJoin(listOf(alert.toolName, alert.pathWithLine())), fontSize = 11.sp, color = AiModuleTheme.colors.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             IconButton(onClick = onDetails) {
-                Icon(Icons.AutoMirrored.Rounded.Article, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.textSecondary)
+                Icon(Icons.Rounded.Article, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.textSecondary)
             }
             IconButton(onClick = onOpen, enabled = alert.htmlUrl.isNotBlank()) {
-                Icon(Icons.AutoMirrored.Rounded.OpenInNew, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.accent)
+                Icon(Icons.Rounded.OpenInNew, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.accent)
             }
         }
         Spacer(Modifier.height(8.dp))
@@ -1348,10 +1348,10 @@ private fun SecretScanningAlertCard(alert: GHSecretScanningAlert, onOpen: () -> 
                 Text(maskSecret(alert.secret), fontSize = 11.sp, color = AiModuleTheme.colors.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             IconButton(onClick = onDetails) {
-                Icon(Icons.AutoMirrored.Rounded.Article, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.textSecondary)
+                Icon(Icons.Rounded.Article, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.textSecondary)
             }
             IconButton(onClick = onOpen, enabled = alert.htmlUrl.isNotBlank()) {
-                Icon(Icons.AutoMirrored.Rounded.OpenInNew, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.accent)
+                Icon(Icons.Rounded.OpenInNew, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.accent)
             }
         }
         Spacer(Modifier.height(8.dp))

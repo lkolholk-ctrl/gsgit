@@ -670,7 +670,7 @@ internal fun GitHubSettingsScreen(
                                     Toast.makeText(context, Strings.done, Toast.LENGTH_SHORT).show()
                                 }
                             }
-                            ActionRow(Icons.AutoMirrored.Rounded.Logout, "Sign out", tint = AiModuleTheme.colors.error) {
+                            ActionRow(Icons.Rounded.Logout, "Sign out", tint = AiModuleTheme.colors.error) {
                                 confirmAction(
                                     title = "sign out",
                                     body = "Remove the GitHub token from this device and leave the GitHub module?",

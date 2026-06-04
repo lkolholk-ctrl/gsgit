@@ -177,7 +177,7 @@ private fun NotificationRow(
 ) {
     val palette = AiModuleTheme.colors
     val icon: ImageVector = when (notification.type) {
-        "PullRequest" -> Icons.AutoMirrored.Rounded.MergeType
+        "PullRequest" -> Icons.Rounded.MergeType
         "Issue" -> Icons.Rounded.ErrorOutline
         "Release" -> Icons.Rounded.NewReleases
         "Commit" -> Icons.Rounded.Commit
