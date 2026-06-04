@@ -277,7 +277,7 @@ private fun ReleaseCard(
                     )
                 }
                 if (release.htmlUrl.isNotBlank()) {
-                    ReleaseActionButton(Icons.Rounded.OpenInNew, "Open", AiModuleTheme.colors.textSecondary) { openGitHubUrl(context, release.htmlUrl) }
+                    ReleaseActionButton(Icons.AutoMirrored.Rounded.OpenInNew, "Open", AiModuleTheme.colors.textSecondary) { openGitHubUrl(context, release.htmlUrl) }
                 }
                 if (canWrite) {
                     ReleaseActionButton(Icons.Rounded.Edit, "Edit", AiModuleTheme.colors.textSecondary) { showEdit = true }

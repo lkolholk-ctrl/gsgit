@@ -45,7 +45,7 @@ import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.FindInPage
 import androidx.compose.material.icons.rounded.Image
-import androidx.compose.material.icons.rounded.MenuBook
+import androidx.compose.material.icons.automirrored.rounded.MenuBook
 import androidx.compose.material.icons.rounded.Preview
 import androidx.compose.material.icons.rounded.Redo
 import androidx.compose.material.icons.rounded.Save

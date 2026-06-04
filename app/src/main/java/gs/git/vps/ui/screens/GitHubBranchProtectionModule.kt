@@ -478,7 +478,7 @@ internal fun BranchProtectionScreen(
                                     description = "Only allow merge commits or squash merging",
                                     checked = requiredLinearHistory,
                                     onToggle = { requiredLinearHistory = it },
-                                    icon = Icons.Rounded.MergeType
+                                    icon = Icons.AutoMirrored.Rounded.MergeType
                                 )
 
                                 ProtectionToggleRow(

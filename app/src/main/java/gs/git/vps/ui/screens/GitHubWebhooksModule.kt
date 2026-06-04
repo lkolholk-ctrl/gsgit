@@ -387,7 +387,7 @@ private fun WebhookCard(
 
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
-            WebhookIconAction(Icons.Rounded.Send, AiModuleTheme.colors.accent, disabled, onPing)
+            WebhookIconAction(Icons.AutoMirrored.Rounded.Send, AiModuleTheme.colors.accent, disabled, onPing)
             WebhookIconAction(Icons.Rounded.PlayArrow, Color(0xFFFF9500), disabled, onTest)
             WebhookIconAction(Icons.Rounded.History, AiModuleTheme.colors.accent, disabled, onDeliveries)
             WebhookIconAction(Icons.Rounded.Settings, AiModuleTheme.colors.textSecondary, disabled, onConfig)
@@ -796,7 +796,7 @@ private fun DeliveryCard(
                 Text(delivery.guid.ifBlank { delivery.deliveredAt.take(19).replace('T', ' ') }, fontSize = 11.sp, color = AiModuleTheme.colors.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             IconButton(onClick = onOpen, enabled = !disabled) {
-                Icon(Icons.Rounded.Article, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.accent)
+                Icon(Icons.AutoMirrored.Rounded.Article, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.accent)
             }
             IconButton(onClick = onRedeliver, enabled = !disabled) {
                 Icon(Icons.Rounded.Refresh, null, Modifier.size(18.dp), tint = Color(0xFFFF9500))

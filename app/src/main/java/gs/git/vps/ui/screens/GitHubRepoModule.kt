@@ -1388,10 +1388,10 @@ internal fun FilesTab(
 
 private fun fileIcon(name: String): ImageVector = when (name.substringAfterLast(".", "").lowercase()) {
     "kt", "java", "js", "ts", "tsx", "jsx", "py", "rb", "go", "rs", "swift", "c", "cpp", "h", "html", "css", "json", "xml", "yml", "yaml" -> Icons.Rounded.Code
-    "md", "markdown", "txt" -> Icons.Rounded.Article
+    "md", "markdown", "txt" -> Icons.AutoMirrored.Rounded.Article
     "png", "jpg", "jpeg", "gif", "webp", "svg" -> Icons.Rounded.Image
     "zip", "apk", "jar", "tar", "gz" -> Icons.Rounded.Archive
-    else -> Icons.Rounded.InsertDriveFile
+    else -> Icons.AutoMirrored.Rounded.InsertDriveFile
 }
 
 @Composable
@@ -3922,7 +3922,7 @@ private fun ReadmeReleasesSummary(releases: List<GHRelease>) {
     Spacer(Modifier.height(14.dp))
     if (latest != null) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Icon(Icons.Rounded.Label, null, Modifier.size(22.dp), tint = GitHubSuccessGreen)
+            Icon(Icons.AutoMirrored.Rounded.Label, null, Modifier.size(22.dp), tint = GitHubSuccessGreen)
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(latest.tag.ifBlank { latest.name.ifBlank { "latest" } }, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = AiModuleTheme.colors.textPrimary)
@@ -4118,8 +4118,8 @@ private fun ReadmeErrorCard(message: String, raw: String, repo: GHRepo, onViewRa
         Text("README rendering was stopped to keep the app responsive.", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
             if (onRetry != null) Chip(Icons.Rounded.Refresh, "Retry", AiModuleTheme.colors.accent, onRetry)
-            if (raw.isNotBlank() && onViewRaw != null) Chip(Icons.Rounded.Article, "View raw", AiModuleTheme.colors.accent, onViewRaw)
-            Chip(Icons.Rounded.OpenInNew, "Open in browser", AiModuleTheme.colors.accent) { context.openReadmeUrl(readmeBrowserUrl(repo)) }
+            if (raw.isNotBlank() && onViewRaw != null) Chip(Icons.AutoMirrored.Rounded.Article, "View raw", AiModuleTheme.colors.accent, onViewRaw)
+            Chip(Icons.AutoMirrored.Rounded.OpenInNew, "Open in browser", AiModuleTheme.colors.accent) { context.openReadmeUrl(readmeBrowserUrl(repo)) }
         }
     }
 }
@@ -5882,7 +5882,7 @@ private fun PullReviewHistoryDialog(
                                         },
                                         modifier = Modifier.size(28.dp)
                                     ) {
-                                        AiModuleIcon(Icons.Rounded.OpenInNew, null, Modifier.size(16.dp), tint = TextSecondary)
+                                        AiModuleIcon(Icons.AutoMirrored.Rounded.OpenInNew, null, Modifier.size(16.dp), tint = TextSecondary)
                                     }
                                 }
                                 if (canMutate) {

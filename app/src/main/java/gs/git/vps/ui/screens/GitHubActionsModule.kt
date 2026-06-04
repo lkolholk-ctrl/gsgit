@@ -38,7 +38,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Article
+import androidx.compose.material.icons.automirrored.rounded.Article
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Cancel
 import androidx.compose.material.icons.rounded.Check
@@ -1671,7 +1671,7 @@ private fun ActionsCachesPanel(repo: GHRepo) {
             usage?.let {
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     StatCard("Caches", it.activeCachesCount.toString(), Icons.Rounded.Timeline, Blue)
-                    StatCard("Size", formatArtifactSize(it.activeCachesSizeInBytes), Icons.Rounded.Article, Green)
+                    StatCard("Size", formatArtifactSize(it.activeCachesSizeInBytes), Icons.AutoMirrored.Rounded.Article, Green)
                 }
             }
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2265,7 +2265,7 @@ private fun ArtifactRow(
 ) {
     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(SurfaceWhite).padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         GitHubTerminalCheckbox("", selected, onToggleSelected, enabled = !busy && !disabled)
-        Icon(Icons.Rounded.Article, null, tint = if (artifact.expired) TextTertiary else Blue, modifier = Modifier.size(20.dp))
+        Icon(Icons.AutoMirrored.Rounded.Article, null, tint = if (artifact.expired) TextTertiary else Blue, modifier = Modifier.size(20.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(artifact.name, fontSize = 14.sp, color = if (artifact.expired) TextTertiary else TextPrimary, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2281,7 +2281,7 @@ private fun ArtifactRow(
         }
         if (busy) AiModuleSpinner()
         else {
-            IconButton(onClick = onDownload, enabled = !artifact.expired && !disabled) { Icon(Icons.Rounded.Article, null, tint = if (artifact.expired || disabled) TextTertiary else Blue) }
+            IconButton(onClick = onDownload, enabled = !artifact.expired && !disabled) { Icon(Icons.AutoMirrored.Rounded.Article, null, tint = if (artifact.expired || disabled) TextTertiary else Blue) }
             IconButton(onClick = onDelete, enabled = !disabled) { Icon(Icons.Rounded.Delete, null, tint = if (disabled) TextTertiary else Red) }
         }
     }
@@ -2298,7 +2298,7 @@ private fun ActionsCacheRow(
 ) {
     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(SurfaceWhite).padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         GitHubTerminalCheckbox("", selected, onToggleSelected, enabled = !deleting && !disabled)
-        Icon(Icons.Rounded.Article, null, tint = Blue, modifier = Modifier.size(20.dp))
+        Icon(Icons.AutoMirrored.Rounded.Article, null, tint = Blue, modifier = Modifier.size(20.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(cache.key, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text("${formatArtifactSize(cache.sizeInBytes)} • ${cache.ref}", fontSize = 12.sp, color = TextSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -2403,7 +2403,7 @@ private fun ActionInfoCard(
     onAction: () -> Unit
 ) {
     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(SurfaceWhite).padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Icon(Icons.Rounded.Article, null, tint = Blue, modifier = Modifier.size(20.dp))
+        Icon(Icons.AutoMirrored.Rounded.Article, null, tint = Blue, modifier = Modifier.size(20.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (subtitle.isNotBlank()) Text(subtitle, fontSize = 12.sp, color = TextSecondary, maxLines = 3, overflow = TextOverflow.Ellipsis)
@@ -2681,7 +2681,7 @@ private fun ModernRunCard(
                 }
             }
             Spacer(Modifier.weight(1f))
-            Chip(Icons.Rounded.Article, "Open") { onRunClick() }
+            Chip(Icons.AutoMirrored.Rounded.Article, "Open") { onRunClick() }
         }
     }
 }
@@ -3699,12 +3699,12 @@ private fun FailureDiagnosisCard(
             Chip(Icons.Rounded.ContentCopy, Strings.actions_copy_failure_summary, Red, onCopySummary)
             if (evidence.hasContent) {
                 Chip(Icons.Rounded.ContentCopy, "Copy evidence", Red, onCopyEvidence)
-                Chip(Icons.Rounded.Article, "Export evidence", Red, onExportEvidence)
+                Chip(Icons.AutoMirrored.Rounded.Article, "Export evidence", Red, onExportEvidence)
             }
             if (onShareSummary != null) {
                 Chip(Icons.Rounded.Share, Strings.actions_share, Red, onShareSummary)
             }
-            Chip(Icons.Rounded.Article, "Open failed log", Red, onOpenFailedLog)
+            Chip(Icons.AutoMirrored.Rounded.Article, "Open failed log", Red, onOpenFailedLog)
         }
         if (!patternInfo.isNullOrBlank()) {
             Text(patternInfo, fontSize = 10.sp, color = TextTertiary)
@@ -3976,7 +3976,7 @@ private fun MatrixJobGroupHeader(
             }
             MiniActionsBadge(status, color)
             Icon(
-                if (expanded) Icons.Rounded.FilterList else Icons.Rounded.Article,
+                if (expanded) Icons.Rounded.FilterList else Icons.AutoMirrored.Rounded.Article,
                 null,
                 Modifier.size(16.dp),
                 tint = TextSecondary
@@ -4127,7 +4127,7 @@ private fun WorkflowJobCard(
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
                 Chip(
-                    if (expandedJobId == job.id) Icons.Rounded.FilterList else Icons.Rounded.Article,
+                    if (expandedJobId == job.id) Icons.Rounded.FilterList else Icons.AutoMirrored.Rounded.Article,
                     if (expandedJobId == job.id) "Hide full log" else "Show full log"
                 ) {
                     if (expandedJobId == job.id) {
@@ -4148,7 +4148,7 @@ private fun WorkflowJobCard(
                         (context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(clip)
                         Toast.makeText(context, Strings.done, Toast.LENGTH_SHORT).show()
                     }
-                    Chip(Icons.Rounded.Article, "Save log") {
+                    Chip(Icons.AutoMirrored.Rounded.Article, "Save log") {
                         val dest = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "GlassFiles_Git/${safeLogFileName(job)}.log")
                         val ok = runCatching {
                             logMeta?.cacheFile?.takeIf { it.exists() }?.copyTo(dest, overwrite = true)?.exists()
@@ -4160,7 +4160,7 @@ private fun WorkflowJobCard(
                         Toast.makeText(context, if (ok) "${Strings.done}: ${dest.name}" else Strings.error, Toast.LENGTH_SHORT).show()
                     }
                     if (logMeta?.tooLarge == true && runHtmlUrl.isNotBlank()) {
-                        Chip(Icons.Rounded.Article, "Open in browser") { openExternalUrl(context, runHtmlUrl) }
+                        Chip(Icons.AutoMirrored.Rounded.Article, "Open in browser") { openExternalUrl(context, runHtmlUrl) }
                     }
                 }
                 Chip(Icons.Rounded.Refresh, "Rerun job") {
