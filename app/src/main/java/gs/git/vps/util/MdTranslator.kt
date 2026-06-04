@@ -48,7 +48,7 @@ object MdTranslator {
     suspend fun downloadModel(from: String, to: String): Boolean {
         return try {
             val t = getTranslator(from, to)
-            t.downloadModelIfNeeded(DownloadConditions.Builder().requireWifi(false).build()).await()
+            t.downloadModelIfNeeded().await()
             true
         } catch (e: Exception) {
             false
