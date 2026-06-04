@@ -21,7 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.ClickableText
+import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.*
@@ -4155,13 +4155,10 @@ private fun ReadmeText(text: String, modifier: Modifier = Modifier, onLinkClick:
     val segments = remember(text) { readmeInlineSegments(text) }
     if (segments.size == 1 && segments.first() is ReadmeInlineSegment.Text) {
         val annotated = readmeInlineAnnotated(text)
-        ClickableText(
+        Text(
             text = annotated,
             modifier = modifier,
-            style = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = AiModuleTheme.colors.textPrimary, lineHeight = 19.sp),
-            onClick = { offset ->
-                annotated.getStringAnnotations("URL", offset, offset).firstOrNull()?.item?.let { onLinkClick(it) }
-            }
+            style = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = AiModuleTheme.colors.textPrimary, lineHeight = 19.sp)
         )
     } else {
         FlowRow(modifier, horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -4182,12 +4179,9 @@ private fun ReadmeText(text: String, modifier: Modifier = Modifier, onLinkClick:
                     }
                     is ReadmeInlineSegment.Text -> {
                         val annotated = readmeInlineAnnotated(segment.text)
-                        ClickableText(
+                        Text(
                             text = annotated,
-                            style = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = AiModuleTheme.colors.textPrimary, lineHeight = 19.sp),
-                            onClick = { offset ->
-                                annotated.getStringAnnotations("URL", offset, offset).firstOrNull()?.item?.let { onLinkClick(it) }
-                            }
+                            style = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = AiModuleTheme.colors.textPrimary, lineHeight = 19.sp)
                         )
                     }
                 }
@@ -4528,7 +4522,7 @@ private fun readmeInlineAnnotated(text: String): AnnotatedString {
                     if (closeParen > 0) {
                         val label = clean.substring(i + 1, closeBracket)
                         val url = clean.substring(openParen + 1, closeParen).substringBefore(' ').trim()
-                        pushStringAnnotation("URL", url)
+                        pushLinkAnnotation(LinkAnnotation.Url(url))
                         pushStyle(androidx.compose.ui.text.SpanStyle(color = colors.accent, fontWeight = FontWeight.Medium, textDecoration = TextDecoration.Underline))
                         append(label)
                         pop()
@@ -4539,7 +4533,7 @@ private fun readmeInlineAnnotated(text: String): AnnotatedString {
                 README_PLAIN_URL_REGEX.find(clean, i)?.range?.first == i -> {
                     val rawUrl = README_PLAIN_URL_REGEX.find(clean, i)!!.value
                     val url = rawUrl.trimEnd('.', ',', ';', ':')
-                    pushStringAnnotation("URL", url)
+                    pushLinkAnnotation(LinkAnnotation.Url(url))
                     pushStyle(androidx.compose.ui.text.SpanStyle(color = colors.accent, fontWeight = FontWeight.Medium, textDecoration = TextDecoration.Underline))
                     append(url)
                     pop()

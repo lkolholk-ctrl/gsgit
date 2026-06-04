@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.*
@@ -283,20 +284,14 @@ private fun RenderMarkdownBlock(block: MarkdownBlock) {
             }
         }
         is MarkdownBlock.Paragraph -> {
-            androidx.compose.foundation.text.ClickableText(
+            Text(
                 text = buildMdAnnotated(block.text, palette),
                 style = TextStyle(
                     color = palette.textPrimary,
                     fontFamily = JetBrainsMono,
                     fontSize = 14.sp,
                     lineHeight = 19.sp
-                ),
-                onClick = { offset ->
-                    buildMdAnnotated(block.text, palette).getStringAnnotations("URL", offset, offset)
-                        .firstOrNull()?.let { annotation ->
-                            openUrl(context, annotation.item)
-                        }
-                }
+                )
             )
         }
         is MarkdownBlock.CodeBlock -> {
@@ -373,7 +368,7 @@ private fun RenderMarkdownBlock(block: MarkdownBlock) {
                     color = palette.accent,
                     fontFamily = JetBrainsMono
                 )
-                androidx.compose.foundation.text.ClickableText(
+                Text(
                     text = buildMdAnnotated(block.text, palette),
                     style = TextStyle(
                         color = palette.textPrimary,
@@ -381,13 +376,7 @@ private fun RenderMarkdownBlock(block: MarkdownBlock) {
                         fontSize = 14.sp,
                         lineHeight = 19.sp
                     ),
-                    modifier = Modifier.weight(1f),
-                    onClick = { offset ->
-                        buildMdAnnotated(block.text, palette).getStringAnnotations("URL", offset, offset)
-                            .firstOrNull()?.let { annotation ->
-                                openUrl(context, annotation.item)
-                            }
-                    }
+                    modifier = Modifier.weight(1f)
                 )
             }
         }
@@ -518,7 +507,7 @@ internal fun buildMdAnnotated(text: String, palette: gs.git.vps.ui.theme.AiModul
                         val linkText = text.substring(i + 1, closeBracket)
                         val url = text.substring(openParen + 1, closeParen)
                         pushStyle(androidx.compose.ui.text.SpanStyle(color = linkColor, textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline))
-                        pushStringAnnotation("URL", url)
+                        pushLinkAnnotation(LinkAnnotation.Url(url))
                         append(linkText)
                         pop()
                         pop()
