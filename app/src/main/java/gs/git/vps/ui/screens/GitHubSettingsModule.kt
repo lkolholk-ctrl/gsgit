@@ -35,7 +35,7 @@ import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Email
 import androidx.compose.material.icons.rounded.Group
 import androidx.compose.material.icons.rounded.Key
-import androidx.compose.material.icons.automirrored.rounded.Logout
+import androidx.compose.material.icons.rounded.Logout
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Person
@@ -670,7 +670,7 @@ internal fun GitHubSettingsScreen(
                                     Toast.makeText(context, Strings.done, Toast.LENGTH_SHORT).show()
                                 }
                             }
-                            ActionRow(Icons.AutoMirrored.Rounded.Logout, "Sign out", tint = AiModuleTheme.colors.error) {
+                            ActionRow(Icons.Rounded.Logout, "Sign out", tint = AiModuleTheme.colors.error) {
                                 confirmAction(
                                     title = "sign out",
                                     body = "Remove the GitHub token from this device and leave the GitHub module?",

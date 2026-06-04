@@ -142,7 +142,7 @@ private fun DiffFileCard(file: GHDiffFile, index: Int, total: Int, commentCount:
             Text("-${file.deletions}", fontSize = 12.sp, color = Color(0xFFFF3B30))
             if (commentCount > 0) {
                 Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.AutoMirrored.Rounded.Comment, null, Modifier.size(12.dp), tint = AiModuleTheme.colors.accent)
+                    Icon(Icons.Rounded.Comment, null, Modifier.size(12.dp), tint = AiModuleTheme.colors.accent)
                     Text("$commentCount", fontSize = 12.sp, color = AiModuleTheme.colors.accent, fontWeight = FontWeight.Medium)
                 }
             }

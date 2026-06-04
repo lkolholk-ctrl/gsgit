@@ -29,8 +29,8 @@ import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.Commit
-import androidx.compose.material.icons.automirrored.rounded.Label
-import androidx.compose.material.icons.automirrored.rounded.OpenInNew
+import androidx.compose.material.icons.rounded.Label
+import androidx.compose.material.icons.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.runtime.Composable
@@ -339,7 +339,7 @@ private fun SearchCommitCard(commit: GHSearchCommitResult, onOpen: () -> Unit) {
 
 @Composable
 private fun TopicSearchCard(topic: GHTopicSearchResult) {
-    SearchCard(icon = Icons.AutoMirrored.Rounded.Label, tint = GitHubSuccessGreen) {
+    SearchCard(icon = Icons.Rounded.Label, tint = GitHubSuccessGreen) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Text(topic.displayName.ifBlank { topic.name }, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = AiModuleTheme.colors.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(listOf(topic.name, topic.released).filter { it.isNotBlank() }.joinToString(" - "), fontSize = 11.sp, color = AiModuleTheme.colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -357,7 +357,7 @@ private fun TopicSearchCard(topic: GHTopicSearchResult) {
 @Composable
 private fun LabelSearchCard(label: GHLabelSearchResult) {
     val color = parseLabelColor(label.color) ?: AiModuleTheme.colors.textSecondary
-    SearchCard(icon = Icons.AutoMirrored.Rounded.Label, tint = color) {
+    SearchCard(icon = Icons.Rounded.Label, tint = color) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Text(label.name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = AiModuleTheme.colors.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(label.repository, fontSize = 11.sp, color = AiModuleTheme.colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -428,8 +428,8 @@ private fun searchKindIcon(kind: AdvancedSearchKind): ImageVector = when (kind) 
     AdvancedSearchKind.REPOS -> Icons.Rounded.Code
     AdvancedSearchKind.ISSUES -> Icons.Rounded.BugReport
     AdvancedSearchKind.COMMITS -> Icons.Rounded.Commit
-    AdvancedSearchKind.TOPICS -> Icons.AutoMirrored.Rounded.Label
-    AdvancedSearchKind.LABELS -> Icons.AutoMirrored.Rounded.Label
+    AdvancedSearchKind.TOPICS -> Icons.Rounded.Label
+    AdvancedSearchKind.LABELS -> Icons.Rounded.Label
     AdvancedSearchKind.USERS -> Icons.Rounded.Person
 }
 

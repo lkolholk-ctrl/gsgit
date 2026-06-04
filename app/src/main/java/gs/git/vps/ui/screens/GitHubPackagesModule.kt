@@ -26,7 +26,7 @@ import androidx.compose.material.icons.rounded.Archive
 import androidx.compose.material.icons.rounded.Business
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Delete
-import androidx.compose.material.icons.automirrored.rounded.OpenInNew
+import androidx.compose.material.icons.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
@@ -418,7 +418,7 @@ private fun PackageVersionCard(version: GHPackageVersion, onOpen: () -> Unit, on
                 Text("Updated ${version.updatedAt.shortDate()}", fontSize = 11.sp, color = AiModuleTheme.colors.textMuted)
             }
             IconButton(onClick = onOpen, modifier = Modifier.size(34.dp)) {
-                Icon(Icons.AutoMirrored.Rounded.OpenInNew, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.accent)
+                Icon(Icons.Rounded.OpenInNew, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.accent)
             }
             IconButton(onClick = onDelete, modifier = Modifier.size(34.dp)) {
                 Icon(Icons.Rounded.Delete, null, Modifier.size(18.dp), tint = Color(0xFFFF3B30))

@@ -22,7 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowForward
+import androidx.compose.material.icons.rounded.ArrowForward
 import androidx.compose.material.icons.rounded.Search
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
@@ -362,7 +362,7 @@ private fun OrgRow(org: GHOrg, onClick: () -> Unit) {
             }
         }
         Icon(
-            Icons.AutoMirrored.Rounded.ArrowForward,
+            Icons.Rounded.ArrowForward,
             contentDescription = null,
             modifier = Modifier.size(14.dp),
             tint = palette.textSecondary,

@@ -39,10 +39,10 @@ import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material.icons.automirrored.rounded.Rule
+import androidx.compose.material.icons.rounded.Rule
 import androidx.compose.material.icons.rounded.Save
 import androidx.compose.material.icons.rounded.Security
-import androidx.compose.material.icons.automirrored.rounded.Send
+import androidx.compose.material.icons.rounded.Send
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Tune
 import gs.git.vps.ui.components.AiModuleAlertDialog

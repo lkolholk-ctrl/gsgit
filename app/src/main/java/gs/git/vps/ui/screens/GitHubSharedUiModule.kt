@@ -446,7 +446,7 @@ internal fun releaseAssetIcon(name: String): ImageVector {
         lower.endsWith(".exe") || lower.endsWith(".msi") || lower.contains("win") -> Icons.Outlined.DesktopWindows
         lower.endsWith(".zip") || lower.endsWith(".tar.gz") || lower.endsWith(".tar") || lower.endsWith(".tgz") || lower.endsWith(".7z") -> Icons.Outlined.Archive
         lower.endsWith(".sha256") || lower.endsWith(".sig") || lower.endsWith(".asc") -> Icons.Outlined.Verified
-        else -> Icons.AutoMirrored.Outlined.InsertDriveFile
+        else -> Icons.Outlined.InsertDriveFile
     }
 }
 
