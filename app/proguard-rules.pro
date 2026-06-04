@@ -36,6 +36,16 @@
 # WorkManager
 -keep class androidx.work.** { *; }
 
+# ML Kit Translation
+-keep class com.google.mlkit.** { *; }
+-keep class com.google.android.gms.internal.** { *; }
+-keep class com.google.android.libraries.language.** { *; }
+-keepnames class * implements com.google.mlkit.common.model.Model$ModelFactory
+-keep class * extends com.google.mlkit.nl.translate.Translator
+-keepattributes Signature, InnerClasses, EnclosingMethod
+-keepattributes RuntimeVisibleAnnotations,AnnotationDefault
+-dontwarn com.google.mlkit.**
+
 # Android components
 -keep public class * extends android.app.Activity
 -keep public class * extends android.app.Service
