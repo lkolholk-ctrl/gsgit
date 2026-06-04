@@ -730,7 +730,7 @@ private fun ProjectV2ViewsCard(views: List<GHProjectV2View>) {
 private fun ProjectV2WorkflowsCard(workflows: List<GHProjectV2Workflow>) {
     Column(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Icon(Icons.Rounded.ArrowForward, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.accent)
+            Icon(Icons.AutoMirrored.Rounded.ArrowForward, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.accent)
             Text("Workflows", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = AiModuleTheme.colors.textPrimary, modifier = Modifier.weight(1f))
             CountPill("${workflows.count { it.enabled }} enabled", 0, Color(0xFF34C759), showCount = false)
         }
@@ -1319,7 +1319,7 @@ private fun ProjectCardRow(card: GHProjectCard, canMove: Boolean, onMove: () -> 
             Text(card.note.ifBlank { card.contentUrl.ifBlank { "Linked card" } }, fontSize = 13.sp, color = AiModuleTheme.colors.textPrimary, maxLines = 3, overflow = TextOverflow.Ellipsis)
             Text(card.updatedAt.take(10), fontSize = 10.sp, color = AiModuleTheme.colors.textMuted)
         }
-        if (canMove) IconButton(onClick = onMove) { Icon(Icons.Rounded.ArrowForward, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.accent) }
+        if (canMove) IconButton(onClick = onMove) { Icon(Icons.AutoMirrored.Rounded.ArrowForward, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.accent) }
         IconButton(onClick = onDelete) { Icon(Icons.Rounded.Close, null, Modifier.size(18.dp), tint = Color(0xFFFF3B30)) }
     }
 }

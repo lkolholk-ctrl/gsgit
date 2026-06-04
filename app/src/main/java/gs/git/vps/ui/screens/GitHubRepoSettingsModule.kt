@@ -258,7 +258,7 @@ internal fun RepoSettingsScreen(
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             ToggleRow("Issues", hasIssues, Icons.Rounded.BugReport) { hasIssues = it }
                             ToggleRow("Projects", hasProjects, Icons.Rounded.Dashboard) { hasProjects = it }
-                            ToggleRow("Wiki", hasWiki, Icons.Rounded.MenuBook) { hasWiki = it }
+                            ToggleRow("Wiki", hasWiki, Icons.AutoMirrored.Rounded.MenuBook) { hasWiki = it }
                             ToggleRow("Discussions", hasDiscussions, Icons.Rounded.Forum) { hasDiscussions = it }
                         }
                     }
@@ -270,7 +270,7 @@ internal fun RepoSettingsScreen(
                 item {
                     SettingsCard {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            ToggleRow("Allow merge commits", allowMergeCommit, Icons.Rounded.MergeType) { allowMergeCommit = it }
+                            ToggleRow("Allow merge commits", allowMergeCommit, Icons.AutoMirrored.Rounded.MergeType) { allowMergeCommit = it }
                             ToggleRow("Allow squash merging", allowSquashMerge, Icons.Rounded.Compress) { allowSquashMerge = it }
                             ToggleRow("Allow rebase merging", allowRebaseMerge, Icons.Rounded.LinearScale) { allowRebaseMerge = it }
                             ToggleRow("Delete head branches on merge", deleteBranchOnMerge, Icons.Rounded.DeleteSweep) { deleteBranchOnMerge = it }
@@ -380,7 +380,7 @@ internal fun RepoSettingsScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                Icon(Icons.Rounded.Rule, null, Modifier.size(22.dp), tint = AiModuleTheme.colors.accent)
+                                Icon(Icons.AutoMirrored.Rounded.Rule, null, Modifier.size(22.dp), tint = AiModuleTheme.colors.accent)
                                 Column(Modifier.weight(1f)) {
                                     Text("Rulesets", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = AiModuleTheme.colors.textPrimary)
                                     Text("View repository rulesets", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted)
@@ -785,7 +785,7 @@ private fun RepoTagRow(tag: GHTag) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Icon(Icons.Rounded.Label, null, Modifier.size(16.dp), tint = AiModuleTheme.colors.accent)
+        Icon(Icons.AutoMirrored.Rounded.Label, null, Modifier.size(16.dp), tint = AiModuleTheme.colors.accent)
         Column(Modifier.weight(1f)) {
             Text(tag.name, fontSize = 13.sp, color = AiModuleTheme.colors.textPrimary, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (tag.commitSha.isNotBlank()) {
