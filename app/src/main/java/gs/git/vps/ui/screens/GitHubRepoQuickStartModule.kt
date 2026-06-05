@@ -167,10 +167,11 @@ internal fun RepoQuickStartScreen(
                                 }
                             } catch (_: Exception) {}
                             if (name.isNullOrBlank()) name = uri.lastPathSegment?.substringAfterLast(":")?.substringAfterLast("/") ?: "file"
-                            if (shouldIgnore(name)) return@forEach
+                            val safeName: String = name!!
+                            if (shouldIgnore(safeName)) return@forEach
                             val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@forEach
                             if (bytes.size > MAX_FILE_SIZE) return@forEach
-                            stagedItems.add(StagedItem(uri, "${name!!} (${bytes.size.formatBytes()})", bytes.size, false))
+                            stagedItems.add(StagedItem(uri, "$safeName (${bytes.size.formatBytes()})", bytes.size, false))
                         } catch (_: Exception) {}
                     }
                 }
