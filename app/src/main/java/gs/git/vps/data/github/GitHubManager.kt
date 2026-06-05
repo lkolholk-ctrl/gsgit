@@ -786,25 +786,30 @@ object GitHubManager {
         } catch (e: Exception) { null }
     }
 
-    suspend fun createGitBlob(context: Context, owner: String, repo: String, content: String, encoding: String = "utf-8"): GHGitBlob? {
-        if (content.isBlank()) return null
+    suspend fun createGitBlob(context: Context, owner: String, repo: String, content: String, encoding: String = "utf-8", onLog: (String) -> Unit = {}): GHGitBlob? {
+        if (content.isBlank()) { onLog("[BLOB-ERR] content is blank"); return null }
         val cleanEncoding = if (encoding.equals("base64", ignoreCase = true)) "base64" else "utf-8"
         val body = JSONObject().apply {
             put("content", content)
             put("encoding", cleanEncoding)
         }.toString()
         val r = request(context, "/repos/$owner/$repo/git/blobs", "POST", body)
-        if (!r.success) return null
+        if (!r.success) {
+            onLog("[BLOB-ERR] HTTP ${r.code} -> ${r.body.take(300)}")
+            return null
+        }
         return try {
             val j = JSONObject(r.body)
+            val sha = j.optString("sha", "")
+            if (sha.isBlank()) { onLog("[BLOB-ERR] no sha in response: ${r.body.take(200)}"); return null }
             GHGitBlob(
-                sha = j.optString("sha", ""),
+                sha = sha,
                 size = content.length.toLong(),
                 encoding = cleanEncoding,
                 content = content,
                 url = j.optString("url", "")
             )
-        } catch (e: Exception) { null }
+        } catch (e: Exception) { onLog("[BLOB-ERR] parse: ${e.message}"); null }
     }
 
     suspend fun createGitTree(
@@ -6774,7 +6779,7 @@ object GitHubManager {
                         onProgress(i.toFloat() / files.size * 0.6f)
                         onLog("[BLOB] $path (${bytes.size} bytes)")
                         val b64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-                        val blob = createGitBlob(context, owner, repo, b64, "base64")
+                        val blob = createGitBlob(context, owner, repo, b64, "base64", onLog)
                             ?: throw Exception("blob API returned null for $path")
                         blobShas.add(path to blob.sha)
                         onLog("[OK] blob ${blob.sha.take(7)}")
@@ -6804,7 +6809,7 @@ object GitHubManager {
                     put("base_tree", baseTreeSha); put("tree", treeItems)
                 }.toString()
                 val treeR = request(context, "/repos/$owner/$repo/git/trees", "POST", treeBody)
-                if (!treeR.success) throw Exception("tree create failed")
+                if (!treeR.success) throw Exception("tree HTTP ${treeR.code}: ${treeR.body.take(200)}")
                 val newTreeSha = JSONObject(treeR.body).optString("sha", "")
                 if (newTreeSha.isBlank()) throw Exception("tree sha empty")
                 onLog("[OK] tree ${newTreeSha.take(7)}")
