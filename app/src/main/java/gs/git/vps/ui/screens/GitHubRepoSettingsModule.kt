@@ -1290,7 +1290,7 @@ internal fun AutolinksPanel(owner: String, repo: String) {
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 GitHubTerminalTextField(value = prefix, onValueChange = { prefix = it }, placeholder = "Key prefix (e.g. JIRA-)", singleLine = true)
-                GitHubTerminalTextField(value = template, onValueChange = { template = it }, placeholder = "URL template (e.g. https://jira.com/$id)", singleLine = true)
+                GitHubTerminalTextField(value = template, onValueChange = { template = it }, placeholder = "URL template (e.g. https://jira.com/\$id)", singleLine = true)
             }
         }
     }
