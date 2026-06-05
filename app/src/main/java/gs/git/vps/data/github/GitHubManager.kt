@@ -293,7 +293,7 @@ object GitHubManager {
                 owner = j.optJSONObject("owner")?.optString("login") ?: "",
                 htmlUrl = j.optString("html_url", ""), id = j.optLong("id", 0L)
             )
-            GHRepoCreateResult(success = true, repo = repo, cloneUrl = j.optString("clone_url", ""), autoInit = autoInit)
+            GHRepoCreateResult(success = true, repo = repo, cloneUrl = j.optString("clone_url", ""), sshUrl = j.optString("ssh_url", ""), autoInit = autoInit)
         } catch (e: Exception) { GHRepoCreateResult(success = false, repo = null) }
     }
 
@@ -4049,6 +4049,23 @@ object GitHubManager {
 
     suspend fun removeInteractionLimitNative(context: Context): Boolean =
         request(context, "/user/interaction-limits", "DELETE").let { it.code == 204 || it.success }
+
+    suspend fun getRepoInteractionLimit(context: Context, owner: String, repo: String): GHInteractionLimitEntry? {
+        val r = request(context, "/repos/$owner/$repo/interaction-limits", trackErrors = false)
+        if (!r.success || r.body.isBlank()) return null
+        return try {
+            val j = JSONObject(r.body)
+            GHInteractionLimitEntry(j.optString("limit"), j.optString("expires_at", "").ifBlank { null })
+        } catch (_: Exception) { null }
+    }
+
+    suspend fun setRepoInteractionLimit(context: Context, owner: String, repo: String, limit: String, expiry: String): Boolean {
+        val body = JSONObject().apply { put("limit", limit); put("expiry", expiry) }.toString()
+        return request(context, "/repos/$owner/$repo/interaction-limits", "PUT", body).success
+    }
+
+    suspend fun removeRepoInteractionLimit(context: Context, owner: String, repo: String): Boolean =
+        request(context, "/repos/$owner/$repo/interaction-limits", "DELETE").let { it.code == 204 || it.success }
 
     suspend fun getRateLimitSummaryNative(context: Context): String {
         val r = request(context, "/rate_limit")
@@ -8070,6 +8087,7 @@ data class GHRepoCreateResult(
     val success: Boolean,
     val repo: GHRepo?,
     val cloneUrl: String = "",
+    val sshUrl: String = "",
     val autoInit: Boolean = true
 )
 

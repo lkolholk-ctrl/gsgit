@@ -225,6 +225,7 @@ internal fun ActionsTab(
     var dispatching by remember { mutableStateOf(false) }
     var showDeployments by remember { mutableStateOf(false) }
     var showEnvironments by remember { mutableStateOf(false) }
+    var showCodespaces by remember { mutableStateOf(false) }
 
     suspend fun refreshOverview() {
         refreshing = true
@@ -339,6 +340,14 @@ internal fun ActionsTab(
         }
         return
     }
+    if (showCodespaces) {
+        GitHubScreenFrame(title = "> codespaces", onBack = { showCodespaces = false }) {
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)) {
+                CodespacesPanel()
+            }
+        }
+        return
+    }
 
     AiModuleSurface {
     val palette = AiModuleTheme.colors
@@ -379,6 +388,7 @@ internal fun ActionsTab(
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             AiModulePillButton("deployments", onClick = { showDeployments = true })
             AiModulePillButton("envs", onClick = { showEnvironments = true }, accent = false)
+            AiModulePillButton("codespaces", onClick = { showCodespaces = true }, accent = false)
         }
         ActionsOverviewHeader(
             workflows = workflows,
@@ -5581,6 +5591,52 @@ internal fun EnvironmentsPanel(repo: GHRepo) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 GitHubTerminalTextField(value = secretName, onValueChange = { secretName = it }, placeholder = "Secret name *", singleLine = true)
                 GitHubTerminalTextField(value = secretValue, onValueChange = { secretValue = it }, placeholder = "Secret value *", singleLine = true)
+            }
+        }
+    }
+}
+
+@Composable
+internal fun CodespacesPanel() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var codespaces by remember { mutableStateOf<List<GHCodespace>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+
+    fun load() {
+        scope.launch {
+            loading = true
+            codespaces = GitHubManager.getCodespaces(context)
+            loading = false
+        }
+    }
+
+    LaunchedEffect(Unit) { load() }
+
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        AiModuleSectionLabel("> codespaces")
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            AiModulePillButton("refresh", onClick = { load() }, accent = false)
+        }
+        if (loading) {
+            AiModuleSpinner(label = "loading")
+        } else if (codespaces.isEmpty()) {
+            Text("No codespaces found", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted, fontFamily = JetBrainsMono)
+        } else {
+            codespaces.forEach { cs ->
+                Row(Modifier.fillMaxWidth().ghGlassCard(8.dp).padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(cs.displayName.ifBlank { cs.name }, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono)
+                        Text("${cs.owner}/${cs.repo}  ${cs.state}", fontSize = 11.sp, color = AiModuleTheme.colors.textMuted, fontFamily = JetBrainsMono)
+                    }
+                    IconButton(onClick = {
+                        scope.launch {
+                            val ok = GitHubManager.deleteCodespace(context, cs.name)
+                            Toast.makeText(context, if (ok) "Deleted" else "Failed", Toast.LENGTH_SHORT).show()
+                            if (ok) load()
+                        }
+                    }) { Icon(Icons.Rounded.Close, null, Modifier.size(14.dp), tint = AiModuleTheme.colors.textMuted) }
+                }
             }
         }
     }

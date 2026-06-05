@@ -169,6 +169,7 @@ internal fun RepoDetailScreen(
     var showSecurity by remember { mutableStateOf(false) }
     var showAutolinks by remember { mutableStateOf(false) }
     var showLfs by remember { mutableStateOf(false) }
+    var showInteractionLimits by remember { mutableStateOf(false) }
     var showActionsTroubleshoot by remember { mutableStateOf(false) }
     var returnToRepoSettings by remember { mutableStateOf(false) }
     var languages by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }; var contributors by remember { mutableStateOf<List<GHContributor>>(emptyList()) }
@@ -289,6 +290,7 @@ internal fun RepoDetailScreen(
             showSecurity -> { showSecurity = false; restoreRepoSettingsIfNeeded() }
             showAutolinks -> { showAutolinks = false; restoreRepoSettingsIfNeeded() }
             showLfs -> { showLfs = false; restoreRepoSettingsIfNeeded() }
+            showInteractionLimits -> { showInteractionLimits = false; restoreRepoSettingsIfNeeded() }
             currentPath.isNotBlank() && selectedTab == RepoTab.FILES -> currentPath = currentPath.substringBeforeLast("/", "")
             else -> onBack()
         }
@@ -497,6 +499,7 @@ internal fun RepoDetailScreen(
                 onSecurity = { openRepoSettingsChild { showSecurity = true } },
                 onAutolinks = { openRepoSettingsChild { showAutolinks = true } },
                 onLfs = { openRepoSettingsChild { showLfs = true } },
+                onInteractionLimits = { openRepoSettingsChild { showInteractionLimits = true } },
             )
         } else {
             GitHubAdminRequiredScreen(title = "> settings", repoFullName = repo.fullName) { showRepoSettings = false }
@@ -513,6 +516,7 @@ internal fun RepoDetailScreen(
     if (showSecurity) { if (canAdmin) SecurityScreen(repoOwner = repo.owner, repoName = repo.name) { closeRepoSettingsChild { showSecurity = false } } else GitHubAdminRequiredScreen(title = "> security", repoFullName = repo.fullName) { closeRepoSettingsChild { showSecurity = false } }; return }
     if (showAutolinks) { GitHubScreenFrame(title = "> autolinks", onBack = { closeRepoSettingsChild { showAutolinks = false } }) { Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)) { AutolinksPanel(owner = repo.owner, repo = repo.name) } }; return }
     if (showLfs) { GitHubScreenFrame(title = "> git lfs", onBack = { closeRepoSettingsChild { showLfs = false } }) { Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)) { LfsPanel(owner = repo.owner, repo = repo.name) } }; return }
+    if (showInteractionLimits) { GitHubScreenFrame(title = "> interaction limits", onBack = { closeRepoSettingsChild { showInteractionLimits = false } }) { Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)) { InteractionLimitsPanel(owner = repo.owner, repo = repo.name) } }; return }
     if (showActionsTroubleshoot) {
         GitHubActionsTroubleshootScreen(
             repo = repo,
@@ -6168,8 +6172,8 @@ private fun PullFilesDialog(repo: GHRepo, pr: GHPullRequest, onDismiss: () -> Un
 }
 
 @Composable
-internal fun CommitDiffScreen(repo: GHRepo, sha: String, onBack: () -> Unit) { val context = LocalContext.current; var detail by remember { mutableStateOf<GHCommitDetail?>(null) }; var loading by remember { mutableStateOf(true) }
-    LaunchedEffect(sha) { detail = GitHubManager.getCommitDiff(context, repo.owner, repo.name, sha); loading = false }
+internal fun CommitDiffScreen(repo: GHRepo, sha: String, onBack: () -> Unit) { val context = LocalContext.current; var detail by remember { mutableStateOf<GHCommitDetail?>(null) }; var statuses by remember { mutableStateOf<List<GHCommitStatus>>(emptyList()) }; var loading by remember { mutableStateOf(true) }
+    LaunchedEffect(sha) { detail = GitHubManager.getCommitDiff(context, repo.owner, repo.name, sha); statuses = GitHubManager.getCommitStatuses(context, repo.owner, repo.name, sha); loading = false }
     AiModuleSurface {
     val commitPalette = AiModuleTheme.colors
     Column(Modifier.fillMaxSize().background(commitPalette.background)) {
@@ -6184,6 +6188,19 @@ internal fun CommitDiffScreen(repo: GHRepo, sha: String, onBack: () -> Unit) { v
                 Text("+${detail!!.totalAdditions}", fontSize = 12.sp, fontFamily = JetBrainsMono, fontWeight = FontWeight.Medium, color = GitHubSuccessGreen)
                 Text("-${detail!!.totalDeletions}", fontSize = 12.sp, fontFamily = JetBrainsMono, fontWeight = FontWeight.Medium, color = GitHubErrorRed)
                 Text("${detail!!.files.size} files", fontSize = 12.sp, fontFamily = JetBrainsMono, color = commitPalette.textSecondary)
+            }
+            if (statuses.isNotEmpty()) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    statuses.forEach { s ->
+                        val stateIcon = when (s.state) { "success" -> "OK"; "pending" -> ".."; "error" -> "!!"; "failure" -> "XX"; else -> "??" }
+                        val stateColor = when (s.state) { "success" -> GitHubSuccessGreen; "pending" -> commitPalette.warning; "error", "failure" -> GitHubErrorRed; else -> commitPalette.textMuted }
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("[$stateIcon]", fontSize = 10.sp, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, color = stateColor)
+                            Text(s.context, fontSize = 10.sp, fontFamily = JetBrainsMono, color = commitPalette.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
+                Box(Modifier.fillMaxWidth().height(1.dp).background(commitPalette.border))
             }
             Box(Modifier.fillMaxWidth().height(1.dp).background(commitPalette.border))
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) {

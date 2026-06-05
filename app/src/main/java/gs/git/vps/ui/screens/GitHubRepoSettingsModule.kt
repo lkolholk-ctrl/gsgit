@@ -58,7 +58,8 @@ internal fun RepoSettingsScreen(
     onRulesets: () -> Unit = {},
     onSecurity: () -> Unit = {},
     onAutolinks: () -> Unit = {},
-    onLfs: () -> Unit = {}
+    onLfs: () -> Unit = {},
+    onInteractionLimits: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -440,6 +441,23 @@ internal fun RepoSettingsScreen(
                                 Column(Modifier.weight(1f)) {
                                     Text("Git LFS", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = AiModuleTheme.colors.textPrimary)
                                     Text("Large File Storage settings", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted)
+                                }
+                                Icon(Icons.Rounded.ChevronRight, null, Modifier.size(16.dp), tint = AiModuleTheme.colors.textMuted)
+                            }
+
+                            // Interaction Limits
+                            Row(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius))
+                                    .background(AiModuleTheme.colors.background)
+                                    .clickable { onInteractionLimits() }
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Icon(Icons.Rounded.Block, null, Modifier.size(22.dp), tint = AiModuleTheme.colors.accent)
+                                Column(Modifier.weight(1f)) {
+                                    Text("Interaction Limits", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = AiModuleTheme.colors.textPrimary)
+                                    Text("Limit interactions for this repo", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted)
                                 }
                                 Icon(Icons.Rounded.ChevronRight, null, Modifier.size(16.dp), tint = AiModuleTheme.colors.textMuted)
                             }
@@ -1325,5 +1343,83 @@ internal fun LfsPanel(owner: String, repo: String) {
             }, destructive = true)
         }
         Text("Git LFS lets you store large files outside the repository.", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted, fontFamily = JetBrainsMono)
+    }
+}
+
+@Composable
+internal fun InteractionLimitsPanel(owner: String, repo: String) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var currentLimit by remember { mutableStateOf<GHInteractionLimitEntry?>(null) }
+    var loading by remember { mutableStateOf(true) }
+    var selectedLimit by remember { mutableStateOf("collaborators_only") }
+    var selectedExpiry by remember { mutableStateOf("") }
+
+    fun load() {
+        scope.launch {
+            loading = true
+            currentLimit = GitHubManager.getRepoInteractionLimit(context, owner, repo)
+            currentLimit?.let {
+                selectedLimit = it.limit
+                selectedExpiry = it.expiry ?: ""
+            }
+            loading = false
+        }
+    }
+
+    LaunchedEffect(owner, repo) { load() }
+
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        AiModuleSectionLabel("> interaction limits")
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            AiModulePillButton("refresh", onClick = { load() }, accent = false)
+        }
+        if (loading) {
+            AiModuleSpinner(label = "loading")
+        } else {
+            if (currentLimit != null) {
+                Row(Modifier.fillMaxWidth().ghGlassCard(8.dp).padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Active: ${currentLimit!!.limit}", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono)
+                        currentLimit!!.expiry?.let {
+                            Text("Expires: $it", fontSize = 11.sp, color = AiModuleTheme.colors.textMuted, fontFamily = JetBrainsMono)
+                        }
+                    }
+                    IconButton(onClick = {
+                        scope.launch {
+                            val ok = GitHubManager.removeRepoInteractionLimit(context, owner, repo)
+                            Toast.makeText(context, if (ok) "Removed" else "Failed", Toast.LENGTH_SHORT).show()
+                            if (ok) load()
+                        }
+                    }) { Icon(Icons.Rounded.Close, null, Modifier.size(14.dp), tint = AiModuleTheme.colors.textMuted) }
+                }
+            }
+            Text("Limit:", fontSize = 11.sp, color = AiModuleTheme.colors.textSecondary, fontFamily = JetBrainsMono)
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                listOf("collaborators_only", "contributors_only", "read_only").forEach { opt ->
+                    val sel = selectedLimit == opt
+                    Box(Modifier.clip(RoundedCornerShape(6.dp)).background(if (sel) AiModuleTheme.colors.accent.copy(0.15f) else AiModuleTheme.colors.surface).border(1.dp, if (sel) AiModuleTheme.colors.accent else AiModuleTheme.colors.border, RoundedCornerShape(6.dp)).clickable { selectedLimit = opt }.padding(horizontal = 8.dp, vertical = 4.dp)) {
+                        Text(opt.replace("_", " "), fontSize = 10.sp, fontFamily = JetBrainsMono, color = if (sel) AiModuleTheme.colors.accent else AiModuleTheme.colors.textSecondary)
+                    }
+                }
+            }
+            Text("Expiry:", fontSize = 11.sp, color = AiModuleTheme.colors.textSecondary, fontFamily = JetBrainsMono)
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                listOf("" to "none", "one_day" to "1 day", "one_week" to "1 week", "one_month" to "1 month", "six_months" to "6 months").forEach { (val_, lbl) ->
+                    val sel = selectedExpiry == val_
+                    Box(Modifier.clip(RoundedCornerShape(6.dp)).background(if (sel) AiModuleTheme.colors.accent.copy(0.15f) else AiModuleTheme.colors.surface).border(1.dp, if (sel) AiModuleTheme.colors.accent else AiModuleTheme.colors.border, RoundedCornerShape(6.dp)).clickable { selectedExpiry = val_ }.padding(horizontal = 8.dp, vertical = 4.dp)) {
+                        Text(lbl, fontSize = 10.sp, fontFamily = JetBrainsMono, color = if (sel) AiModuleTheme.colors.accent else AiModuleTheme.colors.textSecondary)
+                    }
+                }
+            }
+            AiModulePillButton("set limit", onClick = {
+                scope.launch {
+                    val ok = GitHubManager.setRepoInteractionLimit(context, owner, repo, selectedLimit, selectedExpiry.ifBlank { "one_month" })
+                    Toast.makeText(context, if (ok) "Set" else "Failed", Toast.LENGTH_SHORT).show()
+                    if (ok) load()
+                }
+            }, accent = true)
+        }
+        Text("Temporarily limit interactions for this repository.", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted, fontFamily = JetBrainsMono)
     }
 }
