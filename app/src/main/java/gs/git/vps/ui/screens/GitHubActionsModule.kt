@@ -322,6 +322,24 @@ internal fun ActionsTab(
         return
     }
 
+    if (showDeployments) {
+        GitHubScreenFrame(title = "> deployments", onBack = { showDeployments = false }) {
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)) {
+                DeploymentsPanel(repo)
+            }
+        }
+        return
+    }
+
+    if (showEnvironments) {
+        GitHubScreenFrame(title = "> environments", onBack = { showEnvironments = false }) {
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)) {
+                EnvironmentsPanel(repo)
+            }
+        }
+        return
+    }
+
     AiModuleSurface {
     val palette = AiModuleTheme.colors
     Column(
@@ -359,8 +377,8 @@ internal fun ActionsTab(
             }
         }
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            AiModulePillButton("deployments", onClick = { showDeployments = true; Toast.makeText(context, "opening deployments…", Toast.LENGTH_SHORT).show() })
-            AiModulePillButton("envs", onClick = { showEnvironments = true; Toast.makeText(context, "opening environments…", Toast.LENGTH_SHORT).show() }, accent = false)
+            AiModulePillButton("deployments", onClick = { showDeployments = true })
+            AiModulePillButton("envs", onClick = { showEnvironments = true }, accent = false)
         }
         ActionsOverviewHeader(
             workflows = workflows,
@@ -452,22 +470,6 @@ internal fun ActionsTab(
         )
         Spacer(Modifier.height(8.dp))
     }
-    }
-
-    if (showDeployments) {
-        GitHubScreenFrame(title = "> deployments", onBack = { showDeployments = false }) {
-            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)) {
-                DeploymentsPanel(repo)
-            }
-        }
-    }
-
-    if (showEnvironments) {
-        GitHubScreenFrame(title = "> environments", onBack = { showEnvironments = false }) {
-            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)) {
-                EnvironmentsPanel(repo)
-            }
-        }
     }
 }
 
