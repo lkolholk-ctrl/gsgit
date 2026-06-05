@@ -262,11 +262,39 @@ object GitHubManager {
         } catch (e: Exception) { emptyList() }
     }
 
-    suspend fun createRepo(context: Context, name: String, description: String, isPrivate: Boolean): Boolean {
+    suspend fun createRepo(
+        context: Context, name: String, description: String, isPrivate: Boolean,
+        autoInit: Boolean = true, gitignoreTemplate: String = "", licenseTemplate: String = "",
+        hasIssues: Boolean = true, hasProjects: Boolean = true, hasWiki: Boolean = true
+    ): Boolean = createRepoWithResult(context, name, description, isPrivate, autoInit, gitignoreTemplate, licenseTemplate, hasIssues, hasProjects, hasWiki).success
+
+    suspend fun createRepoWithResult(
+        context: Context, name: String, description: String, isPrivate: Boolean,
+        autoInit: Boolean = true, gitignoreTemplate: String = "", licenseTemplate: String = "",
+        hasIssues: Boolean = true, hasProjects: Boolean = true, hasWiki: Boolean = true
+    ): GHRepoCreateResult {
         val body = JSONObject().apply {
-            put("name", name); put("description", description); put("private", isPrivate); put("auto_init", true)
+            put("name", name); put("description", description); put("private", isPrivate)
+            put("auto_init", autoInit); put("has_issues", hasIssues)
+            put("has_projects", hasProjects); put("has_wiki", hasWiki)
+            if (gitignoreTemplate.isNotBlank()) put("gitignore_template", gitignoreTemplate)
+            if (licenseTemplate.isNotBlank()) put("license_template", licenseTemplate)
         }.toString()
-        return request(context, "/user/repos", "POST", body).success
+        val r = request(context, "/user/repos", "POST", body)
+        if (!r.success) return GHRepoCreateResult(success = false, repo = null)
+        return try {
+            val j = JSONObject(r.body)
+            val repo = GHRepo(
+                name = j.optString("name", ""), fullName = j.optString("full_name", ""),
+                description = j.optString("description", ""), language = j.optString("language", ""),
+                stars = j.optInt("stargazers_count", 0), forks = j.optInt("forks_count", 0),
+                isPrivate = j.optBoolean("private", false), isFork = j.optBoolean("fork", false),
+                defaultBranch = j.optString("default_branch", "main"), updatedAt = j.optString("updated_at", ""),
+                owner = j.optJSONObject("owner")?.optString("login") ?: "",
+                htmlUrl = j.optString("html_url", ""), id = j.optLong("id", 0L)
+            )
+            GHRepoCreateResult(success = true, repo = repo, cloneUrl = j.optString("clone_url", ""), autoInit = autoInit)
+        } catch (e: Exception) { GHRepoCreateResult(success = false, repo = null) }
     }
 
     suspend fun deleteRepo(context: Context, owner: String, repo: String): Boolean =
@@ -6712,6 +6740,55 @@ object GitHubManager {
         }
     }
 
+    suspend fun uploadProjectFolder(
+        context: Context, owner: String, repo: String, branch: String,
+        files: List<Pair<String, ByteArray>>,
+        onProgress: (Float) -> Unit
+    ): Boolean {
+        if (files.isEmpty()) return false
+        return try {
+            withContext(Dispatchers.IO) {
+                val blobShas = mutableListOf<Pair<String, String>>()
+                files.forEachIndexed { i, (path, bytes) ->
+                    onProgress(i.toFloat() / files.size * 0.6f)
+                    val b64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                    val blob = createGitBlob(context, owner, repo, b64, "base64")
+                        ?: throw Exception("blob failed: $path")
+                    blobShas.add(path to blob.sha)
+                }
+                onProgress(0.65f)
+                val ref = getGitRef(context, owner, repo, "heads/$branch")
+                    ?: throw Exception("ref not found: $branch")
+                val parentSha = ref.nodeSha
+                val parentCommit = getGitCommit(context, owner, repo, parentSha)
+                    ?: throw Exception("commit not found")
+                val baseTreeSha = parentCommit.treeSha
+                onProgress(0.7f)
+                val treeItems = JSONArray()
+                blobShas.forEach { (p, sha) ->
+                    treeItems.put(JSONObject().apply {
+                        put("path", p); put("mode", "100644"); put("type", "blob"); put("sha", sha)
+                    })
+                }
+                val treeBody = JSONObject().apply {
+                    put("base_tree", baseTreeSha); put("tree", treeItems)
+                }.toString()
+                val treeR = request(context, "/repos/$owner/$repo/git/trees", "POST", treeBody)
+                if (!treeR.success) throw Exception("tree create failed")
+                val newTreeSha = JSONObject(treeR.body).optString("sha", "")
+                if (newTreeSha.isBlank()) throw Exception("tree sha empty")
+                onProgress(0.8f)
+                val commit = createGitCommit(context, owner, repo, "Initial commit via GsGit", newTreeSha, listOf(parentSha))
+                    ?: throw Exception("commit create failed")
+                onProgress(0.9f)
+                updateGitRef(context, owner, repo, "heads/$branch", commit.sha)
+                    ?: throw Exception("ref update failed")
+                onProgress(1f)
+            }
+            true
+        } catch (_: Exception) { onProgress(-1f); false }
+    }
+
 }
 
 data class GHApiDiagnostics(
@@ -7974,4 +8051,18 @@ data class GHCodespace(
     val lastUsedAt: String,
     val idleTimeoutMinutes: Int,
     val url: String
+)
+
+data class GHRepoCreateResult(
+    val success: Boolean,
+    val repo: GHRepo?,
+    val cloneUrl: String = "",
+    val autoInit: Boolean = true
+)
+
+data class GHRepoCreateParams(
+    val name: String, val description: String, val isPrivate: Boolean,
+    val autoInit: Boolean = false, val gitignoreTemplate: String = "",
+    val licenseTemplate: String = "", val hasIssues: Boolean = true,
+    val hasProjects: Boolean = true, val hasWiki: Boolean = true
 )

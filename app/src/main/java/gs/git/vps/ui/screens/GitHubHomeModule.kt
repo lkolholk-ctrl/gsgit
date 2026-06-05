@@ -214,10 +214,12 @@ internal fun ReposScreen(user: GHUser?, onBack: () -> Unit, onMinimize: () -> Un
     var showAdvancedSearch by rememberSaveable { mutableStateOf(false) }
     var showEmojis by rememberSaveable { mutableStateOf(false) }
     var showLicenses by rememberSaveable { mutableStateOf(false) }
+    var quickStartResult by remember { mutableStateOf<GHRepoCreateResult?>(null) }
     var reposPage by rememberSaveable { mutableIntStateOf(1) }; var reposHasMore by rememberSaveable { mutableStateOf(true) }
     val listState = rememberSaveable(saver = LazyListState.Saver) { LazyListState(0, 0) }
     fun handleReposBack() {
         when {
+            quickStartResult != null -> quickStartResult = null
             showCreate -> showCreate = false
             showStarred -> showStarred = false
             showOrgs -> showOrgs = false
@@ -231,7 +233,7 @@ internal fun ReposScreen(user: GHUser?, onBack: () -> Unit, onMinimize: () -> Un
             else -> onBack()
         }
     }
-    BackHandler(enabled = showStarred || showOrgs || showPackages || showApps || showEnterpriseAdmin || showDiagnostics || showAdvancedSearch || showEmojis || showLicenses || showCreate) {
+    BackHandler(enabled = quickStartResult != null || showStarred || showOrgs || showPackages || showApps || showEnterpriseAdmin || showDiagnostics || showAdvancedSearch || showEmojis || showLicenses || showCreate) {
         handleReposBack()
     }
     LaunchedEffect(Unit) { val r = GitHubManager.getRepos(context, 1); repos = r; reposHasMore = r.size >= 30; loading = false }
@@ -248,6 +250,7 @@ internal fun ReposScreen(user: GHUser?, onBack: () -> Unit, onMinimize: () -> Un
     if (showAdvancedSearch) { AdvancedSearchScreen(onBack = { showAdvancedSearch = false }, onRepoClick = onRepoClick, onProfile = onProfile); return }
     if (showEmojis) { EmojisScreen(onBack = { showEmojis = false }); return }
     if (showLicenses) { LicensesScreen(onBack = { showLicenses = false }); return }
+    if (quickStartResult != null) { RepoQuickStartScreen(result = quickStartResult!!, onBack = { quickStartResult = null }, onOpenRepo = { quickStartResult = null; onRepoClick(it) }); return }
     AiModuleSurface {
     val palette = AiModuleTheme.colors
     Column(Modifier.fillMaxSize().background(palette.background)) {
@@ -437,7 +440,7 @@ internal fun ReposScreen(user: GHUser?, onBack: () -> Unit, onMinimize: () -> Un
             }
         }
     }
-    if (showCreate) CreateRepoDialog({ showCreate = false }) { n, d, p -> scope.launch { val ok = GitHubManager.createRepo(context, n, d, p); Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show(); if (ok) { reposPage = 1; repos = GitHubManager.getRepos(context, 1); reposHasMore = repos.size >= 30 }; showCreate = false } }
+    if (showCreate) CreateRepoDialog({ showCreate = false }) { params -> scope.launch { val r = GitHubManager.createRepoWithResult(context, params.name, params.description, params.isPrivate, params.autoInit, params.gitignoreTemplate, params.licenseTemplate, params.hasIssues, params.hasProjects, params.hasWiki); if (r.success) { showCreate = false; reposPage = 1; repos = GitHubManager.getRepos(context, 1); reposHasMore = repos.size >= 30; quickStartResult = r } else { Toast.makeText(context, Strings.error, Toast.LENGTH_SHORT).show() } } }
     }
 }
 

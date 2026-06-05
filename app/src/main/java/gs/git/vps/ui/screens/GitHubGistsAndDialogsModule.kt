@@ -249,18 +249,40 @@ private fun MonoLabel(text: String, color: androidx.compose.ui.graphics.Color) {
 }
 
 @Composable
-internal fun CreateRepoDialog(onDismiss: () -> Unit, onCreate: (String, String, Boolean) -> Unit) {
+internal fun CreateRepoDialog(onDismiss: () -> Unit, onCreate: (GHRepoCreateParams) -> Unit) {
     var n by remember { mutableStateOf("") }
     var d by remember { mutableStateOf("") }
     var p by remember { mutableStateOf(false) }
+    var autoInit by remember { mutableStateOf(false) }
+    var hasIssues by remember { mutableStateOf(true) }
+    var hasProjects by remember { mutableStateOf(true) }
+    var hasWiki by remember { mutableStateOf(true) }
+    var gitignoreTemplate by remember { mutableStateOf("") }
+    var licenseTemplate by remember { mutableStateOf("") }
+    var showAdvanced by remember { mutableStateOf(false) }
+    var gitignoreTemplates by remember { mutableStateOf<List<String>>(emptyList()) }
+    var licenses by remember { mutableStateOf<List<GHLicense>>(emptyList()) }
+    val ctx = LocalContext.current
     val palette = AiModuleTheme.colors
+
+    LaunchedEffect(Unit) {
+        gitignoreTemplates = GitHubManager.getGitignoreTemplates(ctx)
+        licenses = GitHubManager.getLicenses(ctx)
+    }
+
     AiModuleAlertDialog(
         onDismissRequest = onDismiss,
         title = Strings.ghNewRepo.lowercase(),
         confirmButton = {
             AiModuleTextAction(
                 label = Strings.create,
-                onClick = { if (n.isNotBlank()) onCreate(n, d, p) },
+                onClick = {
+                    if (n.isNotBlank()) onCreate(GHRepoCreateParams(
+                        name = n, description = d, isPrivate = p, autoInit = autoInit,
+                        gitignoreTemplate = gitignoreTemplate, licenseTemplate = licenseTemplate,
+                        hasIssues = hasIssues, hasProjects = hasProjects, hasWiki = hasWiki
+                    ))
+                },
                 tint = palette.accent,
             )
         },
@@ -272,6 +294,27 @@ internal fun CreateRepoDialog(onDismiss: () -> Unit, onCreate: (String, String, 
             AiModuleTextField(n, { n = it }, label = Strings.ghRepoName)
             AiModuleTextField(d, { d = it }, label = Strings.ghRepoDesc, maxLines = 3)
             AiModuleCheckRow(label = Strings.ghPrivate, checked = p, onToggle = { p = !p })
+            AiModuleCheckRow(label = "add README", checked = autoInit, onToggle = { autoInit = !autoInit })
+            AiModulePillButton(label = if (showAdvanced) "hide advanced" else "show advanced", onClick = { showAdvanced = !showAdvanced }, accent = showAdvanced)
+            if (showAdvanced) {
+                AiModuleCheckRow(label = "issues", checked = hasIssues, onToggle = { hasIssues = !hasIssues })
+                AiModuleCheckRow(label = "projects", checked = hasProjects, onToggle = { hasProjects = !hasProjects })
+                AiModuleCheckRow(label = "wiki", checked = hasWiki, onToggle = { hasWiki = !hasWiki })
+                if (gitignoreTemplates.isNotEmpty()) {
+                    Text(".gitignore", fontSize = 11.sp, color = palette.textSecondary, fontFamily = JetBrainsMono)
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        BC("none", gitignoreTemplate.isEmpty()) { gitignoreTemplate = "" }
+                        gitignoreTemplates.take(12).forEach { t -> BC(t, gitignoreTemplate == t) { gitignoreTemplate = t } }
+                    }
+                }
+                if (licenses.isNotEmpty()) {
+                    Text("license", fontSize = 11.sp, color = palette.textSecondary, fontFamily = JetBrainsMono)
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        BC("none", licenseTemplate.isEmpty()) { licenseTemplate = "" }
+                        licenses.filter { it.featured }.forEach { l -> BC(l.spdxId.ifBlank { l.key }, licenseTemplate == l.key) { licenseTemplate = l.key } }
+                    }
+                }
+            }
         }
     }
 }
