@@ -472,23 +472,6 @@ internal fun ActionsTab(
     }
 }
 
-    if (showDeployments) {
-        GitHubScreenFrame(title = "> deployments", onBack = { showDeployments = false }) {
-            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)) {
-                DeploymentsPanel(repo)
-            }
-        }
-    }
-
-    if (showEnvironments) {
-        GitHubScreenFrame(title = "> environments", onBack = { showEnvironments = false }) {
-            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)) {
-                EnvironmentsPanel(repo)
-            }
-        }
-    }
-}
-
 @Composable
 private fun WorkflowDetailScreen(
     repo: GHRepo,
