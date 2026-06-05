@@ -358,10 +358,9 @@ internal fun ActionsTab(
                 )
             }
         }
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            AiModulePillButton("deployments", onClick = { showDeployments = true })
-            AiModulePillButton("envs", onClick = { showEnvironments = true }, accent = false)
-            AiModulePillButton("caches", onClick = { }, accent = false, enabled = false)
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            AiModulePillButton("deployments", onClick = { showDeployments = true; Toast.makeText(context, "opening deployments…", Toast.LENGTH_SHORT).show() })
+            AiModulePillButton("envs", onClick = { showEnvironments = true; Toast.makeText(context, "opening environments…", Toast.LENGTH_SHORT).show() }, accent = false)
         }
         ActionsOverviewHeader(
             workflows = workflows,
