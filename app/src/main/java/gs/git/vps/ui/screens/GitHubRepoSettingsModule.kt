@@ -38,6 +38,7 @@ import gs.git.vps.ui.components.AiModuleTextAction
 import gs.git.vps.ui.components.AiModuleTextField
 import gs.git.vps.data.github.GHAutolink
 import gs.git.vps.data.github.GHDeployKey
+import gs.git.vps.data.github.GHInteractionLimitEntry
 import gs.git.vps.data.github.GHRepoSettings
 import gs.git.vps.data.github.GHTag
 import gs.git.vps.data.github.GitHubManager
@@ -1350,7 +1351,7 @@ internal fun LfsPanel(owner: String, repo: String) {
 internal fun InteractionLimitsPanel(owner: String, repo: String) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var currentLimit by remember { mutableStateOf<GHInteractionLimitEntry?>(null) }
+    var currentLimit: GHInteractionLimitEntry? by remember { mutableStateOf(null) }
     var loading by remember { mutableStateOf(true) }
     var selectedLimit by remember { mutableStateOf("collaborators_only") }
     var selectedExpiry by remember { mutableStateOf("") }

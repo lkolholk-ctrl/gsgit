@@ -100,6 +100,7 @@ import gs.git.vps.data.github.GHActionsUsage
 import gs.git.vps.data.github.GHArtifact
 import gs.git.vps.data.github.GHCheckAnnotation
 import gs.git.vps.data.github.GHCheckRun
+import gs.git.vps.data.github.GHCodespace
 import gs.git.vps.data.github.GHDeployment
 import gs.git.vps.data.github.GHEnvironment
 import gs.git.vps.data.github.GHEnvironmentSecret
@@ -115,6 +116,7 @@ import gs.git.vps.data.github.GHWorkflowRunReview
 import gs.git.vps.data.github.GHWorkflowPermissions
 import gs.git.vps.data.github.GitHubManager
 import gs.git.vps.ui.components.AiModulePillButton
+import gs.git.vps.ui.components.AiModuleSectionLabel
 import gs.git.vps.data.github.canWrite
 import gs.git.vps.data.github.KernelErrorCatalog
 import gs.git.vps.data.github.KernelErrorPatterns
