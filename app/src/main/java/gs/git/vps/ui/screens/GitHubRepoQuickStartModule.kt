@@ -454,7 +454,18 @@ private fun collectFilesFromUris(context: Context, uris: List<Uri>): List<Pair<S
     val files = mutableListOf<Pair<String, ByteArray>>()
     uris.forEach { uri ->
         try {
-            val name = uri.lastPathSegment?.substringAfterLast("/") ?: "file"
+            var name: String? = null
+            try {
+                context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                    val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (nameIndex != -1 && cursor.moveToFirst()) {
+                        name = cursor.getString(nameIndex)
+                    }
+                }
+            } catch (_: Exception) {}
+            if (name.isNullOrBlank()) {
+                name = uri.lastPathSegment?.substringAfterLast(":")?.substringAfterLast("/") ?: "file"
+            }
             val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@forEach
             if (bytes.size > 25 * 1024 * 1024) return@forEach
             files.add(name to bytes)
