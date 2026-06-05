@@ -26,6 +26,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import gs.git.vps.data.Strings
 import gs.git.vps.ui.components.AiModuleAlertDialog
+import gs.git.vps.ui.components.AiModuleIconButton as IconButton
+import gs.git.vps.ui.components.AiModuleSectionLabel
 import gs.git.vps.ui.components.AiModuleHairline
 import gs.git.vps.ui.components.AiModuleIcon as Icon
 import gs.git.vps.ui.components.AiModulePageBar
@@ -1242,7 +1244,7 @@ internal fun AutolinksPanel(owner: String, repo: String) {
     LaunchedEffect(owner, repo) { load() }
 
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SectionLabel("> autolinks")
+        AiModuleSectionLabel("> autolinks")
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             AiModulePillButton("+ autolink", onClick = { showCreate = true })
             AiModulePillButton("refresh", onClick = { load() }, accent = false)
@@ -1305,7 +1307,7 @@ internal fun LfsPanel(owner: String, repo: String) {
     }
 
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SectionLabel("> git lfs")
+        AiModuleSectionLabel("> git lfs")
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             AiModulePillButton("enable", onClick = {
                 scope.launch {

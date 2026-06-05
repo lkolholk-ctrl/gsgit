@@ -3523,7 +3523,7 @@ object GitHubManager {
         } catch (e: Exception) { emptyList() }
     }
 
-    suspend fun createCommitStatus(context: Context, owner: String, repo: String, sha: String, state: String, context: String, description: String = "", targetUrl: String = ""): Boolean {
+    suspend fun createCommitStatus(context: Context, owner: String, repo: String, sha: String, state: String, statusContext: String, description: String = "", targetUrl: String = ""): Boolean {
         val body = JSONObject().apply {
             put("state", state)
             put("context", context)
