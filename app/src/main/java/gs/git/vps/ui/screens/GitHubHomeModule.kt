@@ -441,6 +441,7 @@ internal fun ReposScreen(user: GHUser?, onBack: () -> Unit, onMinimize: () -> Un
             }
         }
     }
+    }
 }
 
 @Composable
