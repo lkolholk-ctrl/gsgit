@@ -14,10 +14,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.CreateNewFolder
-import androidx.compose.material.icons.rounded.NoteAdd
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,6 +50,8 @@ private val IGNORED_EXTENSIONS = setOf(
 )
 private val MAX_FILE_SIZE = 25 * 1024 * 1024
 
+private data class StagedItem(val uri: Uri, val name: String, val size: Int, val isFolder: Boolean)
+
 @Composable
 internal fun RepoQuickStartScreen(
     result: GHRepoCreateResult,
@@ -63,107 +66,136 @@ internal fun RepoQuickStartScreen(
     val sshUrl = result.sshUrl
     val branch = repo.defaultBranch.ifBlank { "main" }
 
-    var uploadProgress by remember { mutableStateOf<Float?>(null) }
-    var uploadError by remember { mutableStateOf("") }
-    var uploadComplete by remember { mutableStateOf(false) }
-    var commitMsg by remember { mutableStateOf("") }
-    val logLines = remember { mutableStateListOf<String>() }
-    var uploadJob by remember { mutableStateOf<Job?>(null) }
+    // REMOTE tab
+    var remoteTab by remember { mutableStateOf(0) } // 0=HTTPS, 1=SSH, 2=SHA, 3=LOCAL
 
-    // preview state
-    var pendingFiles by remember { mutableStateOf<List<Pair<String, ByteArray>>?>(null) }
+    // UPLOAD staging
+    val stagedItems = remember { mutableStateListOf<StagedItem>() }
+    var commitMsg by remember { mutableStateOf("") }
+    var uploadJob by remember { mutableStateOf<Job?>(null) }
+    var uploading by remember { mutableStateOf(false) }
+    var uploadComplete by remember { mutableStateOf(false) }
+    val logLines = remember { mutableStateListOf<String>() }
+    var uploadError by remember { mutableStateOf("") }
+
+    // COMMANDS expand
+    var showCommands by remember { mutableStateOf(false) }
+
+    // scanning
     var scanning by remember { mutableStateOf(false) }
 
-    fun cancelUpload() {
-        uploadJob?.cancel()
-        uploadJob = null
-        uploadProgress = null
-        uploadError = "Cancelled"
-        logLines.add("[CANCELLED] upload aborted by user")
+    fun resolveStagedFiles(): List<Pair<String, ByteArray>> {
+        val files = mutableListOf<Pair<String, ByteArray>>()
+        stagedItems.forEach { item ->
+            try {
+                if (item.isFolder) {
+                    val dir = DocumentFile.fromTreeUri(context, item.uri) ?: return@forEach
+                    collectFilesFromDir(context, dir, "").forEach { files.add(it) }
+                } else {
+                    val bytes = context.contentResolver.openInputStream(item.uri)?.use { it.readBytes() } ?: return@forEach
+                    if (bytes.size <= MAX_FILE_SIZE) files.add(item.name to bytes)
+                }
+            } catch (_: Exception) {}
+        }
+        return files
     }
 
-    fun startUpload(files: List<Pair<String, ByteArray>>) {
+    fun startUpload() {
         uploadJob = scope.launch {
-            uploadProgress = 0f
+            uploading = true
             uploadError = ""
             uploadComplete = false
             logLines.clear()
             try {
+                val files = withContext(Dispatchers.IO) { resolveStagedFiles() }
+                if (files.isEmpty()) {
+                    uploadError = "No files to upload"
+                    uploading = false
+                    return@launch
+                }
                 val msg = commitMsg.ifBlank { "Initial commit via GsGit" }
                 val ok = GitHubManager.uploadProjectFolder(
                     context, repo.owner, repo.name, branch, files,
-                    onProgress = { progress -> uploadProgress = progress },
+                    onProgress = {},
                     commitMessage = msg,
                     onLog = { line -> logLines.add(line) }
                 )
                 if (ok) {
                     uploadComplete = true
-                    uploadProgress = 1f
+                    logLines.add("[DONE] upload complete")
                 } else {
                     uploadError = "Upload failed"
-                    uploadProgress = null
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 uploadError = "Cancelled"
-                uploadProgress = null
             } catch (e: Exception) {
                 uploadError = e.message ?: "Upload error"
-                uploadProgress = null
             }
+            uploading = false
         }
     }
 
-    fun scanAndPreview(treeUri: Uri) {
+    fun addFolder(uri: Uri) {
         scope.launch {
             scanning = true
             try {
-                val files = withContext(Dispatchers.IO) { collectFiles(context, treeUri) }
-                if (files.isEmpty()) {
-                    uploadError = "No files found in selected folder"
-                    scanning = false
-                    return@launch
+                val dir = DocumentFile.fromTreeUri(context, uri) ?: return@launch
+                val name = dir.name ?: "folder"
+                var totalSize = 0
+                withContext(Dispatchers.IO) {
+                    val all = collectFilesFromDir(context, dir, "")
+                    totalSize = all.sumOf { it.second.size }
                 }
-                pendingFiles = files
-            } catch (e: Exception) {
-                uploadError = e.message ?: "Scan error"
-            }
+                stagedItems.add(StagedItem(uri, "$name/ (${totalSize.formatBytes()})", totalSize, true))
+            } catch (_: Exception) {}
             scanning = false
         }
     }
 
-    fun scanAndPreviewUris(uris: List<Uri>) {
+    fun addFiles(uris: List<Uri>) {
         scope.launch {
             scanning = true
             try {
-                val files = withContext(Dispatchers.IO) { collectFilesFromUris(context, uris) }
-                if (files.isEmpty()) {
-                    uploadError = "No files could be read"
-                    scanning = false
-                    return@launch
+                withContext(Dispatchers.IO) {
+                    uris.forEach { uri ->
+                        try {
+                            var name: String? = null
+                            try {
+                                context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                                    val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                                    if (idx != -1 && cursor.moveToFirst()) name = cursor.getString(idx)
+                                }
+                            } catch (_: Exception) {}
+                            if (name.isNullOrBlank()) name = uri.lastPathSegment?.substringAfterLast(":")?.substringAfterLast("/") ?: "file"
+                            if (shouldIgnore(name)) return@forEach
+                            val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@forEach
+                            if (bytes.size > MAX_FILE_SIZE) return@forEach
+                            stagedItems.add(StagedItem(uri, "${name!!} (${bytes.size.formatBytes()})", bytes.size, false))
+                        } catch (_: Exception) {}
+                    }
                 }
-                pendingFiles = files
-            } catch (e: Exception) {
-                uploadError = e.message ?: "Scan error"
-            }
+            } catch (_: Exception) {}
             scanning = false
         }
     }
 
-    val folderLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocumentTree()
-    ) { treeUri: Uri? -> if (treeUri != null) scanAndPreview(treeUri) }
-
-    val filesLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenMultipleDocuments()
-    ) { uris: List<Uri> -> if (uris.isNotEmpty()) scanAndPreviewUris(uris) }
+    val folderLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) addFolder(uri)
+    }
+    val filesLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) addFiles(uris)
+    }
 
     GitHubScreenFrame(
         title = "> quick start",
         subtitle = repo.fullName,
         onBack = onBack,
         trailing = {
-            if (uploadJob?.isActive == true) {
-                BracketButton("[ cancel ]") { cancelUpload() }
+            if (uploading) {
+                androidx.compose.material3.Text("uploading…", fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.warning)
+            }
+            if (uploadComplete) {
+                BracketBtn("[ open repo ]", accent = true) { onOpenRepo(repo) }
             }
         }
     ) {
@@ -172,311 +204,308 @@ internal fun RepoQuickStartScreen(
                 Modifier
                     .weight(1f)
                     .verticalScroll(rememberScrollState())
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(0.dp)
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // ═══ А. ШАПКА РЕПОЗИТОРИЯ ═══
+                // ═══ ШАПКА ═══
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    androidx.compose.material3.Text(
-                        repo.owner, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp, color = palette.accent
-                    )
-                    androidx.compose.material3.Text(
-                        " / ", fontFamily = JetBrainsMono, fontSize = 16.sp, color = palette.textMuted
-                    )
-                    androidx.compose.material3.Text(
-                        repo.name, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp, color = palette.textPrimary
-                    )
+                    androidx.compose.material3.Text(repo.owner, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = palette.accent)
+                    androidx.compose.material3.Text(" / ", fontFamily = JetBrainsMono, fontSize = 16.sp, color = palette.textMuted)
+                    androidx.compose.material3.Text(repo.name, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = palette.textPrimary)
                 }
-                Spacer(Modifier.height(6.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    androidx.compose.material3.Text(
-                        if (repo.isPrivate) "[ PRIVATE ]" else "[ PUBLIC ]",
-                        fontFamily = JetBrainsMono, fontWeight = FontWeight.SemiBold,
-                        fontSize = 12.sp, color = if (repo.isPrivate) palette.warning else palette.accent
-                    )
-                }
-                Spacer(Modifier.height(8.dp))
-
-                // HTTPS clone url
+                androidx.compose.material3.Text(
+                    if (repo.isPrivate) "[ PRIVATE ]" else "[ PUBLIC ]",
+                    fontFamily = JetBrainsMono, fontWeight = FontWeight.SemiBold, fontSize = 12.sp,
+                    color = if (repo.isPrivate) palette.warning else palette.accent
+                )
+                // clone urls
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    androidx.compose.material3.Text(
-                        "HTTPS", fontFamily = JetBrainsMono, fontSize = 9.sp,
-                        color = palette.textMuted, fontWeight = FontWeight.Bold
-                    )
+                    androidx.compose.material3.Text("HTTPS", fontFamily = JetBrainsMono, fontSize = 9.sp, color = palette.textMuted, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.width(6.dp))
-                    androidx.compose.material3.Text(
-                        cloneUrl, fontFamily = JetBrainsMono, fontSize = 11.sp,
-                        color = palette.textSecondary, modifier = Modifier.weight(1f)
-                    )
-                    BracketButton("[ copy ]") { copyToClipboard(context, "clone url", cloneUrl) }
+                    androidx.compose.material3.Text(cloneUrl, fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.textSecondary, modifier = Modifier.weight(1f))
+                    BracketBtn("[ copy ]") { copyClipboard(context, "clone url", cloneUrl) }
                 }
-                // SSH clone url
-                if (sshUrl != null) {
-                    Spacer(Modifier.height(2.dp))
+                if (sshUrl.isNotBlank()) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        androidx.compose.material3.Text(
-                            "SSH  ", fontFamily = JetBrainsMono, fontSize = 9.sp,
-                            color = palette.textMuted, fontWeight = FontWeight.Bold
-                        )
+                        androidx.compose.material3.Text("SSH  ", fontFamily = JetBrainsMono, fontSize = 9.sp, color = palette.textMuted, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.width(6.dp))
-                        androidx.compose.material3.Text(
-                            sshUrl, fontFamily = JetBrainsMono, fontSize = 11.sp,
-                            color = palette.textSecondary, modifier = Modifier.weight(1f)
-                        )
-                        BracketButton("[ copy ]") { copyToClipboard(context, "ssh url", sshUrl) }
+                        androidx.compose.material3.Text(sshUrl, fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.textSecondary, modifier = Modifier.weight(1f))
+                        BracketBtn("[ copy ]") { copyClipboard(context, "ssh url", sshUrl) }
                     }
                 }
-                Spacer(Modifier.height(8.dp))
-                androidx.compose.material3.Text(
-                    "─".repeat(54), fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.border
-                )
-                Spacer(Modifier.height(12.dp))
 
-                // ═══ Б. ИНТЕРАКТИВНАЯ ЗОНА ДЕЙСТВИЙ ═══
-                AiModuleSectionLabel("> actions")
-                Spacer(Modifier.height(6.dp))
+                // ═══ REMOTE ═══
+                SectionHeader("> REMOTE")
+                Row(horizontalArrangement = Arrangement.spacedBy(0.dp)) {
+                    listOf("HTTPS", "SSH", "SHA", "LOCAL").forEachIndexed { i, tab ->
+                        val sel = remoteTab == i
+                        Box(
+                            Modifier
+                                .clip(RoundedCornerShape(topStart = if (i == 0) 8.dp else 0.dp, topEnd = if (i == 3) 8.dp else 0.dp))
+                                .background(if (sel) palette.accent.copy(alpha = 0.15f) else palette.surface)
+                                .border(1.dp, if (sel) palette.accent else palette.border, RoundedCornerShape(topStart = if (i == 0) 8.dp else 0.dp, topEnd = if (i == 3) 8.dp else 0.dp))
+                                .clickable { remoteTab = i }
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            androidx.compose.material3.Text(tab, fontFamily = JetBrainsMono, fontSize = 10.sp, fontWeight = FontWeight.Medium, color = if (sel) palette.accent else palette.textSecondary)
+                        }
+                    }
+                }
+                CardBox {
+                    val remoteValue = when (remoteTab) {
+                        0 -> cloneUrl
+                        1 -> sshUrl
+                        2 -> repo.htmlUrl.replace("https://github.com/", "")
+                        3 -> "/storage/emulated/0/Projects/${repo.name}"
+                        else -> cloneUrl
+                    }
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.material3.Text(remoteValue, fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.textPrimary, modifier = Modifier.weight(1f))
+                        BracketBtn("[ copy ]") { copyClipboard(context, "remote", remoteValue) }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        androidx.compose.material3.Icon(Icons.Default.Info, null, Modifier.size(12.dp), tint = palette.textMuted)
+                        androidx.compose.material3.Text("ProTip! Use this URL when adding GitHub as a remote.", fontFamily = JetBrainsMono, fontSize = 9.sp, color = palette.textMuted)
+                    }
+                }
 
-                // commit message field
+                // ═══ UPLOAD ═══
+                SectionHeader("> UPLOAD")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ActionChip(Icons.Default.Folder, "Upload Folder") { folderLauncher.launch(null) }
+                    ActionChip(Icons.Default.Description, "Upload Files") { filesLauncher.launch(arrayOf("*/*")) }
+                }
+
+                // commit msg
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    androidx.compose.material3.Text(
-                        "commit msg:", fontFamily = JetBrainsMono, fontSize = 11.sp, color = palette.textSecondary
-                    )
+                    androidx.compose.material3.Text("commit msg:", fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.textSecondary)
                     Spacer(Modifier.width(6.dp))
                     Box(
-                        Modifier
-                            .weight(1f)
+                        Modifier.weight(1f).height(28.dp)
                             .background(palette.surface, RoundedCornerShape(4.dp))
                             .border(1.dp, palette.border, RoundedCornerShape(4.dp))
-                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                            .padding(horizontal = 8.dp),
+                        contentAlignment = Alignment.CenterStart
                     ) {
-                        BasicTextField(
-                            value = commitMsg,
-                            onValueChange = { commitMsg = it },
-                            textStyle = androidx.compose.ui.text.TextStyle(
-                                fontFamily = JetBrainsMono, fontSize = 11.sp, color = palette.textPrimary
-                            ),
+                        androidx.compose.foundation.text.BasicTextField(
+                            value = commitMsg, onValueChange = { commitMsg = it },
+                            textStyle = androidx.compose.ui.text.TextStyle(fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.textPrimary),
                             singleLine = true,
                             decorationBox = { inner ->
-                                if (commitMsg.isEmpty()) {
-                                    androidx.compose.material3.Text(
-                                        "Initial commit via GsGit",
-                                        fontFamily = JetBrainsMono, fontSize = 11.sp, color = palette.textMuted
-                                    )
-                                }
+                                if (commitMsg.isEmpty()) androidx.compose.material3.Text("Initial commit via GsGit", fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.textMuted)
                                 inner()
                             }
                         )
                     }
                 }
-                Spacer(Modifier.height(8.dp))
 
-                // upload buttons / preview / progress / complete
-                if (uploadComplete) {
-                    AiModuleText(
-                        "upload complete", fontSize = 12.sp,
-                        color = palette.accent, fontFamily = JetBrainsMono
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    BracketButton("[ → open repository ]", accent = true) { onOpenRepo(repo) }
-                } else if (uploadJob?.isActive == true) {
-                    // upload in progress — show cancel hint in trailing
-                } else if (pendingFiles != null) {
-                    // file preview — show before uploading
-                    val files = pendingFiles!!
-                    val totalBytes = files.sumOf { it.second.size }
-                    androidx.compose.material3.Text(
-                        "${files.size} file(s) selected — ${formatBytes(totalBytes)}",
-                        fontFamily = JetBrainsMono, fontSize = 11.sp, color = palette.textPrimary
-                    )
-                    Spacer(Modifier.height(2.dp))
-                    if (files.size <= 8) {
-                        files.forEach { (path, bytes) ->
-                            androidx.compose.material3.Text(
-                                "  $path (${formatBytes(bytes.size)})",
-                                fontFamily = JetBrainsMono, fontSize = 9.sp, color = palette.textMuted
-                            )
+                // staging list
+                if (stagedItems.isNotEmpty()) {
+                    CardBox {
+                        stagedItems.forEachIndexed { idx, item ->
+                            Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                                androidx.compose.material3.Text(
+                                    item.name, fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.textPrimary,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Box(
+                                    Modifier.clickable { stagedItems.removeAt(idx) }.padding(4.dp)
+                                ) {
+                                    androidx.compose.material3.Icon(Icons.Default.Close, null, Modifier.size(12.dp), tint = palette.error)
+                                }
+                            }
                         }
-                    } else {
-                        files.take(5).forEach { (path, bytes) ->
-                            androidx.compose.material3.Text(
-                                "  $path (${formatBytes(bytes.size)})",
-                                fontFamily = JetBrainsMono, fontSize = 9.sp, color = palette.textMuted
-                            )
-                        }
-                        androidx.compose.material3.Text(
-                            "  … and ${files.size - 5} more",
-                            fontFamily = JetBrainsMono, fontSize = 9.sp, color = palette.textMuted
-                        )
                     }
-                    Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        BracketButton("[ upload now ]", accent = true) {
-                            val f = pendingFiles!!
-                            pendingFiles = null
-                            startUpload(f)
-                        }
-                        BracketButton("[ cancel ]") { pendingFiles = null }
+                    if (!uploading && !uploadComplete) {
+                        Spacer(Modifier.height(4.dp))
+                        CommitPushButton { startUpload() }
                     }
-                } else if (!scanning) {
-                    BracketButton("[ upload project folder ]", accent = true, icon = Icons.Rounded.CreateNewFolder) {
-                        folderLauncher.launch(null)
-                    }
-                    Spacer(Modifier.height(4.dp))
-                    BracketButton("[ upload single files ]", icon = Icons.Rounded.NoteAdd) {
-                        filesLauncher.launch(arrayOf("*/*"))
-                    }
-                } else {
-                    AiModuleSpinner(label = "scanning files…")
                 }
-
-                // error + retry
+                if (scanning) AiModuleSpinner(label = "scanning…")
+                if (uploading) AiModuleSpinner(label = "uploading…")
                 if (uploadError.isNotBlank()) {
-                    Spacer(Modifier.height(6.dp))
-                    AiModuleText(
-                        "error: $uploadError", fontSize = 11.sp,
-                        color = palette.error, fontFamily = JetBrainsMono
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        BracketButton("[ pick folder ]") { folderLauncher.launch(null) }
-                        BracketButton("[ pick files ]") { filesLauncher.launch(arrayOf("*/*")) }
+                    androidx.compose.material3.Text("error: $uploadError", fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.error)
+                }
+                if (uploadComplete) {
+                    androidx.compose.material3.Text("upload complete", fontFamily = JetBrainsMono, fontSize = 11.sp, color = palette.accent, fontWeight = FontWeight.SemiBold)
+                }
+                // log console
+                if (logLines.isNotEmpty()) AsciiLogConsole(logLines)
+
+                // ═══ STATUS ═══
+                SectionHeader("> STATUS")
+                CardBox {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        val statusLabel = if (stagedItems.isNotEmpty()) "modified" else "clean"
+                        val statusColor = if (stagedItems.isNotEmpty()) palette.warning else palette.accent
+                        androidx.compose.material3.Text("[ $statusLabel ]", fontFamily = JetBrainsMono, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = statusColor)
+                        Spacer(Modifier.width(8.dp))
+                        androidx.compose.material3.Text("${stagedItems.size} staged", fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.textMuted)
                     }
                 }
 
-                // auto-init open button
-                if (result.autoInit && !uploadComplete) {
-                    Spacer(Modifier.height(6.dp))
-                    BracketButton("[ → open repository ]", accent = true) { onOpenRepo(repo) }
-                }
-
-                // ═══ ТЕРМИНАЛЬНЫЙ ЛОГГЕР ═══
-                if (logLines.isNotEmpty()) {
-                    Spacer(Modifier.height(12.dp))
-                    AsciiLogConsole(logLines)
-                }
-
-                Spacer(Modifier.height(12.dp))
-
-                // ═══ В. ТЕРМИНАЛЬНЫЙ БЛОК ШПАРАГАЛОК ═══
-                if (!result.autoInit || !uploadComplete) {
-                    AiModuleSectionLabel("> command line")
-                    Spacer(Modifier.height(6.dp))
-
-                    val newRepoCmd = buildString {
-                        appendLine("echo \"# ${repo.name}\" >> README.md")
-                        appendLine("git init")
-                        appendLine("git add README.md")
-                        appendLine("git commit -m \"first commit\"")
-                        appendLine("git branch -M $branch")
-                        appendLine("git remote add origin $cloneUrl")
-                        append("git push -u origin $branch")
+                // ═══ LAST COMMIT ═══
+                if (result.autoInit) {
+                    SectionHeader("> LAST COMMIT")
+                    CardBox {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            androidx.compose.material3.Text("SHA:", fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.textSecondary)
+                            Spacer(Modifier.width(4.dp))
+                            androidx.compose.material3.Text("initial", fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.textPrimary, modifier = Modifier.weight(1f))
+                            BracketBtn("[ copy ]") { copyClipboard(context, "sha", "initial") }
+                        }
+                        Spacer(Modifier.height(3.dp))
+                        Row(Modifier.fillMaxWidth()) {
+                            androidx.compose.material3.Text("Author:", fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.textSecondary)
+                            Spacer(Modifier.width(4.dp))
+                            androidx.compose.material3.Text(repo.owner, fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.textPrimary)
+                        }
+                        Spacer(Modifier.height(3.dp))
+                        Row(Modifier.fillMaxWidth()) {
+                            androidx.compose.material3.Text("Branch:", fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.textSecondary)
+                            Spacer(Modifier.width(4.dp))
+                            androidx.compose.material3.Text(branch, fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.textPrimary)
+                        }
+                        Spacer(Modifier.height(3.dp))
+                        Row(Modifier.fillMaxWidth()) {
+                            androidx.compose.material3.Text("Message:", fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.textSecondary)
+                            Spacer(Modifier.width(4.dp))
+                            androidx.compose.material3.Text("Initial commit", fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.textPrimary, modifier = Modifier.weight(1f))
+                        }
                     }
-                    AsciiCodeBox(
-                        label = "...or create a new repository on the command line",
-                        code = newRepoCmd
-                    ) { copyToClipboard(context, "new repo commands", newRepoCmd) }
-
-                    Spacer(Modifier.height(10.dp))
-
-                    val existingCmd = buildString {
-                        appendLine("git remote add origin $cloneUrl")
-                        appendLine("git branch -M $branch")
-                        append("git push -u origin $branch")
-                    }
-                    AsciiCodeBox(
-                        label = "...or push an existing repository from the command line",
-                        code = existingCmd
-                    ) { copyToClipboard(context, "existing repo commands", existingCmd) }
                 }
-            }
 
-            // ═══ Г. СИСТЕМНЫЙ ФУТЕР ═══
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .background(palette.background)
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-            ) {
-                AiModuleText(
-                    "ProTip! Use background processing if you are uploading heavy directories.",
-                    fontSize = 10.sp, color = palette.textMuted, fontFamily = JetBrainsMono
-                )
+                // ═══ COMMANDS ═══
+                SectionHeaderWithToggle("> COMMANDS", if (showCommands) "hide" else "show") { showCommands = !showCommands }
+                if (showCommands) {
+                    CardBox {
+                        val newCmd = "echo \"# ${repo.name}\" >> README.md\ngit init\ngit add README.md\ngit commit -m \"first commit\"\ngit branch -M $branch\ngit remote add origin $cloneUrl\ngit push -u origin $branch"
+                        AsciiCodeBlock(newCmd)
+                        Spacer(Modifier.height(6.dp))
+                        BracketBtn("[ copy ]") { copyClipboard(context, "commands", newCmd) }
+                    }
+                }
+
+                // ═══ Финальный ProTip ═══
+                Spacer(Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    androidx.compose.material3.Icon(Icons.Default.Info, null, Modifier.size(10.dp), tint = palette.textMuted)
+                    androidx.compose.material3.Text("ProTip! Use background processing for heavy directories.", fontFamily = JetBrainsMono, fontSize = 9.sp, color = palette.textMuted)
+                }
             }
         }
     }
 }
 
+// ─── shared UI primitives ───────────────────────────
+
 @Composable
-private fun BracketButton(label: String, accent: Boolean = false, icon: androidx.compose.ui.graphics.vector.ImageVector? = null, onClick: () -> Unit) {
+private fun SectionHeader(text: String) {
+    val palette = AiModuleTheme.colors
+    androidx.compose.material3.Text(text, fontFamily = JetBrainsMono, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = palette.accent)
+}
+
+@Composable
+private fun SectionHeaderWithToggle(text: String, toggleLabel: String, onToggle: () -> Unit) {
+    val palette = AiModuleTheme.colors
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        androidx.compose.material3.Text(text, fontFamily = JetBrainsMono, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = palette.accent)
+        Spacer(Modifier.weight(1f))
+        Box(Modifier.clickable(onClick = onToggle).padding(4.dp)) {
+            androidx.compose.material3.Text("[ $toggleLabel ]", fontFamily = JetBrainsMono, fontSize = 10.sp, fontWeight = FontWeight.Medium, color = palette.textSecondary)
+        }
+    }
+}
+
+@Composable
+private fun CardBox(content: @Composable () -> Unit) {
+    val palette = AiModuleTheme.colors
+    Column(
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(palette.surface)
+            .border(1.dp, palette.border, RoundedCornerShape(8.dp))
+            .padding(10.dp)
+    ) { content() }
+}
+
+@Composable
+private fun BracketBtn(label: String, accent: Boolean = false, onClick: () -> Unit) {
     val palette = AiModuleTheme.colors
     val color = if (accent) palette.accent else palette.textSecondary
+    androidx.compose.material3.Text(
+        label, fontFamily = JetBrainsMono, fontSize = 10.sp, fontWeight = FontWeight.Medium, color = color,
+        modifier = Modifier.clickable(onClick = onClick).padding(horizontal = 4.dp, vertical = 2.dp)
+    )
+}
+
+@Composable
+private fun ActionChip(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
+    val palette = AiModuleTheme.colors
     Row(
-        Modifier.clickable(onClick = onClick).padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
+        Modifier.clip(RoundedCornerShape(6.dp)).background(palette.accent.copy(alpha = 0.08f)).border(1.dp, palette.accent.copy(alpha = 0.3f), RoundedCornerShape(6.dp)).clickable(onClick = onClick).padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        if (icon != null) {
-            androidx.compose.material3.Icon(icon, null, Modifier.size(14.dp), tint = color)
-        }
-        androidx.compose.material3.Text(
-            label, fontFamily = JetBrainsMono, fontSize = 12.sp,
-            fontWeight = FontWeight.Medium, color = color
-        )
+        androidx.compose.material3.Icon(icon, null, Modifier.size(14.dp), tint = palette.accent)
+        androidx.compose.material3.Text(label, fontFamily = JetBrainsMono, fontSize = 10.sp, fontWeight = FontWeight.Medium, color = palette.accent)
     }
 }
 
 @Composable
-private fun AsciiCodeBox(label: String, code: String, onCopy: () -> Unit) {
+private fun CommitPushButton(onClick: () -> Unit) {
+    val palette = AiModuleTheme.colors
+    Box(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(palette.accent.copy(alpha = 0.12f)).border(1.dp, palette.accent, RoundedCornerShape(6.dp)).clickable(onClick = onClick).padding(vertical = 10.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        androidx.compose.material3.Text("Commit & Push staged items", fontFamily = JetBrainsMono, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = palette.accent)
+    }
+}
+
+@Composable
+private fun AsciiCodeBlock(code: String) {
     val palette = AiModuleTheme.colors
     val lines = code.lines()
-    val maxLen = lines.maxOfOrNull { it.length }?.coerceAtLeast(label.length) ?: 40
-    val w = (maxLen + 4).coerceIn(20, 70)
-
-    Column {
-        androidx.compose.material3.Text(label, fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.textMuted)
-        Spacer(Modifier.height(4.dp))
-        androidx.compose.material3.Text("+" + "─".repeat(w) + "+", fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.border)
-        lines.forEach { line ->
-            val padded = line.padEnd(w - 2)
-            androidx.compose.material3.Text("| $padded |", fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.textPrimary)
-        }
-        androidx.compose.material3.Text("+" + "─".repeat(w) + "+", fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.border)
-        Spacer(Modifier.height(4.dp))
-        BracketButton("[ copy ]", accent = false, onClick = onCopy)
+    val maxLen = lines.maxOfOrNull { it.length } ?: 40
+    val w = (maxLen + 2).coerceIn(30, 68)
+    androidx.compose.material3.Text("+" + "─".repeat(w) + "+", fontFamily = JetBrainsMono, fontSize = 9.sp, color = palette.border)
+    lines.forEach { line ->
+        val padded = line.padEnd(w - 2)
+        androidx.compose.material3.Text("| $padded |", fontFamily = JetBrainsMono, fontSize = 9.sp, color = palette.textPrimary)
     }
+    androidx.compose.material3.Text("+" + "─".repeat(w) + "+", fontFamily = JetBrainsMono, fontSize = 9.sp, color = palette.border)
 }
 
 @Composable
 private fun AsciiLogConsole(lines: List<String>) {
     val palette = AiModuleTheme.colors
     val maxLen = lines.maxOfOrNull { it.length } ?: 20
-    val w = (maxLen + 2).coerceIn(30, 70)
-
-    Column {
-        androidx.compose.material3.Text("+" + "─".repeat(w) + "+", fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.border)
+    val w = (maxLen + 2).coerceIn(30, 68)
+    CardBox {
+        androidx.compose.material3.Text("+" + "─".repeat(w) + "+", fontFamily = JetBrainsMono, fontSize = 9.sp, color = palette.border)
         lines.forEach { line ->
             val tagColor = when {
                 line.startsWith("[OK]") || line.startsWith("[DONE]") -> palette.accent
                 line.startsWith("[FAIL]") || line.startsWith("[CANCELLED]") -> palette.error
-                line.startsWith("[BLOB]") || line.startsWith("[PREPARING]") -> palette.textSecondary
                 else -> palette.textMuted
             }
             val padded = line.padEnd(w - 2)
-            androidx.compose.material3.Text("| $padded |", fontFamily = JetBrainsMono, fontSize = 9.sp, color = tagColor)
+            androidx.compose.material3.Text("| $padded |", fontFamily = JetBrainsMono, fontSize = 8.sp, color = tagColor)
         }
-        androidx.compose.material3.Text("+" + "─".repeat(w) + "+", fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.border)
+        androidx.compose.material3.Text("+" + "─".repeat(w) + "+", fontFamily = JetBrainsMono, fontSize = 9.sp, color = palette.border)
     }
 }
 
-private fun formatBytes(bytes: Int): String = when {
-    bytes < 1024 -> "$bytes B"
-    bytes < 1024 * 1024 -> "${bytes / 1024} KB"
-    else -> "${"%.1f".format(bytes / (1024.0 * 1024.0))} MB"
+// ─── utility functions ───────────────────────────────
+
+private fun Int.formatBytes(): String = when {
+    this < 1024 -> "$this B"
+    this < 1024 * 1024 -> "${this / 1024} KB"
+    else -> "${"%.1f".format(this / (1024.0 * 1024.0))} MB"
 }
 
-private fun copyToClipboard(context: Context, label: String, text: String) {
+private fun copyClipboard(context: Context, label: String, text: String) {
     val clip = ClipData.newPlainText(label, text)
     (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(clip)
     Toast.makeText(context, "copied", Toast.LENGTH_SHORT).show()
@@ -489,51 +518,19 @@ private fun shouldIgnore(name: String): Boolean {
     return IGNORED_EXTENSIONS.any { lower.endsWith(it) }
 }
 
-private fun collectFiles(context: Context, treeUri: Uri): List<Pair<String, ByteArray>> {
-    val pickedDir = DocumentFile.fromTreeUri(context, treeUri) ?: return emptyList()
+private fun collectFilesFromDir(context: Context, dir: DocumentFile, prefix: String): List<Pair<String, ByteArray>> {
     val files = mutableListOf<Pair<String, ByteArray>>()
-    fun walk(dir: DocumentFile, pathPrefix: String) {
-        dir.listFiles().forEach { doc ->
-            val name = doc.name ?: return@forEach
-            if (doc.isDirectory) {
-                if (!shouldIgnore(name)) walk(doc, "$pathPrefix$name/")
-            } else if (doc.isFile) {
-                if (shouldIgnore(name)) return@forEach
-                val relPath = "$pathPrefix$name"
-                try {
-                    val bytes = context.contentResolver.openInputStream(doc.uri)?.use { it.readBytes() } ?: return@forEach
-                    if (bytes.size > MAX_FILE_SIZE) return@forEach
-                    files.add(relPath to bytes)
-                } catch (_: Exception) {}
-            }
-        }
-    }
-    walk(pickedDir, "")
-    return files
-}
-
-private fun collectFilesFromUris(context: Context, uris: List<Uri>): List<Pair<String, ByteArray>> {
-    val files = mutableListOf<Pair<String, ByteArray>>()
-    uris.forEach { uri ->
-        try {
-            var name: String? = null
+    dir.listFiles().forEach { doc ->
+        val name = doc.name ?: return@forEach
+        if (doc.isDirectory) {
+            if (!shouldIgnore(name)) files.addAll(collectFilesFromDir(context, doc, "$prefix$name/"))
+        } else if (doc.isFile) {
+            if (shouldIgnore(name)) return@forEach
             try {
-                context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                    val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                    if (nameIndex != -1 && cursor.moveToFirst()) {
-                        name = cursor.getString(nameIndex)
-                    }
-                }
+                val bytes = context.contentResolver.openInputStream(doc.uri)?.use { it.readBytes() } ?: return@forEach
+                if (bytes.size <= MAX_FILE_SIZE) files.add("$prefix$name" to bytes)
             } catch (_: Exception) {}
-            if (name.isNullOrBlank()) {
-                name = uri.lastPathSegment?.substringAfterLast(":")?.substringAfterLast("/") ?: "file"
-            }
-            if (shouldIgnore(name!!)) return@forEach
-            val safeName: String = name!!
-            val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@forEach
-            if (bytes.size > MAX_FILE_SIZE) return@forEach
-            files.add(safeName to bytes)
-        } catch (_: Exception) {}
+        }
     }
     return files
 }
