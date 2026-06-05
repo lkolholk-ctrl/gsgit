@@ -6773,10 +6773,97 @@ object GitHubManager {
         return try {
             withContext(Dispatchers.IO) {
                 onLog("[PREPARING] ${files.size} file(s) to upload")
+
+                // Check if repo is empty by trying to resolve the branch ref
+                val ref = getGitRef(context, owner, repo, "heads/$branch")
+                if (ref == null) {
+                    // Empty repo — Git Data API won't work, use Contents API for first file
+                    onLog("[INIT] repo is empty, seeding via Contents API")
+                    val (firstPath, firstBytes) = files.first()
+                    onProgress(0.05f)
+                    onLog("[PUT] $firstPath (${firstBytes.size} bytes)")
+                    val seed = uploadFileWithResult(context, owner, repo, firstPath, firstBytes, commitMessage, branch)
+                    if (!seed.success) {
+                        onLog("[FAIL] Contents API seed: ${seed.error.take(300)}")
+                        throw Exception("Contents API seed failed for $firstPath")
+                    }
+                    onLog("[OK] seeded $firstPath — repo now has initial commit")
+                    onProgress(0.1f)
+
+                    // Remaining files via normal Git Data pipeline
+                    if (files.size == 1) {
+                        onLog("[DONE] single file uploaded via Contents API")
+                        onProgress(1f)
+                        return@withContext
+                    }
+                    val remaining = files.drop(1)
+                    onLog("[BLOBS] ${remaining.size} remaining file(s) via Git Data API")
+
+                    val seedRef = getGitRef(context, owner, repo, "heads/$branch")
+                        ?: throw Exception("ref not found after seed")
+                    val parentSha = seedRef.nodeSha
+                    onLog("[REF] parent commit ${parentSha.take(7)}")
+                    val parentCommit = getGitCommit(context, owner, repo, parentSha)
+                        ?: throw Exception("commit not found after seed")
+                    val baseTreeSha = parentCommit.treeSha
+
+                    val blobShas = mutableListOf<Pair<String, String>>()
+                    remaining.forEachIndexed { i, (path, bytes) ->
+                        try {
+                            onProgress(0.1f + i.toFloat() / remaining.size * 0.6f)
+                            onLog("[BLOB] $path (${bytes.size} bytes)")
+                            val b64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                            val blob = createGitBlob(context, owner, repo, b64, "base64", onLog)
+                                ?: throw Exception("blob API returned null for $path")
+                            blobShas.add(path to blob.sha)
+                            onLog("[OK] blob ${blob.sha.take(7)}")
+                        } catch (e: Exception) {
+                            onLog("[FAIL] $path: ${e.javaClass.simpleName} -> ${e.message}")
+                            throw e
+                        }
+                    }
+                    onProgress(0.75f)
+                    onLog("[TREE] building tree with ${blobShas.size} entries")
+                    val treeItems = JSONArray()
+                    blobShas.forEach { (p, sha) ->
+                        treeItems.put(JSONObject().apply {
+                            put("path", p); put("mode", "100644"); put("type", "blob"); put("sha", sha)
+                        })
+                    }
+                    val treeBody = JSONObject().apply {
+                        put("base_tree", baseTreeSha); put("tree", treeItems)
+                    }.toString()
+                    val treeR = request(context, "/repos/$owner/$repo/git/trees", "POST", treeBody)
+                    if (!treeR.success) throw Exception("tree HTTP ${treeR.code}: ${treeR.body.take(200)}")
+                    val newTreeSha = JSONObject(treeR.body).optString("sha", "")
+                    if (newTreeSha.isBlank()) throw Exception("tree sha empty")
+                    onLog("[OK] tree ${newTreeSha.take(7)}")
+                    onProgress(0.85f)
+                    onLog("[COMMIT] $commitMessage")
+                    val commit = createGitCommit(context, owner, repo, commitMessage, newTreeSha, listOf(parentSha))
+                        ?: throw Exception("commit create failed")
+                    onLog("[OK] commit ${commit.sha.take(7)}")
+                    onProgress(0.95f)
+                    onLog("[REF] updating heads/$branch → ${commit.sha.take(7)}")
+                    updateGitRef(context, owner, repo, "heads/$branch", commit.sha)
+                        ?: throw Exception("ref update failed")
+                    onLog("[DONE] upload complete")
+                    onProgress(1f)
+                    return@withContext
+                }
+
+                // Normal path — repo already has commits
+                val parentSha = ref.nodeSha
+                onLog("[REF] parent commit ${parentSha.take(7)}")
+                val parentCommit = getGitCommit(context, owner, repo, parentSha)
+                    ?: throw Exception("commit not found")
+                val baseTreeSha = parentCommit.treeSha
+                onProgress(0.05f)
+
                 val blobShas = mutableListOf<Pair<String, String>>()
                 files.forEachIndexed { i, (path, bytes) ->
                     try {
-                        onProgress(i.toFloat() / files.size * 0.6f)
+                        onProgress(0.05f + i.toFloat() / files.size * 0.6f)
                         onLog("[BLOB] $path (${bytes.size} bytes)")
                         val b64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
                         val blob = createGitBlob(context, owner, repo, b64, "base64", onLog)
@@ -6788,15 +6875,6 @@ object GitHubManager {
                         throw e
                     }
                 }
-                onProgress(0.65f)
-                onLog("[REF] resolving heads/$branch")
-                val ref = getGitRef(context, owner, repo, "heads/$branch")
-                    ?: throw Exception("ref not found: $branch")
-                val parentSha = ref.nodeSha
-                onLog("[REF] parent commit ${parentSha.take(7)}")
-                val parentCommit = getGitCommit(context, owner, repo, parentSha)
-                    ?: throw Exception("commit not found")
-                val baseTreeSha = parentCommit.treeSha
                 onProgress(0.7f)
                 onLog("[TREE] building tree with ${blobShas.size} entries")
                 val treeItems = JSONArray()
