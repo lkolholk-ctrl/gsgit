@@ -466,9 +466,10 @@ private fun collectFilesFromUris(context: Context, uris: List<Uri>): List<Pair<S
             if (name.isNullOrBlank()) {
                 name = uri.lastPathSegment?.substringAfterLast(":")?.substringAfterLast("/") ?: "file"
             }
+            val safeName = name!!
             val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@forEach
             if (bytes.size > 25 * 1024 * 1024) return@forEach
-            files.add(name to bytes)
+            files.add(safeName to bytes)
         } catch (_: Exception) {}
     }
     return files
