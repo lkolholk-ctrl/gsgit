@@ -359,9 +359,9 @@ internal fun ActionsTab(
             }
         }
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            GitHubTerminalButton("deployments", onClick = { showDeployments = true }, color = Blue)
-            GitHubTerminalButton("envs", onClick = { showEnvironments = true }, color = Blue)
-            GitHubTerminalButton("caches", onClick = { }, color = AiModuleTheme.colors.textSecondary)
+            AiModulePillButton("deployments", onClick = { showDeployments = true })
+            AiModulePillButton("envs", onClick = { showEnvironments = true }, accent = false)
+            AiModulePillButton("caches", onClick = { }, accent = false, enabled = false)
         }
         ActionsOverviewHeader(
             workflows = workflows,
