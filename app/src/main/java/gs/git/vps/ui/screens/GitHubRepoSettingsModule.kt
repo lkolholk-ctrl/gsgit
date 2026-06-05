@@ -34,6 +34,7 @@ import gs.git.vps.ui.components.AiModuleSpinner
 import gs.git.vps.ui.components.AiModuleText as Text
 import gs.git.vps.ui.components.AiModuleTextAction
 import gs.git.vps.ui.components.AiModuleTextField
+import gs.git.vps.data.github.GHAutolink
 import gs.git.vps.data.github.GHDeployKey
 import gs.git.vps.data.github.GHRepoSettings
 import gs.git.vps.data.github.GHTag
@@ -53,7 +54,9 @@ internal fun RepoSettingsScreen(
     onWebhooks: () -> Unit = {},
     onDiscussions: () -> Unit = {},
     onRulesets: () -> Unit = {},
-    onSecurity: () -> Unit = {}
+    onSecurity: () -> Unit = {},
+    onAutolinks: () -> Unit = {},
+    onLfs: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -401,6 +404,40 @@ internal fun RepoSettingsScreen(
                                 Column(Modifier.weight(1f)) {
                                     Text("Security", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = AiModuleTheme.colors.textPrimary)
                                     Text("Dependabot alerts", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted)
+                                }
+                                Icon(Icons.Rounded.ChevronRight, null, Modifier.size(16.dp), tint = AiModuleTheme.colors.textMuted)
+                            }
+
+                            // Autolinks
+                            Row(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius))
+                                    .background(AiModuleTheme.colors.background)
+                                    .clickable { onAutolinks() }
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Icon(Icons.Rounded.Link, null, Modifier.size(22.dp), tint = AiModuleTheme.colors.accent)
+                                Column(Modifier.weight(1f)) {
+                                    Text("Autolinks", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = AiModuleTheme.colors.textPrimary)
+                                    Text("Reference autolink patterns", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted)
+                                }
+                                Icon(Icons.Rounded.ChevronRight, null, Modifier.size(16.dp), tint = AiModuleTheme.colors.textMuted)
+                            }
+
+                            // LFS
+                            Row(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius))
+                                    .background(AiModuleTheme.colors.background)
+                                    .clickable { onLfs() }
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Icon(Icons.Rounded.Storage, null, Modifier.size(22.dp), tint = AiModuleTheme.colors.accent)
+                                Column(Modifier.weight(1f)) {
+                                    Text("Git LFS", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = AiModuleTheme.colors.textPrimary)
+                                    Text("Large File Storage settings", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted)
                                 }
                                 Icon(Icons.Rounded.ChevronRight, null, Modifier.size(16.dp), tint = AiModuleTheme.colors.textMuted)
                             }
@@ -1183,5 +1220,108 @@ private fun TopicChip(topic: String, onRemove: () -> Unit) {
             Modifier.size(14.dp).clickable { onRemove() },
             tint = AiModuleTheme.colors.accent
         )
+    }
+}
+
+@Composable
+internal fun AutolinksPanel(owner: String, repo: String) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var autolinks by remember { mutableStateOf<List<GHAutolink>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var showCreate by remember { mutableStateOf(false) }
+
+    fun load() {
+        scope.launch {
+            loading = true
+            autolinks = GitHubManager.getAutolinks(context, owner, repo)
+            loading = false
+        }
+    }
+
+    LaunchedEffect(owner, repo) { load() }
+
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SectionLabel("> autolinks")
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            AiModulePillButton("+ autolink", onClick = { showCreate = true })
+            AiModulePillButton("refresh", onClick = { load() }, accent = false)
+        }
+        if (autolinks.isEmpty() && !loading) {
+            Text("No autolinks configured", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted, fontFamily = JetBrainsMono)
+        } else {
+            autolinks.forEach { link ->
+                Row(Modifier.fillMaxWidth().ghGlassCard(8.dp).padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(link.keyPrefix, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono)
+                        Text(link.urlTemplate, fontSize = 11.sp, color = AiModuleTheme.colors.textMuted, fontFamily = JetBrainsMono)
+                    }
+                    IconButton(onClick = {
+                        scope.launch {
+                            val ok = GitHubManager.deleteAutolink(context, owner, repo, link.id)
+                            Toast.makeText(context, if (ok) "Deleted" else "Failed", Toast.LENGTH_SHORT).show()
+                            if (ok) load()
+                        }
+                    }) { Icon(Icons.Rounded.Close, null, Modifier.size(14.dp), tint = AiModuleTheme.colors.textMuted) }
+                }
+            }
+        }
+    }
+
+    if (showCreate) {
+        var prefix by remember { mutableStateOf("") }
+        var template by remember { mutableStateOf("") }
+        AiModuleAlertDialog(
+            onDismissRequest = { showCreate = false },
+            title = "create autolink",
+            confirmButton = {
+                AiModuleTextAction(label = "create", enabled = prefix.isNotBlank() && template.isNotBlank(), onClick = {
+                    scope.launch {
+                        val ok = GitHubManager.createAutolink(context, owner, repo, prefix, template)
+                        Toast.makeText(context, if (ok) "Created" else "Failed", Toast.LENGTH_SHORT).show()
+                        if (ok) load()
+                        showCreate = false
+                    }
+                }, tint = Blue)
+            },
+            dismissButton = { AiModuleTextAction(label = "cancel", onClick = { showCreate = false }) },
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                GitHubTerminalTextField(value = prefix, onValueChange = { prefix = it }, placeholder = "Key prefix (e.g. JIRA-)", singleLine = true)
+                GitHubTerminalTextField(value = template, onValueChange = { template = it }, placeholder = "URL template (e.g. https://jira.com/$id)", singleLine = true)
+            }
+        }
+    }
+}
+
+@Composable
+internal fun LfsPanel(owner: String, repo: String) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var lfsEnabled by remember { mutableStateOf<Boolean?>(null) }
+
+    LaunchedEffect(owner, repo) {
+        lfsEnabled = null
+    }
+
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SectionLabel("> git lfs")
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            AiModulePillButton("enable", onClick = {
+                scope.launch {
+                    val ok = GitHubManager.enableRepoLfs(context, owner, repo)
+                    Toast.makeText(context, if (ok) "LFS enabled" else "Failed", Toast.LENGTH_SHORT).show()
+                    if (ok) lfsEnabled = true
+                }
+            }, accent = true)
+            AiModulePillButton("disable", onClick = {
+                scope.launch {
+                    val ok = GitHubManager.disableRepoLfs(context, owner, repo)
+                    Toast.makeText(context, if (ok) "LFS disabled" else "Failed", Toast.LENGTH_SHORT).show()
+                    if (ok) lfsEnabled = false
+                }
+            }, destructive = true)
+        }
+        Text("Git LFS lets you store large files outside the repository.", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted, fontFamily = JetBrainsMono)
     }
 }

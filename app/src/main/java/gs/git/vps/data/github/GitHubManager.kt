@@ -3461,6 +3461,155 @@ object GitHubManager {
         return r.success
     }
 
+    suspend fun getOrgMembers(context: Context, org: String, role: String = "all", page: Int = 1): List<GHUserLite> {
+        val r = request(context, "/orgs/${encPath(org)}/members?role=$role&per_page=100&page=$page")
+        if (!r.success) return emptyList()
+        return try {
+            val arr = JSONArray(r.body)
+            (0 until arr.length()).map { i ->
+                val j = arr.getJSONObject(i)
+                GHUserLite(login = j.optString("login", ""), avatarUrl = j.optString("avatar_url", ""))
+            }
+        } catch (e: Exception) { emptyList() }
+    }
+
+    suspend fun removeOrgMember(context: Context, org: String, username: String): Boolean {
+        return request(context, "/orgs/${encPath(org)}/members/${encPath(username)}", "DELETE").let { it.code == 204 || it.success }
+    }
+
+    suspend fun getOrg(context: Context, org: String): GHOrg? {
+        val r = request(context, "/orgs/${encPath(org)}")
+        if (!r.success) return null
+        return try {
+            val j = JSONObject(r.body)
+            GHOrg(login = j.optString("login"), avatarUrl = j.optString("avatar_url", ""), description = j.optString("description", ""))
+        } catch (e: Exception) { null }
+    }
+
+    suspend fun updateOrg(context: Context, org: String, description: String? = null, defaultRepoPermission: String? = null, hasOrgProjects: Boolean? = null, hasRepoProjects: Boolean? = null): Boolean {
+        val body = JSONObject().apply {
+            description?.let { put("description", it) }
+            defaultRepoPermission?.let { put("default_repository_permission", it) }
+            hasOrgProjects?.let { put("has_organization_projects", it) }
+            hasRepoProjects?.let { put("has_repository_projects", it) }
+        }.toString()
+        val r = request(context, "/orgs/${encPath(org)}", "PATCH", body)
+        return r.success
+    }
+
+    // ═══════════════════════════════════
+    // Commit Statuses
+    // ═══════════════════════════════════
+
+    suspend fun getCommitStatuses(context: Context, owner: String, repo: String, ref: String): List<GHCommitStatus> {
+        val encodedRef = URLEncoder.encode(ref, "UTF-8")
+        val r = request(context, "/repos/$owner/$repo/commits/$encodedRef/statuses?per_page=100")
+        if (!r.success) return emptyList()
+        return try {
+            val arr = JSONArray(r.body)
+            (0 until arr.length()).map { i ->
+                val j = arr.getJSONObject(i)
+                GHCommitStatus(
+                    id = j.optLong("id", 0),
+                    state = j.optString("state", ""),
+                    context = j.optString("context", ""),
+                    description = j.optString("description", ""),
+                    targetUrl = j.optString("target_url", ""),
+                    createdAt = j.optString("created_at", ""),
+                    updatedAt = j.optString("updated_at", ""),
+                    creator = j.optJSONObject("creator")?.optString("login") ?: ""
+                )
+            }
+        } catch (e: Exception) { emptyList() }
+    }
+
+    suspend fun createCommitStatus(context: Context, owner: String, repo: String, sha: String, state: String, context: String, description: String = "", targetUrl: String = ""): Boolean {
+        val body = JSONObject().apply {
+            put("state", state)
+            put("context", context)
+            if (description.isNotBlank()) put("description", description)
+            if (targetUrl.isNotBlank()) put("target_url", targetUrl)
+        }.toString()
+        val r = request(context, "/repos/$owner/$repo/statuses/$sha", "POST", body)
+        return r.success
+    }
+
+    // ═══════════════════════════════════
+    // Autolinks
+    // ═══════════════════════════════════
+
+    suspend fun getAutolinks(context: Context, owner: String, repo: String): List<GHAutolink> {
+        val r = request(context, "/repos/$owner/$repo/autolinks", extraHeaders = mapOf("Accept" to "application/vnd.github+json"))
+        if (!r.success) return emptyList()
+        return try {
+            val arr = JSONArray(r.body)
+            (0 until arr.length()).map { i ->
+                val j = arr.getJSONObject(i)
+                GHAutolink(j.optLong("id", 0), j.optString("key_prefix", ""), j.optString("url_template", ""), j.optBoolean("is_alphanumeric", true))
+            }
+        } catch (e: Exception) { emptyList() }
+    }
+
+    suspend fun createAutolink(context: Context, owner: String, repo: String, keyPrefix: String, urlTemplate: String, isAlphanumeric: Boolean = true): Boolean {
+        val body = JSONObject().apply {
+            put("key_prefix", keyPrefix)
+            put("url_template", urlTemplate)
+            put("is_alphanumeric", isAlphanumeric)
+        }.toString()
+        val r = request(context, "/repos/$owner/$repo/autolinks", "POST", body, extraHeaders = mapOf("Accept" to "application/vnd.github+json"))
+        return r.success
+    }
+
+    suspend fun deleteAutolink(context: Context, owner: String, repo: String, autolinkId: Long): Boolean {
+        return request(context, "/repos/$owner/$repo/autolinks/$autolinkId", "DELETE", extraHeaders = mapOf("Accept" to "application/vnd.github+json")).let { it.code == 204 || it.success }
+    }
+
+    // ═══════════════════════════════════
+    // Codespaces
+    // ═══════════════════════════════════
+
+    suspend fun getCodespaces(context: Context, page: Int = 1): List<GHCodespace> {
+        val r = request(context, "/user/codespaces?per_page=30&page=$page")
+        if (!r.success) return emptyList()
+        return try {
+            val arr = JSONObject(r.body).optJSONArray("codespaces") ?: JSONArray()
+            (0 until arr.length()).map { i ->
+                val j = arr.getJSONObject(i)
+                GHCodespace(
+                    name = j.optString("name", ""),
+                    displayName = j.optString("display_name", ""),
+                    state = j.optString("state", ""),
+                    owner = j.optJSONObject("owner")?.optString("login") ?: "",
+                    repo = j.optJSONObject("repository")?.optString("full_name") ?: "",
+                    branch = j.optJSONObject("git_status")?.optString("ref", "") ?: "",
+                    machine = j.optString("machine_display_name", ""),
+                    createdAt = j.optString("created_at", ""),
+                    lastUsedAt = j.optString("last_used_at", ""),
+                    idleTimeoutMinutes = j.optInt("idle_timeout_minutes", 30),
+                    url = j.optString("web_url", "")
+                )
+            }
+        } catch (e: Exception) { emptyList() }
+    }
+
+    suspend fun deleteCodespace(context: Context, codespaceName: String): Boolean {
+        return request(context, "/user/codespaces/${URLEncoder.encode(codespaceName, "UTF-8")}", "DELETE").let { it.code == 202 || it.code == 204 || it.success }
+    }
+
+    // ═══════════════════════════════════
+    // Repo LFS
+    // ═══════════════════════════════════
+
+    suspend fun enableRepoLfs(context: Context, owner: String, repo: String): Boolean {
+        val body = JSONObject().apply { put("enabled", true) }.toString()
+        val r = request(context, "/repos/$owner/$repo/lfs", "PUT", body, extraHeaders = mapOf("Accept" to "application/vnd.github+json"))
+        return r.success
+    }
+
+    suspend fun disableRepoLfs(context: Context, owner: String, repo: String): Boolean {
+        return request(context, "/repos/$owner/$repo/lfs", "DELETE", extraHeaders = mapOf("Accept" to "application/vnd.github+json")).let { it.code == 204 || it.success }
+    }
+
     suspend fun getOrgHooks(context: Context, org: String): List<GHWebhook> {
         val r = request(context, "/orgs/${encPath(org)}/hooks?per_page=30", extraHeaders = mapOf("Accept" to "application/vnd.github+json"))
         if (!r.success) return emptyList()
@@ -7793,4 +7942,36 @@ data class GHEnvironmentSecret(
     val name: String,
     val createdAt: String,
     val updatedAt: String
+)
+
+data class GHCommitStatus(
+    val id: Long,
+    val state: String,
+    val context: String,
+    val description: String,
+    val targetUrl: String,
+    val createdAt: String,
+    val updatedAt: String,
+    val creator: String
+)
+
+data class GHAutolink(
+    val id: Long,
+    val keyPrefix: String,
+    val urlTemplate: String,
+    val isAlphanumeric: Boolean
+)
+
+data class GHCodespace(
+    val name: String,
+    val displayName: String,
+    val state: String,
+    val owner: String,
+    val repo: String,
+    val branch: String,
+    val machine: String,
+    val createdAt: String,
+    val lastUsedAt: String,
+    val idleTimeoutMinutes: Int,
+    val url: String
 )

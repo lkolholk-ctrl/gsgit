@@ -167,6 +167,8 @@ internal fun RepoDetailScreen(
     var showDiscussions by remember { mutableStateOf(false) }
     var showRulesets by remember { mutableStateOf(false) }
     var showSecurity by remember { mutableStateOf(false) }
+    var showAutolinks by remember { mutableStateOf(false) }
+    var showLfs by remember { mutableStateOf(false) }
     var showActionsTroubleshoot by remember { mutableStateOf(false) }
     var returnToRepoSettings by remember { mutableStateOf(false) }
     var languages by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }; var contributors by remember { mutableStateOf<List<GHContributor>>(emptyList()) }
@@ -285,6 +287,8 @@ internal fun RepoDetailScreen(
             showDiscussions -> { showDiscussions = false; restoreRepoSettingsIfNeeded() }
             showRulesets -> { showRulesets = false; restoreRepoSettingsIfNeeded() }
             showSecurity -> { showSecurity = false; restoreRepoSettingsIfNeeded() }
+            showAutolinks -> { showAutolinks = false; restoreRepoSettingsIfNeeded() }
+            showLfs -> { showLfs = false; restoreRepoSettingsIfNeeded() }
             currentPath.isNotBlank() && selectedTab == RepoTab.FILES -> currentPath = currentPath.substringBeforeLast("/", "")
             else -> onBack()
         }
@@ -491,6 +495,8 @@ internal fun RepoDetailScreen(
                 onDiscussions = { openRepoSettingsChild { showDiscussions = true } },
                 onRulesets = { openRepoSettingsChild { showRulesets = true } },
                 onSecurity = { openRepoSettingsChild { showSecurity = true } },
+                onAutolinks = { openRepoSettingsChild { showAutolinks = true } },
+                onLfs = { openRepoSettingsChild { showLfs = true } },
             )
         } else {
             GitHubAdminRequiredScreen(title = "> settings", repoFullName = repo.fullName) { showRepoSettings = false }
@@ -505,6 +511,8 @@ internal fun RepoDetailScreen(
     if (showDiscussions) { DiscussionsScreen(repoOwner = repo.owner, repoName = repo.name, canWrite = canWrite) { closeRepoSettingsChild { showDiscussions = false } }; return }
     if (showRulesets) { if (canAdmin) RulesetsScreen(repoOwner = repo.owner, repoName = repo.name) { closeRepoSettingsChild { showRulesets = false } } else GitHubAdminRequiredScreen(title = "> rulesets", repoFullName = repo.fullName) { closeRepoSettingsChild { showRulesets = false } }; return }
     if (showSecurity) { if (canAdmin) SecurityScreen(repoOwner = repo.owner, repoName = repo.name) { closeRepoSettingsChild { showSecurity = false } } else GitHubAdminRequiredScreen(title = "> security", repoFullName = repo.fullName) { closeRepoSettingsChild { showSecurity = false } }; return }
+    if (showAutolinks) { GitHubScreenFrame(title = "> autolinks", onBack = { closeRepoSettingsChild { showAutolinks = false } }) { Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)) { AutolinksPanel(owner = repo.owner, repo = repo.name) } }; return }
+    if (showLfs) { GitHubScreenFrame(title = "> git lfs", onBack = { closeRepoSettingsChild { showLfs = false } }) { Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)) { LfsPanel(owner = repo.owner, repo = repo.name) } }; return }
     if (showActionsTroubleshoot) {
         GitHubActionsTroubleshootScreen(
             repo = repo,
