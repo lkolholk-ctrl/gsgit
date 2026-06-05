@@ -43,6 +43,7 @@ import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Cancel
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Error
@@ -100,6 +101,8 @@ import gs.git.vps.data.github.GHArtifact
 import gs.git.vps.data.github.GHCheckAnnotation
 import gs.git.vps.data.github.GHCheckRun
 import gs.git.vps.data.github.GHDeployment
+import gs.git.vps.data.github.GHEnvironment
+import gs.git.vps.data.github.GHEnvironmentSecret
 import gs.git.vps.data.github.GHJob
 import gs.git.vps.data.github.GHPendingDeployment
 import gs.git.vps.data.github.GHRepo
@@ -221,6 +224,7 @@ internal fun ActionsTab(
     var dispatchInputValues by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var dispatching by remember { mutableStateOf(false) }
     var showDeployments by remember { mutableStateOf(false) }
+    var showEnvironments by remember { mutableStateOf(false) }
 
     suspend fun refreshOverview() {
         refreshing = true
@@ -445,6 +449,7 @@ internal fun ActionsTab(
         Spacer(Modifier.height(8.dp))
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             GitHubTerminalButton("deployments", onClick = { showDeployments = true }, color = Blue)
+            GitHubTerminalButton("envs", onClick = { showEnvironments = true }, color = Blue)
             GitHubTerminalButton("caches", onClick = {
                 // navigates to caches panel via ActionsTroubleshootModule or inline
             }, color = AiModuleTheme.colors.textSecondary)
@@ -456,6 +461,14 @@ internal fun ActionsTab(
         GitHubScreenFrame(title = "> deployments", onBack = { showDeployments = false }) {
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)) {
                 DeploymentsPanel(repo)
+            }
+        }
+    }
+
+    if (showEnvironments) {
+        GitHubScreenFrame(title = "> environments", onBack = { showEnvironments = false }) {
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)) {
+                EnvironmentsPanel(repo)
             }
         }
     }
@@ -5411,6 +5424,164 @@ internal fun DeploymentsPanel(repo: GHRepo) {
                 listOf("success", "failure", "error", "pending", "in_progress", "queued", "inactive").forEach { s ->
                     GitHubTerminalTab(label = s, selected = state == s, onClick = { state = s })
                 }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun EnvironmentsPanel(repo: GHRepo) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var environments by remember { mutableStateOf<List<GHEnvironment>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var showCreate by remember { mutableStateOf(false) }
+    var selectedEnv by remember { mutableStateOf<GHEnvironment?>(null) }
+    var envSecrets by remember { mutableStateOf<List<GHEnvironmentSecret>>(emptyList()) }
+    var showAddSecret by remember { mutableStateOf(false) }
+
+    fun load() {
+        scope.launch {
+            loading = true
+            environments = GitHubManager.getEnvironments(context, repo.owner, repo.name)
+            loading = false
+        }
+    }
+
+    LaunchedEffect(repo) { load() }
+
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        ActionsPanelHeader("Environments", "Repository deployment environments.", loading) { load() }
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (repo.canWrite()) {
+                GitHubTerminalButton("+ env", onClick = { showCreate = true }, color = Blue)
+            }
+        }
+        if (environments.isEmpty() && !loading) {
+            EmptyActionsText("No environments configured")
+        } else {
+            environments.forEach { env ->
+                Column(
+                    Modifier.fillMaxWidth().ghGlassCard(10.dp).clickable { selectedEnv = env }.padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(env.name, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono, modifier = Modifier.weight(1f))
+                        if (env.protectionRules.isNotEmpty()) {
+                            Text("[${env.protectionRules.size} rules]", fontSize = 10.sp, color = AiModuleTheme.colors.textMuted, fontFamily = JetBrainsMono)
+                        }
+                        if (repo.canWrite()) {
+                            IconButton(onClick = {
+                                scope.launch {
+                                    val ok = GitHubManager.deleteEnvironment(context, repo.owner, repo.name, env.name)
+                                    Toast.makeText(context, if (ok) "Deleted" else "Failed", Toast.LENGTH_SHORT).show()
+                                    if (ok) load()
+                                }
+                            }) { Icon(Icons.Rounded.Close, null, Modifier.size(14.dp), tint = AiModuleTheme.colors.textMuted) }
+                        }
+                    }
+                    Text(env.createdAt.take(19).replace('T', ' '), fontSize = 11.sp, color = AiModuleTheme.colors.textMuted, fontFamily = JetBrainsMono)
+                }
+            }
+        }
+    }
+
+    if (showCreate) {
+        var envName by remember { mutableStateOf("") }
+        var waitTimer by remember { mutableStateOf("0") }
+        AiModuleAlertDialog(
+            onDismissRequest = { showCreate = false },
+            title = "create environment",
+            confirmButton = {
+                AiModuleTextAction(label = "create", enabled = envName.isNotBlank(), onClick = {
+                    scope.launch {
+                        val ok = GitHubManager.createOrUpdateEnvironment(context, repo.owner, repo.name, envName, waitTimer.toIntOrNull() ?: 0)
+                        Toast.makeText(context, if (ok != null) "Created" else "Failed", Toast.LENGTH_SHORT).show()
+                        if (ok != null) load()
+                        showCreate = false
+                    }
+                }, tint = Blue)
+            },
+            dismissButton = { AiModuleTextAction(label = "cancel", onClick = { showCreate = false }) },
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                GitHubTerminalTextField(value = envName, onValueChange = { envName = it }, placeholder = "Environment name *", singleLine = true)
+                GitHubTerminalTextField(value = waitTimer, onValueChange = { waitTimer = it }, placeholder = "Wait timer (minutes)", singleLine = true)
+            }
+        }
+    }
+
+    selectedEnv?.let { env ->
+        LaunchedEffect(env.name) {
+            envSecrets = GitHubManager.getEnvironmentSecrets(context, repo.owner, repo.name, env.name)
+        }
+        GitHubScreenFrame(title = "> env/${env.name}", onBack = { selectedEnv = null }) {
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (repo.canWrite()) {
+                        GitHubTerminalButton("+ secret", onClick = { showAddSecret = true }, color = Blue)
+                    }
+                }
+                if (env.protectionRules.isNotEmpty()) {
+                    Text("protection rules", fontSize = 11.sp, color = AiModuleTheme.colors.textMuted, fontFamily = JetBrainsMono)
+                    env.protectionRules.forEach { rule ->
+                        Row(Modifier.fillMaxWidth().ghGlassCard(8.dp).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(rule.type, fontSize = 12.sp, color = AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono, modifier = Modifier.weight(1f))
+                            Text(if (rule.enabled) "[on]" else "[off]", fontSize = 10.sp, color = if (rule.enabled) AiModuleTheme.colors.accent else AiModuleTheme.colors.textMuted, fontFamily = JetBrainsMono)
+                        }
+                    }
+                }
+                env.deploymentBranchPolicy?.let { policy ->
+                    Text("branch policy", fontSize = 11.sp, color = AiModuleTheme.colors.textMuted, fontFamily = JetBrainsMono)
+                    Row(Modifier.fillMaxWidth().ghGlassCard(8.dp).padding(8.dp)) {
+                        if (policy.protectedBranches) Text("protected branches only", fontSize = 12.sp, color = AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono)
+                        if (policy.customBranchPolicies) Text("custom branch policies", fontSize = 12.sp, color = AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono)
+                    }
+                }
+                Text("secrets", fontSize = 11.sp, color = AiModuleTheme.colors.textMuted, fontFamily = JetBrainsMono)
+                if (envSecrets.isEmpty()) {
+                    EmptyActionsText("No environment secrets")
+                } else {
+                    envSecrets.forEach { secret ->
+                        Row(Modifier.fillMaxWidth().ghGlassCard(8.dp).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(secret.name, fontSize = 12.sp, color = AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono, modifier = Modifier.weight(1f))
+                            if (repo.canWrite()) {
+                                IconButton(onClick = {
+                                    scope.launch {
+                                        val ok = GitHubManager.deleteEnvironmentSecret(context, repo.owner, repo.name, env.name, secret.name)
+                                        Toast.makeText(context, if (ok) "Deleted" else "Failed", Toast.LENGTH_SHORT).show()
+                                        if (ok) envSecrets = GitHubManager.getEnvironmentSecrets(context, repo.owner, repo.name, env.name)
+                                    }
+                                }) { Icon(Icons.Rounded.Close, null, Modifier.size(14.dp), tint = AiModuleTheme.colors.textMuted) }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showAddSecret && selectedEnv != null) {
+        var secretName by remember { mutableStateOf("") }
+        var secretValue by remember { mutableStateOf("") }
+        AiModuleAlertDialog(
+            onDismissRequest = { showAddSecret = false },
+            title = "add secret · ${selectedEnv!!.name}",
+            confirmButton = {
+                AiModuleTextAction(label = "save", enabled = secretName.isNotBlank() && secretValue.isNotBlank(), onClick = {
+                    scope.launch {
+                        val ok = GitHubManager.createOrUpdateEnvironmentSecret(context, repo.owner, repo.name, selectedEnv!!.name, secretName, secretValue)
+                        Toast.makeText(context, if (ok) "Saved" else "Failed", Toast.LENGTH_SHORT).show()
+                        if (ok) envSecrets = GitHubManager.getEnvironmentSecrets(context, repo.owner, repo.name, selectedEnv!!.name)
+                        showAddSecret = false
+                    }
+                }, tint = Blue)
+            },
+            dismissButton = { AiModuleTextAction(label = "cancel", onClick = { showAddSecret = false }) },
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                GitHubTerminalTextField(value = secretName, onValueChange = { secretName = it }, placeholder = "Secret name *", singleLine = true)
+                GitHubTerminalTextField(value = secretValue, onValueChange = { secretValue = it }, placeholder = "Secret value *", singleLine = true)
             }
         }
     }
