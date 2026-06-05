@@ -358,6 +358,11 @@ internal fun ActionsTab(
                 )
             }
         }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            GitHubTerminalButton("deployments", onClick = { showDeployments = true }, color = Blue)
+            GitHubTerminalButton("envs", onClick = { showEnvironments = true }, color = Blue)
+            GitHubTerminalButton("caches", onClick = { }, color = AiModuleTheme.colors.textSecondary)
+        }
         ActionsOverviewHeader(
             workflows = workflows,
             branches = branches,
@@ -447,15 +452,25 @@ internal fun ActionsTab(
             onOpenLatestRun = { latestRun?.let(onRunClick) }
         )
         Spacer(Modifier.height(8.dp))
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            GitHubTerminalButton("deployments", onClick = { showDeployments = true }, color = Blue)
-            GitHubTerminalButton("envs", onClick = { showEnvironments = true }, color = Blue)
-            GitHubTerminalButton("caches", onClick = {
-                // navigates to caches panel via ActionsTroubleshootModule or inline
-            }, color = AiModuleTheme.colors.textSecondary)
+    }
+    }
+
+    if (showDeployments) {
+        GitHubScreenFrame(title = "> deployments", onBack = { showDeployments = false }) {
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)) {
+                DeploymentsPanel(repo)
+            }
         }
     }
+
+    if (showEnvironments) {
+        GitHubScreenFrame(title = "> environments", onBack = { showEnvironments = false }) {
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)) {
+                EnvironmentsPanel(repo)
+            }
+        }
     }
+}
 
     if (showDeployments) {
         GitHubScreenFrame(title = "> deployments", onBack = { showDeployments = false }) {
