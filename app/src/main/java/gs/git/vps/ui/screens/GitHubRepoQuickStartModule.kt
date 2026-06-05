@@ -50,7 +50,7 @@ private val IGNORED_EXTENSIONS = setOf(
 )
 private val MAX_FILE_SIZE = 25 * 1024 * 1024
 
-private data class StagedItem(val uri: Uri, val name: String, val size: Int, val isFolder: Boolean)
+private data class StagedItem(val name: String, val size: Int, val isFolder: Boolean, val files: List<Pair<String, ByteArray>>)
 
 @Composable
 internal fun RepoQuickStartScreen(
@@ -84,22 +84,6 @@ internal fun RepoQuickStartScreen(
     // scanning
     var scanning by remember { mutableStateOf(false) }
 
-    fun resolveStagedFiles(): List<Pair<String, ByteArray>> {
-        val files = mutableListOf<Pair<String, ByteArray>>()
-        stagedItems.forEach { item ->
-            try {
-                if (item.isFolder) {
-                    val dir = DocumentFile.fromTreeUri(context, item.uri) ?: return@forEach
-                    collectFilesFromDir(context, dir, "").forEach { files.add(it) }
-                } else {
-                    val bytes = context.contentResolver.openInputStream(item.uri)?.use { it.readBytes() } ?: return@forEach
-                    if (bytes.size <= MAX_FILE_SIZE) files.add(item.name to bytes)
-                }
-            } catch (_: Exception) {}
-        }
-        return files
-    }
-
     fun startUpload() {
         uploadJob = scope.launch {
             uploading = true
@@ -107,7 +91,7 @@ internal fun RepoQuickStartScreen(
             uploadComplete = false
             logLines.clear()
             try {
-                val files = withContext(Dispatchers.IO) { resolveStagedFiles() }
+                val files = stagedItems.flatMap { it.files }
                 if (files.isEmpty()) {
                     uploadError = "No files to upload"
                     uploading = false
@@ -142,11 +126,12 @@ internal fun RepoQuickStartScreen(
                 val dir = DocumentFile.fromTreeUri(context, uri) ?: return@launch
                 val name = dir.name ?: "folder"
                 var totalSize = 0
-                withContext(Dispatchers.IO) {
+                val collected = withContext(Dispatchers.IO) {
                     val all = collectFilesFromDir(context, dir, "")
                     totalSize = all.sumOf { it.second.size }
+                    all
                 }
-                stagedItems.add(StagedItem(uri, "$name/ (${totalSize.formatBytes()})", totalSize, true))
+                stagedItems.add(StagedItem("$name/ (${totalSize.formatBytes()})", totalSize, true, collected))
             } catch (_: Exception) {}
             scanning = false
         }
@@ -171,7 +156,7 @@ internal fun RepoQuickStartScreen(
                             if (shouldIgnore(safeName)) return@forEach
                             val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@forEach
                             if (bytes.size > MAX_FILE_SIZE) return@forEach
-                            stagedItems.add(StagedItem(uri, "$safeName (${bytes.size.formatBytes()})", bytes.size, false))
+                            stagedItems.add(StagedItem("$safeName (${bytes.size.formatBytes()})", bytes.size, false, listOf(safeName to bytes)))
                         } catch (_: Exception) {}
                     }
                 }

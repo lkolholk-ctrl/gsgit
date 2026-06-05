@@ -6770,13 +6770,18 @@ object GitHubManager {
                 onLog("[PREPARING] ${files.size} file(s) to upload")
                 val blobShas = mutableListOf<Pair<String, String>>()
                 files.forEachIndexed { i, (path, bytes) ->
-                    onProgress(i.toFloat() / files.size * 0.6f)
-                    onLog("[BLOB] $path (${bytes.size} bytes)")
-                    val b64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-                    val blob = createGitBlob(context, owner, repo, b64, "base64")
-                        ?: throw Exception("blob failed: $path")
-                    blobShas.add(path to blob.sha)
-                    onLog("[OK] blob ${blob.sha.take(7)}")
+                    try {
+                        onProgress(i.toFloat() / files.size * 0.6f)
+                        onLog("[BLOB] $path (${bytes.size} bytes)")
+                        val b64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                        val blob = createGitBlob(context, owner, repo, b64, "base64")
+                            ?: throw Exception("blob API returned null for $path")
+                        blobShas.add(path to blob.sha)
+                        onLog("[OK] blob ${blob.sha.take(7)}")
+                    } catch (e: Exception) {
+                        onLog("[FAIL] $path: ${e.javaClass.simpleName} -> ${e.message}")
+                        throw e
+                    }
                 }
                 onProgress(0.65f)
                 onLog("[REF] resolving heads/$branch")
