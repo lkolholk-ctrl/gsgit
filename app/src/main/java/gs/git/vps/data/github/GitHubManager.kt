@@ -6743,27 +6743,35 @@ object GitHubManager {
     suspend fun uploadProjectFolder(
         context: Context, owner: String, repo: String, branch: String,
         files: List<Pair<String, ByteArray>>,
-        onProgress: (Float) -> Unit
+        onProgress: (Float) -> Unit,
+        commitMessage: String = "Initial commit via GsGit",
+        onLog: (String) -> Unit = {}
     ): Boolean {
         if (files.isEmpty()) return false
         return try {
             withContext(Dispatchers.IO) {
+                onLog("[PREPARING] ${files.size} file(s) to upload")
                 val blobShas = mutableListOf<Pair<String, String>>()
                 files.forEachIndexed { i, (path, bytes) ->
                     onProgress(i.toFloat() / files.size * 0.6f)
+                    onLog("[BLOB] $path (${bytes.size} bytes)")
                     val b64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
                     val blob = createGitBlob(context, owner, repo, b64, "base64")
                         ?: throw Exception("blob failed: $path")
                     blobShas.add(path to blob.sha)
+                    onLog("[OK] blob ${blob.sha.take(7)}")
                 }
                 onProgress(0.65f)
+                onLog("[REF] resolving heads/$branch")
                 val ref = getGitRef(context, owner, repo, "heads/$branch")
                     ?: throw Exception("ref not found: $branch")
                 val parentSha = ref.nodeSha
+                onLog("[REF] parent commit ${parentSha.take(7)}")
                 val parentCommit = getGitCommit(context, owner, repo, parentSha)
                     ?: throw Exception("commit not found")
                 val baseTreeSha = parentCommit.treeSha
                 onProgress(0.7f)
+                onLog("[TREE] building tree with ${blobShas.size} entries")
                 val treeItems = JSONArray()
                 blobShas.forEach { (p, sha) ->
                     treeItems.put(JSONObject().apply {
@@ -6777,16 +6785,21 @@ object GitHubManager {
                 if (!treeR.success) throw Exception("tree create failed")
                 val newTreeSha = JSONObject(treeR.body).optString("sha", "")
                 if (newTreeSha.isBlank()) throw Exception("tree sha empty")
+                onLog("[OK] tree ${newTreeSha.take(7)}")
                 onProgress(0.8f)
-                val commit = createGitCommit(context, owner, repo, "Initial commit via GsGit", newTreeSha, listOf(parentSha))
+                onLog("[COMMIT] $commitMessage")
+                val commit = createGitCommit(context, owner, repo, commitMessage, newTreeSha, listOf(parentSha))
                     ?: throw Exception("commit create failed")
+                onLog("[OK] commit ${commit.sha.take(7)}")
                 onProgress(0.9f)
+                onLog("[REF] updating heads/$branch → ${commit.sha.take(7)}")
                 updateGitRef(context, owner, repo, "heads/$branch", commit.sha)
                     ?: throw Exception("ref update failed")
+                onLog("[DONE] upload complete")
                 onProgress(1f)
             }
             true
-        } catch (_: Exception) { onProgress(-1f); false }
+        } catch (e: Exception) { onLog("[FAIL] ${e.message}"); onProgress(-1f); false }
     }
 
 }

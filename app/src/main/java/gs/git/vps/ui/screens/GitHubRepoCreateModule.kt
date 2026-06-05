@@ -222,7 +222,7 @@ internal fun RepoCreateScreen(
                 AiModuleSpinner(label = "creating repository…")
             } else {
                 BracketButton(
-                    "[ 🛠 Create repository ]",
+                    "[ Create repository ]",
                     accent = true,
                     enabled = name.isNotBlank()
                 ) {

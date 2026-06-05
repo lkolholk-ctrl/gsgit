@@ -8,11 +8,16 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CreateNewFolder
+import androidx.compose.material.icons.rounded.NoteAdd
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,24 +52,23 @@ internal fun RepoQuickStartScreen(
     var uploadError by remember { mutableStateOf("") }
     var uploadComplete by remember { mutableStateOf(false) }
     var lastTreeUri by remember { mutableStateOf<Uri?>(null) }
+    var commitMsg by remember { mutableStateOf("") }
+    val logLines = remember { mutableStateListOf<String>() }
 
-    fun startUpload(treeUri: Uri) {
+    fun startUpload(files: List<Pair<String, ByteArray>>) {
         scope.launch {
             uploadProgress = 0f
             uploadError = ""
             uploadComplete = false
+            logLines.clear()
             try {
-                val files = withContext(Dispatchers.IO) {
-                    collectFiles(context, treeUri)
-                }
-                if (files.isEmpty()) {
-                    uploadError = "No files found in selected folder"
-                    uploadProgress = null
-                    return@launch
-                }
+                val msg = commitMsg.ifBlank { "Initial commit via GsGit" }
                 val ok = GitHubManager.uploadProjectFolder(
-                    context, repo.owner, repo.name, branch, files
-                ) { progress -> uploadProgress = progress }
+                    context, repo.owner, repo.name, branch, files,
+                    onProgress = { progress -> uploadProgress = progress },
+                    commitMessage = msg,
+                    onLog = { line -> logLines.add(line) }
+                )
                 if (ok) {
                     uploadComplete = true
                     uploadProgress = 1f
@@ -79,12 +83,65 @@ internal fun RepoQuickStartScreen(
         }
     }
 
+    fun startFolderUpload(treeUri: Uri) {
+        scope.launch {
+            uploadProgress = 0f
+            uploadError = ""
+            uploadComplete = false
+            logLines.clear()
+            try {
+                val files = withContext(Dispatchers.IO) {
+                    collectFiles(context, treeUri)
+                }
+                if (files.isEmpty()) {
+                    uploadError = "No files found in selected folder"
+                    uploadProgress = null
+                    return@launch
+                }
+                startUpload(files)
+            } catch (e: Exception) {
+                uploadError = e.message ?: "Upload error"
+                uploadProgress = null
+            }
+        }
+    }
+
+    fun startFilesUpload(uris: List<Uri>) {
+        scope.launch {
+            uploadProgress = 0f
+            uploadError = ""
+            uploadComplete = false
+            logLines.clear()
+            try {
+                val files = withContext(Dispatchers.IO) {
+                    collectFilesFromUris(context, uris)
+                }
+                if (files.isEmpty()) {
+                    uploadError = "No files could be read"
+                    uploadProgress = null
+                    return@launch
+                }
+                startUpload(files)
+            } catch (e: Exception) {
+                uploadError = e.message ?: "Upload error"
+                uploadProgress = null
+            }
+        }
+    }
+
     val folderLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
     ) { treeUri: Uri? ->
         if (treeUri == null) return@rememberLauncherForActivityResult
         lastTreeUri = treeUri
-        startUpload(treeUri)
+        startFolderUpload(treeUri)
+    }
+
+    val filesLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris: List<Uri> ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        startFilesUpload(uris)
     }
 
     GitHubScreenFrame(
@@ -104,58 +161,36 @@ internal fun RepoQuickStartScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     androidx.compose.material3.Text(
                         repo.owner,
-                        fontFamily = JetBrainsMono,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp,
-                        color = palette.accent
+                        fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp, color = palette.accent
                     )
                     androidx.compose.material3.Text(
-                        " / ",
-                        fontFamily = JetBrainsMono,
-                        fontSize = 16.sp,
-                        color = palette.textMuted
+                        " / ", fontFamily = JetBrainsMono, fontSize = 16.sp, color = palette.textMuted
                     )
                     androidx.compose.material3.Text(
                         repo.name,
-                        fontFamily = JetBrainsMono,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp,
-                        color = palette.textPrimary
+                        fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp, color = palette.textPrimary
                     )
                 }
                 Spacer(Modifier.height(6.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    androidx.compose.material3.Text(
-                        if (repo.isPrivate) "[ PRIVATE ]" else "[ PUBLIC ]",
-                        fontFamily = JetBrainsMono,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 12.sp,
-                        color = if (repo.isPrivate) palette.warning else palette.accent
-                    )
-                }
+                androidx.compose.material3.Text(
+                    if (repo.isPrivate) "[ PRIVATE ]" else "[ PUBLIC ]",
+                    fontFamily = JetBrainsMono, fontWeight = FontWeight.SemiBold,
+                    fontSize = 12.sp, color = if (repo.isPrivate) palette.warning else palette.accent
+                )
                 Spacer(Modifier.height(8.dp))
-                Row(
-                    Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     androidx.compose.material3.Text(
-                        cloneUrl,
-                        fontFamily = JetBrainsMono,
-                        fontSize = 11.sp,
-                        color = palette.textSecondary,
-                        modifier = Modifier.weight(1f)
+                        cloneUrl, fontFamily = JetBrainsMono, fontSize = 11.sp,
+                        color = palette.textSecondary, modifier = Modifier.weight(1f)
                     )
                     Spacer(Modifier.width(8.dp))
-                    BracketButton("[ copy url ]") {
-                        copyToClipboard(context, "clone url", cloneUrl)
-                    }
+                    BracketButton("[ copy url ]") { copyToClipboard(context, "clone url", cloneUrl) }
                 }
                 Spacer(Modifier.height(8.dp))
                 androidx.compose.material3.Text(
-                    "─".repeat(54),
-                    fontFamily = JetBrainsMono,
-                    fontSize = 10.sp,
-                    color = palette.border
+                    "─".repeat(54), fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.border
                 )
                 Spacer(Modifier.height(12.dp))
 
@@ -163,64 +198,95 @@ internal fun RepoQuickStartScreen(
                 AiModuleSectionLabel("> actions")
                 Spacer(Modifier.height(6.dp))
 
+                // commit message field
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    androidx.compose.material3.Text(
+                        "commit msg:",
+                        fontFamily = JetBrainsMono, fontSize = 11.sp, color = palette.textSecondary
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .background(palette.surface, RoundedCornerShape(4.dp))
+                            .border(
+                                1.dp, palette.border,
+                                RoundedCornerShape(4.dp)
+                            )
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                    ) {
+                        BasicTextField(
+                            value = commitMsg,
+                            onValueChange = { commitMsg = it },
+                            textStyle = androidx.compose.ui.text.TextStyle(
+                                fontFamily = JetBrainsMono,
+                                fontSize = 11.sp,
+                                color = palette.textPrimary
+                            ),
+                            singleLine = true,
+                            decorationBox = { inner ->
+                                if (commitMsg.isEmpty()) {
+                                    androidx.compose.material3.Text(
+                                        "Initial commit via GsGit",
+                                        fontFamily = JetBrainsMono, fontSize = 11.sp,
+                                        color = palette.textMuted
+                                    )
+                                }
+                                inner()
+                            }
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+
+                // upload buttons
                 if (uploadComplete) {
                     AiModuleText(
-                        "upload complete",
-                        fontSize = 12.sp,
-                        color = palette.accent,
-                        fontFamily = JetBrainsMono
+                        "upload complete", fontSize = 12.sp,
+                        color = palette.accent, fontFamily = JetBrainsMono
                     )
                     Spacer(Modifier.height(6.dp))
                     BracketButton("[ → open repository ]", accent = true) { onOpenRepo(repo) }
-                } else if (uploadProgress != null) {
-                    LinearProgressIndicator(
-                        progress = { uploadProgress!!.coerceIn(0f, 1f) },
-                        modifier = Modifier.fillMaxWidth().height(4.dp)
-                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(2.dp)),
-                        color = palette.accent,
-                        trackColor = palette.surface,
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    AiModuleText(
-                        when {
-                            uploadProgress!! < 0f -> "error"
-                            uploadProgress!! < 0.6f -> "uploading blobs… ${(uploadProgress!! / 0.6f * 100).toInt()}%"
-                            uploadProgress!! < 0.7f -> "building tree…"
-                            uploadProgress!! < 0.8f -> "creating commit…"
-                            uploadProgress!! < 0.9f -> "updating ref…"
-                            uploadProgress!! >= 1f -> "finalizing…"
-                            else -> "processing…"
-                        },
-                        fontSize = 11.sp,
-                        color = palette.textMuted,
-                        fontFamily = JetBrainsMono
-                    )
-                } else {
-                    BracketButton("[ 📂 upload project folder ]", accent = true) {
+                } else if (uploadProgress == null) {
+                    BracketButton("[ upload project folder ]", accent = true, icon = Icons.Rounded.CreateNewFolder) {
                         folderLauncher.launch(null)
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    BracketButton("[ upload single files ]", icon = Icons.Rounded.NoteAdd) {
+                        filesLauncher.launch(arrayOf("*/*"))
                     }
                 }
 
+                // error + retry
                 if (uploadError.isNotBlank()) {
                     Spacer(Modifier.height(6.dp))
                     AiModuleText(
-                        "error: $uploadError",
-                        fontSize = 11.sp,
-                        color = palette.error,
-                        fontFamily = JetBrainsMono
+                        "error: $uploadError", fontSize = 11.sp,
+                        color = palette.error, fontFamily = JetBrainsMono
                     )
                     Spacer(Modifier.height(4.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (lastTreeUri != null) {
-                            BracketButton("[ retry upload ]") { startUpload(lastTreeUri!!) }
+                        BracketButton("[ retry ]") {
+                            if (lastTreeUri != null) startFolderUpload(lastTreeUri!!)
                         }
                         BracketButton("[ pick folder ]") { folderLauncher.launch(null) }
+                        BracketButton("[ pick files ]") { filesLauncher.launch(arrayOf("*/*")) }
                     }
                 }
 
+                // auto-init repo open button
                 if (result.autoInit && !uploadComplete) {
                     Spacer(Modifier.height(6.dp))
                     BracketButton("[ → open repository ]", accent = true) { onOpenRepo(repo) }
+                }
+
+                // ═══ ТЕРМИНАЛЬНЫЙ ЛОГГЕР ═══
+                if (logLines.isNotEmpty()) {
+                    Spacer(Modifier.height(12.dp))
+                    AsciiLogConsole(logLines)
                 }
 
                 Spacer(Modifier.height(12.dp))
@@ -266,10 +332,8 @@ internal fun RepoQuickStartScreen(
                     .padding(horizontal = 16.dp, vertical = 8.dp)
             ) {
                 AiModuleText(
-                    "💡 ProTip! Use background processing if you are uploading heavy directories.",
-                    fontSize = 10.sp,
-                    color = palette.textMuted,
-                    fontFamily = JetBrainsMono
+                    "ProTip! Use background processing if you are uploading heavy directories.",
+                    fontSize = 10.sp, color = palette.textMuted, fontFamily = JetBrainsMono
                 )
             }
         }
@@ -277,20 +341,22 @@ internal fun RepoQuickStartScreen(
 }
 
 @Composable
-private fun BracketButton(label: String, accent: Boolean = false, onClick: () -> Unit) {
+private fun BracketButton(label: String, accent: Boolean = false, icon: androidx.compose.ui.graphics.vector.ImageVector? = null, onClick: () -> Unit) {
     val palette = AiModuleTheme.colors
     val color = if (accent) palette.accent else palette.textSecondary
-    Box(
-        Modifier
-            .clickable(onClick = onClick)
-            .padding(vertical = 4.dp)
+    Row(
+        Modifier.clickable(onClick = onClick).padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
+        if (icon != null) {
+            androidx.compose.material3.Icon(
+                icon, null, Modifier.size(14.dp), tint = color
+            )
+        }
         androidx.compose.material3.Text(
-            label,
-            fontFamily = JetBrainsMono,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium,
-            color = color
+            label, fontFamily = JetBrainsMono, fontSize = 12.sp,
+            fontWeight = FontWeight.Medium, color = color
         )
     }
 }
@@ -304,35 +370,54 @@ private fun AsciiCodeBox(label: String, code: String, onCopy: () -> Unit) {
 
     Column {
         androidx.compose.material3.Text(
-            label,
-            fontFamily = JetBrainsMono,
-            fontSize = 10.sp,
-            color = palette.textMuted
+            label, fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.textMuted
         )
         Spacer(Modifier.height(4.dp))
         androidx.compose.material3.Text(
-            "+" + "─".repeat(w) + "+",
-            fontFamily = JetBrainsMono,
-            fontSize = 10.sp,
-            color = palette.border
+            "+" + "─".repeat(w) + "+", fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.border
         )
         lines.forEach { line ->
             val padded = line.padEnd(w - 2)
             androidx.compose.material3.Text(
+                "| $padded |", fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.textPrimary
+            )
+        }
+        androidx.compose.material3.Text(
+            "+" + "─".repeat(w) + "+", fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.border
+        )
+        Spacer(Modifier.height(4.dp))
+        BracketButton("[ copy ]", accent = false, onClick = onCopy)
+    }
+}
+
+@Composable
+private fun AsciiLogConsole(lines: List<String>) {
+    val palette = AiModuleTheme.colors
+    val maxLen = lines.maxOfOrNull { it.length } ?: 20
+    val w = (maxLen + 2).coerceIn(30, 70)
+
+    Column {
+        androidx.compose.material3.Text(
+            "+" + "─".repeat(w) + "+",
+            fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.border
+        )
+        lines.forEach { line ->
+            val tagColor = when {
+                line.startsWith("[OK]") || line.startsWith("[DONE]") -> palette.accent
+                line.startsWith("[FAIL]") -> palette.error
+                line.startsWith("[BLOB]") || line.startsWith("[PREPARING]") -> palette.textSecondary
+                else -> palette.textMuted
+            }
+            val padded = line.padEnd(w - 2)
+            androidx.compose.material3.Text(
                 "| $padded |",
-                fontFamily = JetBrainsMono,
-                fontSize = 10.sp,
-                color = palette.textPrimary
+                fontFamily = JetBrainsMono, fontSize = 9.sp, color = tagColor
             )
         }
         androidx.compose.material3.Text(
             "+" + "─".repeat(w) + "+",
-            fontFamily = JetBrainsMono,
-            fontSize = 10.sp,
-            color = palette.border
+            fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.border
         )
-        Spacer(Modifier.height(4.dp))
-        BracketButton("[ copy ]", accent = false, onClick = onCopy)
     }
 }
 
@@ -362,5 +447,18 @@ private fun collectFiles(context: Context, treeUri: Uri): List<Pair<String, Byte
         }
     }
     walk(pickedDir, "")
+    return files
+}
+
+private fun collectFilesFromUris(context: Context, uris: List<Uri>): List<Pair<String, ByteArray>> {
+    val files = mutableListOf<Pair<String, ByteArray>>()
+    uris.forEach { uri ->
+        try {
+            val name = uri.lastPathSegment?.substringAfterLast("/") ?: "file"
+            val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@forEach
+            if (bytes.size > 25 * 1024 * 1024) return@forEach
+            files.add(name to bytes)
+        } catch (_: Exception) {}
+    }
     return files
 }
