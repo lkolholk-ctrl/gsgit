@@ -500,6 +500,7 @@ internal fun RepoDetailScreen(
                 onAutolinks = { openRepoSettingsChild { showAutolinks = true } },
                 onLfs = { openRepoSettingsChild { showLfs = true } },
                 onInteractionLimits = { openRepoSettingsChild { showInteractionLimits = true } },
+                onDeleteRepo = { onBack() },
             )
         } else {
             GitHubAdminRequiredScreen(title = "> settings", repoFullName = repo.fullName) { showRepoSettings = false }

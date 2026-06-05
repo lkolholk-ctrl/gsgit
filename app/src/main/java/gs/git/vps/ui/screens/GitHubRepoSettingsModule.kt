@@ -60,7 +60,8 @@ internal fun RepoSettingsScreen(
     onSecurity: () -> Unit = {},
     onAutolinks: () -> Unit = {},
     onLfs: () -> Unit = {},
-    onInteractionLimits: () -> Unit = {}
+    onInteractionLimits: () -> Unit = {},
+    onDeleteRepo: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -74,6 +75,8 @@ internal fun RepoSettingsScreen(
     var adminActionInFlight by remember { mutableStateOf(false) }
     var deployKeyBusy by remember { mutableStateOf(false) }
     var showArchiveConfirm by remember { mutableStateOf<Boolean?>(null) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+    var deleteBusy by remember { mutableStateOf(false) }
     var deployKeyDeleteTarget by remember { mutableStateOf<GHDeployKey?>(null) }
 
     // Editable fields
@@ -194,10 +197,11 @@ internal fun RepoSettingsScreen(
         when {
             deployKeyDeleteTarget != null -> deployKeyDeleteTarget = null
             showArchiveConfirm != null -> showArchiveConfirm = null
+            showDeleteConfirm -> showDeleteConfirm = false
             else -> onBack()
         }
     }
-    BackHandler(enabled = deployKeyDeleteTarget != null || showArchiveConfirm != null) {
+    BackHandler(enabled = deployKeyDeleteTarget != null || showArchiveConfirm != null || showDeleteConfirm) {
         handleRepoSettingsBack()
     }
 
@@ -493,6 +497,36 @@ internal fun RepoSettingsScreen(
                                 }
                                 TerminalToggleIndicator(checked = archived, tint = Color(0xFFFF3B30))
                             }
+
+                            // Delete repository
+                            Row(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius))
+                                    .background(Color(0xFFFF3B30).copy(0.08f))
+                                    .clickable { showDeleteConfirm = true }
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Icon(
+                                    Icons.Rounded.DeleteForever,
+                                    null,
+                                    Modifier.size(22.dp),
+                                    tint = Color(0xFFFF3B30)
+                                )
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        "Delete this repository",
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = Color(0xFFFF3B30)
+                                    )
+                                    Text(
+                                        "This action cannot be undone",
+                                        fontSize = 12.sp,
+                                        color = AiModuleTheme.colors.textMuted
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -768,6 +802,77 @@ internal fun RepoSettingsScreen(
                 fontSize = 13.sp,
                 fontFamily = JetBrainsMono,
             )
+        }
+    }
+
+    // Delete repository confirm dialog
+    if (showDeleteConfirm) {
+        var confirmName by remember { mutableStateOf("") }
+        val expectedName = "$repoOwner/$repoName"
+        AiModuleAlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = "delete repository",
+            confirmButton = {
+                AiModuleTextAction(
+                    label = "delete permanently",
+                    onClick = {
+                        if (confirmName == expectedName && !deleteBusy) {
+                            deleteBusy = true
+                            scope.launch {
+                                val ok = GitHubManager.deleteRepo(context, repoOwner, repoName)
+                                if (ok) {
+                                    Toast.makeText(context, "Repository deleted", Toast.LENGTH_SHORT).show()
+                                    onDeleteRepo()
+                                } else {
+                                    Toast.makeText(context, "Delete failed", Toast.LENGTH_SHORT).show()
+                                }
+                                deleteBusy = false
+                            }
+                        }
+                    },
+                    tint = if (confirmName == expectedName) AiModuleTheme.colors.error else AiModuleTheme.colors.textMuted,
+                )
+            },
+            dismissButton = {
+                AiModuleTextAction(
+                    label = Strings.cancel.lowercase(),
+                    onClick = { showDeleteConfirm = false },
+                    tint = AiModuleTheme.colors.textSecondary,
+                )
+            },
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "This will permanently delete $expectedName, including all issues, comments, and data. This action cannot be undone.",
+                    color = AiModuleTheme.colors.textSecondary,
+                    fontSize = 13.sp,
+                    fontFamily = JetBrainsMono,
+                )
+                Text(
+                    "Type $expectedName to confirm:",
+                    color = Color(0xFFFF3B30),
+                    fontSize = 12.sp,
+                    fontFamily = JetBrainsMono,
+                    fontWeight = FontWeight.Medium,
+                )
+                BasicTextField(
+                    value = confirmName,
+                    onValueChange = { confirmName = it },
+                    textStyle = androidx.compose.ui.text.TextStyle(
+                        fontFamily = JetBrainsMono,
+                        fontSize = 14.sp,
+                        color = if (confirmName == expectedName) AiModuleTheme.colors.accent else Color(0xFFFF3B30)
+                    ),
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(AiModuleTheme.colors.surface)
+                        .border(1.dp, if (confirmName == expectedName) AiModuleTheme.colors.accent else AiModuleTheme.colors.border, RoundedCornerShape(4.dp))
+                        .padding(8.dp)
+                )
+                if (deleteBusy) AiModuleSpinner(label = "deleting…")
+            }
         }
     }
 }
