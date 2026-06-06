@@ -214,6 +214,9 @@ internal fun ReposScreen(user: GHUser?, onBack: () -> Unit, onMinimize: () -> Un
     var showAdvancedSearch by rememberSaveable { mutableStateOf(false) }
     var showEmojis by rememberSaveable { mutableStateOf(false) }
     var showLicenses by rememberSaveable { mutableStateOf(false) }
+    var showTopics by rememberSaveable { mutableStateOf(false) }
+    var showGitignore by rememberSaveable { mutableStateOf(false) }
+    var showMeta by rememberSaveable { mutableStateOf(false) }
     var quickStartResult by remember { mutableStateOf<GHRepoCreateResult?>(null) }
     var reposPage by rememberSaveable { mutableIntStateOf(1) }; var reposHasMore by rememberSaveable { mutableStateOf(true) }
     val listState = rememberSaveable(saver = LazyListState.Saver) { LazyListState(0, 0) }
@@ -230,10 +233,13 @@ internal fun ReposScreen(user: GHUser?, onBack: () -> Unit, onMinimize: () -> Un
             showAdvancedSearch -> showAdvancedSearch = false
             showEmojis -> showEmojis = false
             showLicenses -> showLicenses = false
+            showTopics -> showTopics = false
+            showGitignore -> showGitignore = false
+            showMeta -> showMeta = false
             else -> onBack()
         }
     }
-    BackHandler(enabled = quickStartResult != null || showStarred || showOrgs || showPackages || showApps || showEnterpriseAdmin || showDiagnostics || showAdvancedSearch || showEmojis || showLicenses || showCreate) {
+    BackHandler(enabled = quickStartResult != null || showStarred || showOrgs || showPackages || showApps || showEnterpriseAdmin || showDiagnostics || showAdvancedSearch || showEmojis || showLicenses || showTopics || showGitignore || showMeta || showCreate) {
         handleReposBack()
     }
     LaunchedEffect(Unit) { val r = GitHubManager.getRepos(context, 1); repos = r; reposHasMore = r.size >= 30; loading = false }
@@ -250,6 +256,9 @@ internal fun ReposScreen(user: GHUser?, onBack: () -> Unit, onMinimize: () -> Un
     if (showAdvancedSearch) { AdvancedSearchScreen(onBack = { showAdvancedSearch = false }, onRepoClick = onRepoClick, onProfile = onProfile); return }
     if (showEmojis) { EmojisScreen(onBack = { showEmojis = false }); return }
     if (showLicenses) { LicensesScreen(onBack = { showLicenses = false }); return }
+    if (showTopics) { TopicsScreen(onBack = { showTopics = false }); return }
+    if (showGitignore) { GitignoreScreen(onBack = { showGitignore = false }); return }
+    if (showMeta) { GitHubMetaScreen(onBack = { showMeta = false }); return }
     if (showCreate && user != null) { RepoCreateScreen(userLogin = user.login, onBack = { showCreate = false }, onCreate = { params -> scope.launch { val r = GitHubManager.createRepoWithResult(context, params.name, params.description, params.isPrivate, params.autoInit, params.gitignoreTemplate, params.licenseTemplate, params.hasIssues, params.hasProjects, params.hasWiki); if (r.success) { showCreate = false; reposPage = 1; repos = GitHubManager.getRepos(context, 1); reposHasMore = repos.size >= 30; quickStartResult = r } else { Toast.makeText(context, Strings.error, Toast.LENGTH_SHORT).show() } } }); return }
     if (quickStartResult != null) { RepoQuickStartScreen(result = quickStartResult!!, onBack = { quickStartResult = null }, onOpenRepo = { quickStartResult = null; onRepoClick(it) }); return }
     AiModuleSurface {
@@ -333,6 +342,9 @@ internal fun ReposScreen(user: GHUser?, onBack: () -> Unit, onMinimize: () -> Un
                     TerminalQuickChip(Strings.ghOrganizations) { showOrgs = true }
                     TerminalQuickChip("emojis") { showEmojis = true }
                     TerminalQuickChip("licenses") { showLicenses = true }
+                    TerminalQuickChip("topics") { showTopics = true }
+                    TerminalQuickChip("gitignore") { showGitignore = true }
+                    TerminalQuickChip("meta") { showMeta = true }
                     TerminalQuickChip("Search") { showAdvancedSearch = true }
                     TerminalQuickChip("Packages") { showPackages = true }
                     TerminalQuickChip("Apps") { showApps = true }
