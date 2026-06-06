@@ -209,7 +209,8 @@ private const val ACTIONS_BACKOFF_DELAY_MS = 15000L
 internal fun ActionsTab(
     runs: List<GHWorkflowRun>,
     repo: GHRepo,
-    onRunClick: (GHWorkflowRun) -> Unit
+    onRunClick: (GHWorkflowRun) -> Unit,
+    onShowBuilds: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -388,6 +389,7 @@ internal fun ActionsTab(
             }
         }
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            AiModulePillButton("builds", onClick = onShowBuilds)
             AiModulePillButton("deployments", onClick = { showDeployments = true })
             AiModulePillButton("envs", onClick = { showEnvironments = true }, accent = false)
             AiModulePillButton("codespaces", onClick = { showCodespaces = true }, accent = false)

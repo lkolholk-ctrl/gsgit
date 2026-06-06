@@ -171,6 +171,7 @@ internal fun RepoDetailScreen(
     var showLfs by remember { mutableStateOf(false) }
     var showInteractionLimits by remember { mutableStateOf(false) }
     var showActionsTroubleshoot by remember { mutableStateOf(false) }
+    var showBuilds by remember { mutableStateOf(false) }
     var returnToRepoSettings by remember { mutableStateOf(false) }
     var languages by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }; var contributors by remember { mutableStateOf<List<GHContributor>>(emptyList()) }
     // Pagination
@@ -265,6 +266,7 @@ internal fun RepoDetailScreen(
             showRepoInsights -> showRepoInsights = false
             showGitDataTools -> showGitDataTools = false
             showActionsTroubleshoot -> showActionsTroubleshoot = false
+            showBuilds -> showBuilds = false
             deleteTarget != null -> deleteTarget = null
             editingFile != null -> {
                 editingFile = null
@@ -518,6 +520,7 @@ internal fun RepoDetailScreen(
     if (showAutolinks) { GitHubScreenFrame(title = "> autolinks", onBack = { closeRepoSettingsChild { showAutolinks = false } }) { Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)) { AutolinksPanel(owner = repo.owner, repo = repo.name) } }; return }
     if (showLfs) { GitHubScreenFrame(title = "> git lfs", onBack = { closeRepoSettingsChild { showLfs = false } }) { Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)) { LfsPanel(owner = repo.owner, repo = repo.name) } }; return }
     if (showInteractionLimits) { GitHubScreenFrame(title = "> interaction limits", onBack = { closeRepoSettingsChild { showInteractionLimits = false } }) { Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)) { InteractionLimitsPanel(owner = repo.owner, repo = repo.name) } }; return }
+    if (showBuilds) { BuildsScreen(repo = repo, branches = branches, workflows = workflows, selectedBranch = repo.defaultBranch, onRunSelected = { selectedRunId = it }); return }
     if (showActionsTroubleshoot) {
         GitHubActionsTroubleshootScreen(
             repo = repo,
@@ -1107,7 +1110,7 @@ internal fun RepoDetailScreen(
             RepoTab.ISSUES -> IssuesTab(filteredIssues, issuesHasMore, { scope.launch { issuesPage++; val r = GitHubManager.getIssues(context, repo.owner, repo.name, page = issuesPage); if (r.size < 30) issuesHasMore = false; issues = issues + r } }, listState = issuesListState) { selectedIssue = it }
             RepoTab.PULLS -> PullsTab(filteredPulls, repo, { scope.launch { pulls = GitHubManager.getPullRequests(context, repo.owner, repo.name) } }, listState = pullsListState, onOpenDetail = { selectedPullNumber = it.number }) { prNumber -> selectedPRNumber = prNumber }
             RepoTab.RELEASES -> ReleasesTab(releases, repo)
-            RepoTab.ACTIONS -> ActionsTab(workflowRuns, repo) { selectedRunId = it.id }
+            RepoTab.ACTIONS -> ActionsTab(workflowRuns, repo, { selectedRunId = it.id }, onShowBuilds = { showBuilds = true })
             RepoTab.HISTORY -> ActionsHistoryTab(workflowRuns, repo) { selectedRunId = it.id }
             RepoTab.PROJECTS -> ProjectsTab(repo)
             RepoTab.README -> ReadmeTab(readme, readmeHtml, readmeBlocks, readmeError, languages, contributors, releases, repo, { readmeReloadNonce++ }, onOpenFile = { path ->
