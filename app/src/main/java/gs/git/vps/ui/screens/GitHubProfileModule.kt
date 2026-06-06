@@ -60,7 +60,8 @@ import kotlinx.coroutines.launch
 fun ProfileScreen(
     username: String,
     onBack: () -> Unit,
-    onRepoClick: (GHRepo) -> Unit
+    onRepoClick: (GHRepo) -> Unit,
+    onProfile: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -175,13 +176,13 @@ fun ProfileScreen(
                             val fl = followers
                             if (fl == null) item { Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { AiModuleSpinner(label = "loading…") } }
                             else if (fl.isEmpty()) item { Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { Text("no followers", color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 12.sp) } }
-                            else items(fl, key = { it.login }) { entry -> FollowerRow(entry, onClick = {}); AiModuleHairline() }
+                            else items(fl, key = { it.login }) { entry -> FollowerRow(entry, onClick = { onProfile(entry.login) }); AiModuleHairline() }
                         }
                         3 -> {
                             val fg = following
                             if (fg == null) item { Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { AiModuleSpinner(label = "loading…") } }
                             else if (fg.isEmpty()) item { Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { Text("not following anyone", color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 12.sp) } }
-                            else items(fg, key = { it.login }) { entry -> FollowerRow(entry, onClick = {}); AiModuleHairline() }
+                            else items(fg, key = { it.login }) { entry -> FollowerRow(entry, onClick = { onProfile(entry.login) }); AiModuleHairline() }
                         }
                     }
                 }

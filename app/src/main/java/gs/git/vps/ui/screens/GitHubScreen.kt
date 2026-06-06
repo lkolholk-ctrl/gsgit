@@ -113,7 +113,7 @@ fun GitHubScreen(
                         onOpenAiAgent = onOpenAiAgent
                     )
                 }
-                showProfile != null -> saveableStateHolder.SaveableStateProvider("profile:${showProfile!!}") { ProfileScreen(username = showProfile!!, onBack = { showProfile = null }, onRepoClick = { selectedRepo = it }) }
+                showProfile != null -> saveableStateHolder.SaveableStateProvider("profile:${showProfile!!}") { ProfileScreen(username = showProfile!!, onBack = { showProfile = null }, onRepoClick = { selectedRepo = it }, onProfile = { showProfile = it }) }
                 else -> saveableStateHolder.SaveableStateProvider("home") { ReposScreen(user, onBack, onMinimize, onClose, { GitHubManager.logout(context); isLoggedIn = false; user = null }, { selectedRepo = it }, { showGists = true }, { showSettings = true }, { showNotifications = true }, { showProfile = it }) }
             }
         }

@@ -65,6 +65,7 @@ fun NotificationsScreen(onBack: () -> Unit) {
     var notifications by remember { mutableStateOf<List<GHNotification>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var showAll by remember { mutableStateOf(false) }
+    var typeFilter by remember { mutableStateOf("") }
     var selectedSubscription by remember { mutableStateOf<GHNotification?>(null) }
 
     fun handleNotificationsBack() {
@@ -115,6 +116,27 @@ fun NotificationsScreen(onBack: () -> Unit) {
                     accent = showAll,
                 )
             }
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                val typeFilters = listOf("" to "all", "Issue" to "issues", "PullRequest" to "PRs", "Release" to "releases", "Commit" to "commits")
+                typeFilters.forEach { (value, label) ->
+                    val sel = typeFilter == value
+                    Box(
+                        Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(if (sel) palette.accent.copy(alpha = 0.15f) else palette.surface)
+                            .border(1.dp, if (sel) palette.accent else palette.border, RoundedCornerShape(6.dp))
+                            .clickable { typeFilter = value }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(label, fontFamily = JetBrainsMono, fontSize = 9.sp, fontWeight = FontWeight.Medium, color = if (sel) palette.accent else palette.textSecondary)
+                    }
+                }
+            }
             AiModuleHairline()
 
             when {
@@ -125,11 +147,13 @@ fun NotificationsScreen(onBack: () -> Unit) {
                     title = if (showAll) "inbox empty" else "no unread notifications",
                     subtitle = if (showAll) "you're all caught up" else "switch to all to see read items",
                 )
-                else -> LazyColumn(
+                else -> {
+                    val filtered = if (typeFilter.isBlank()) notifications else notifications.filter { it.type == typeFilter }
+                    LazyColumn(
                     Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(top = 4.dp, bottom = 24.dp),
                 ) {
-                    items(notifications, key = { it.id }) { notification ->
+                    items(filtered, key = { it.id }) { notification ->
                         NotificationRow(
                             notification = notification,
                             onMarkRead = {
@@ -151,9 +175,24 @@ fun NotificationsScreen(onBack: () -> Unit) {
                                 }
                             },
                             onSubscription = { selectedSubscription = notification },
+                            onOpen = {
+                                val url = notification.htmlUrl.ifBlank { notification.subjectUrl }
+                                if (url.isNotBlank()) {
+                                    try {
+                                        context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)).apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) })
+                                    } catch (_: Exception) {}
+                                }
+                                scope.launch {
+                                    if (notification.unread) {
+                                        GitHubManager.markNotificationRead(context, notification.id)
+                                        notifications = GitHubManager.getNotifications(context, showAll)
+                                    }
+                                }
+                            },
                         )
                         AiModuleHairline()
                     }
+                }
                 }
             }
         }
@@ -174,6 +213,7 @@ private fun NotificationRow(
     onMarkDone: () -> Unit,
     onDetail: () -> Unit,
     onSubscription: () -> Unit,
+    onOpen: () -> Unit = {},
 ) {
     val palette = AiModuleTheme.colors
     val icon: ImageVector = when (notification.type) {
@@ -200,7 +240,7 @@ private fun NotificationRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .clickable { onMarkRead() }
+            .clickable { onOpen() }
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
