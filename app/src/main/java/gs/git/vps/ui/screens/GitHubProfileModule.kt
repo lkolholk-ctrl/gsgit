@@ -140,10 +140,7 @@ fun ProfileScreen(
                         AiModuleHairline()
                     }
                     item {
-                        ProfileMetaBlock(p, onCopy = { text, label ->
-                            copyClipboard(context, label, text)
-                            Toast.makeText(context, "copied", Toast.LENGTH_SHORT).show()
-                        })
+                        ProfileMetaBlock(p)
                         AiModuleHairline()
                     }
                     item {
@@ -259,22 +256,22 @@ private fun ProfileHeader(profile: GHUserProfile, isSelf: Boolean) {
 }
 
 @Composable
-private fun ProfileMetaBlock(profile: GHUserProfile, onCopy: (String, String) -> Unit) {
+private fun ProfileMetaBlock(profile: GHUserProfile) {
     Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
         if (profile.company.isNotBlank()) {
-            AiModuleKeyValueRow(key = "company", value = profile.company, onValueClick = { onCopy(profile.company, "company") })
+            AiModuleKeyValueRow(key = "company", value = profile.company)
         }
         if (profile.location.isNotBlank()) {
-            AiModuleKeyValueRow(key = "location", value = profile.location, onValueClick = { onCopy(profile.location, "location") })
+            AiModuleKeyValueRow(key = "location", value = profile.location)
         }
         if (profile.blog.isNotBlank()) {
-            AiModuleKeyValueRow(key = "blog", value = profile.blog, valueColor = AiModuleTheme.colors.accent, onValueClick = { onCopy(profile.blog, "blog") })
+            AiModuleKeyValueRow(key = "blog", value = profile.blog, valueColor = AiModuleTheme.colors.accent)
         }
         if (profile.email.isNotBlank()) {
-            AiModuleKeyValueRow(key = "email", value = profile.email, valueColor = AiModuleTheme.colors.accent, onValueClick = { onCopy(profile.email, "email") })
+            AiModuleKeyValueRow(key = "email", value = profile.email, valueColor = AiModuleTheme.colors.accent)
         }
         if (profile.twitterUsername.isNotBlank()) {
-            AiModuleKeyValueRow(key = "twitter", value = "@${profile.twitterUsername}", onValueClick = { onCopy(profile.twitterUsername, "twitter") })
+            AiModuleKeyValueRow(key = "twitter", value = "@${profile.twitterUsername}")
         }
         if (profile.planName.isNotBlank()) {
             AiModuleKeyValueRow(key = "plan", value = profile.planName)
