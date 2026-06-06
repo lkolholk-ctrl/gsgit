@@ -30,6 +30,21 @@ object GitHubManager {
     fun getRateLimitRemaining(): Int = lastRateRemaining
     fun getRateLimitResetEpoch(): Long = lastRateReset
     fun isRateLimitLow(): Boolean = lastRateRemaining < 10
+    fun clearEtagCache() { etagCache.clear() }
+
+    data class TokenValidation(val valid: Boolean, val scopes: String, val login: String, val error: String)
+
+    suspend fun validateToken(context: Context): TokenValidation {
+        val token = getToken(context)
+        if (token.isBlank()) return TokenValidation(false, "", "", "no token stored")
+        val r = request(context, "/user", trackErrors = false)
+        if (!r.success) return TokenValidation(false, "", r.body.take(100), "HTTP ${r.code}: ${r.body.take(200)}")
+        return try {
+            val j = JSONObject(r.body)
+            val scopesHeader = r.headers["x-oauth-scopes"] ?: ""
+            TokenValidation(true, scopesHeader, j.optString("login", ""), "")
+        } catch (e: Exception) { TokenValidation(false, "", "", e.message ?: "parse error") }
+    }
 
     fun saveToken(context: Context, token: String) = GitHubAuth.saveToken(context, token)
     fun getToken(context: Context): String = GitHubAuth.getToken(context)

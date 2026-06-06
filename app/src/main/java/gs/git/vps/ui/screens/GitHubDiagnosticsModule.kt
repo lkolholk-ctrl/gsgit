@@ -160,9 +160,15 @@ internal fun GitHubDiagnosticsScreen(onBack: () -> Unit) {
             }
 
             report?.let { current ->
+                item { TokenValidationPanel() }
+                item { RateLimitDashboard(current) }
                 item { GitHubDiagnosticsSummary(current) }
                 item { GitHubMetaPanel() }
                 item { GitHubGraphQLRateLimitPanel() }
+                item { CacheManagementPanel(onClearCache = {
+                    GitHubManager.clearEtagCache()
+                    notice = "etag cache cleared"
+                }) }
                 item {
                     GitHubApiErrorLogPanel(
                         errors = errorLog,
@@ -562,5 +568,140 @@ private fun GitHubGraphQLRateLimitPanel() {
             }
             if (r.resetAt.isNotBlank()) GitHubDiagnosticKV("reset at", r.resetAt.take(19).replace('T', ' '))
         } ?: Text("loading...", color = palette.textMuted, fontSize = 12.sp, fontFamily = JetBrainsMono)
+    }
+}
+
+@Composable
+private fun TokenValidationPanel() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val palette = AiModuleTheme.colors
+    var validation by remember { mutableStateOf<GitHubManager.TokenValidation?>(null) }
+    var checking by remember { mutableStateOf(false) }
+
+    GitHubDiagnosticPanel {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.weight(1f)) {
+                Text("token validation", color = palette.accent, fontFamily = JetBrainsMono, fontWeight = FontWeight.Medium, fontSize = 13.sp)
+                Text("verify token is valid and check scopes", color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 11.sp)
+            }
+            GitHubTerminalButton(if (checking) "checking…" else "validate", onClick = {
+                if (!checking) {
+                    checking = true
+                    scope.launch {
+                        validation = GitHubManager.validateToken(context)
+                        checking = false
+                    }
+                }
+            }, color = palette.accent, enabled = !checking)
+        }
+        validation?.let { v ->
+            Spacer(Modifier.height(8.dp))
+            val statusColor = if (v.valid) GitHubSuccessGreen else GitHubErrorRed
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Box(Modifier.width(54.dp).border(1.dp, statusColor, RoundedCornerShape(GitHubControlRadius)).padding(horizontal = 8.dp, vertical = 4.dp), contentAlignment = Alignment.Center) {
+                    Text(if (v.valid) "valid" else "invalid", color = statusColor, fontFamily = JetBrainsMono, fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                }
+                if (v.valid) {
+                    Text("@${v.login}", color = palette.textPrimary, fontFamily = JetBrainsMono, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                }
+            }
+            if (v.scopes.isNotBlank()) {
+                GitHubDiagnosticKV("scopes", v.scopes)
+            } else if (v.valid) {
+                GitHubDiagnosticKV("scopes", "fine-grained PAT (no OAuth scopes)")
+            }
+            if (!v.valid && v.error.isNotBlank()) {
+                Text(v.error, color = GitHubErrorRed, fontFamily = JetBrainsMono, fontSize = 11.sp, lineHeight = 16.sp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun RateLimitDashboard(report: GHApiDiagnostics) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val palette = AiModuleTheme.colors
+    var refreshing by remember { mutableStateOf(false) }
+    var liveRemaining by remember { mutableStateOf(GitHubManager.getRateLimitRemaining()) }
+    var liveReset by remember { mutableStateOf(GitHubManager.getRateLimitResetEpoch()) }
+
+    fun refresh() {
+        scope.launch {
+            refreshing = true
+            GitHubManager.getRateLimitSummaryNative(context)
+            liveRemaining = GitHubManager.getRateLimitRemaining()
+            liveReset = GitHubManager.getRateLimitResetEpoch()
+            refreshing = false
+        }
+    }
+
+    GitHubDiagnosticPanel {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("rate limit dashboard", color = palette.accent, fontFamily = JetBrainsMono, fontWeight = FontWeight.Medium, fontSize = 13.sp, modifier = Modifier.weight(1f))
+            GitHubTerminalButton("refresh", onClick = { refresh() }, color = palette.textSecondary, enabled = !refreshing)
+        }
+        Spacer(Modifier.height(8.dp))
+        val limit = report.rate.coreLimit.coerceAtLeast(1)
+        val pct = liveRemaining.toFloat() / limit
+        val barColor = when {
+            pct > 0.5f -> GitHubSuccessGreen
+            pct > 0.2f -> GitHubWarningAmber()
+            else -> GitHubErrorRed
+        }
+        Column {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("core", color = palette.textSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp, modifier = Modifier.width(54.dp))
+                Box(Modifier.weight(1f).height(8.dp).clip(RoundedCornerShape(4.dp)).background(palette.background).border(1.dp, palette.border, RoundedCornerShape(4.dp))) {
+                    Box(Modifier.fillMaxHeight().fillMaxWidth(pct.coerceIn(0f, 1f)).clip(RoundedCornerShape(4.dp)).background(barColor))
+                }
+                Text("$liveRemaining/$limit", color = barColor, fontFamily = JetBrainsMono, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+            }
+        }
+        if (liveReset > 0) {
+            val resetDate = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date(liveReset * 1000))
+            val waitSec = ((liveReset * 1000) - System.currentTimeMillis()).coerceAtLeast(0) / 1000
+            GitHubDiagnosticKV("resets at", "$resetDate (${waitSec}s remaining)")
+        }
+        Spacer(Modifier.height(4.dp))
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            GitHubRateBox("search", "${report.rate.searchRemaining}/${report.rate.searchLimit}")
+            GitHubRateBox("graphql", "${report.rate.graphqlRemaining}/${report.rate.graphqlLimit}")
+        }
+        if (GitHubManager.isRateLimitLow()) {
+            Spacer(Modifier.height(6.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Box(Modifier.width(54.dp).border(1.dp, GitHubErrorRed, RoundedCornerShape(GitHubControlRadius)).padding(horizontal = 8.dp, vertical = 4.dp), contentAlignment = Alignment.Center) {
+                    Text("low", color = GitHubErrorRed, fontFamily = JetBrainsMono, fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                }
+                Text("rate limit critically low — avoid API calls until reset", color = GitHubErrorRed, fontFamily = JetBrainsMono, fontSize = 11.sp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CacheManagementPanel(onClearCache: () -> Unit) {
+    val palette = AiModuleTheme.colors
+    var showConfirm by remember { mutableStateOf(false) }
+
+    GitHubDiagnosticPanel {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.weight(1f)) {
+                Text("cache management", color = palette.accent, fontFamily = JetBrainsMono, fontWeight = FontWeight.Medium, fontSize = 13.sp)
+                Text("etag cache for conditional GET requests", color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 11.sp)
+            }
+            GitHubTerminalButton("clear etag cache", onClick = {
+                if (!showConfirm) showConfirm = true else {
+                    onClearCache()
+                    showConfirm = false
+                }
+            }, color = if (showConfirm) GitHubErrorRed else palette.textSecondary)
+        }
+        if (showConfirm) {
+            Spacer(Modifier.height(4.dp))
+            Text("tap again to confirm cache clear", color = GitHubWarningAmber(), fontFamily = JetBrainsMono, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+        }
     }
 }
