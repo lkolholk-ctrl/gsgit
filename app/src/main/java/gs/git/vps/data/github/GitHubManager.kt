@@ -1875,6 +1875,54 @@ object GitHubManager {
     suspend fun deleteGist(context: Context, gistId: String): Boolean =
         request(context, "/gists/$gistId", "DELETE").let { it.code == 204 || it.success }
 
+    suspend fun starGist(context: Context, gistId: String): Boolean =
+        request(context, "/gists/$gistId/star", "PUT", "").let { it.code == 204 || it.success }
+
+    suspend fun unstarGist(context: Context, gistId: String): Boolean =
+        request(context, "/gists/$gistId/star", "DELETE").let { it.code == 204 || it.success }
+
+    suspend fun isGistStarred(context: Context, gistId: String): Boolean {
+        val r = request(context, "/gists/$gistId/star", trackErrors = false)
+        return r.code == 204
+    }
+
+    suspend fun forkGist(context: Context, gistId: String): Boolean =
+        request(context, "/gists/$gistId/forks", "POST", "{}").success
+
+    suspend fun updateGist(context: Context, gistId: String, description: String? = null, files: Map<String, String?>? = null): Boolean {
+        val body = JSONObject()
+        if (description != null) body.put("description", description)
+        if (files != null) {
+            val filesObj = JSONObject()
+            files.forEach { (name, content) ->
+                if (content != null) filesObj.put(name, JSONObject().apply { put("content", content) })
+                else filesObj.put(name, JSONObject.NULL)
+            }
+            body.put("files", filesObj)
+        }
+        return request(context, "/gists/$gistId", "PATCH", body.toString()).success
+    }
+
+    suspend fun getGistComments(context: Context, gistId: String): List<GHGistComment> {
+        val r = request(context, "/gists/$gistId/comments?per_page=100")
+        if (!r.success) return emptyList()
+        return try {
+            val arr = JSONArray(r.body)
+            (0 until arr.length()).map { i ->
+                val j = arr.getJSONObject(i)
+                GHGistComment(j.optLong("id"), j.optString("body"), j.optString("user_login", ""), j.optString("created_at", ""))
+            }
+        } catch (_: Exception) { emptyList() }
+    }
+
+    suspend fun addGistComment(context: Context, gistId: String, body: String): Boolean {
+        val payload = JSONObject().apply { put("body", body) }.toString()
+        return request(context, "/gists/$gistId/comments", "POST", payload).success
+    }
+
+    suspend fun deleteGistComment(context: Context, gistId: String, commentId: Long): Boolean =
+        request(context, "/gists/$gistId/comments/$commentId", "DELETE").let { it.code == 204 || it.success }
+
     suspend fun searchUsers(context: Context, query: String): List<GHUser> {
         val q = URLEncoder.encode(query, "UTF-8")
         val r = request(context, "/search/users?q=$q&per_page=30")
@@ -5391,7 +5439,8 @@ object GitHubManager {
                         body = j.optString("body"),
                         author = author?.optString("login") ?: "",
                         avatarUrl = author?.optString("avatarUrl") ?: "",
-                        createdAt = j.optString("createdAt")
+                        createdAt = j.optString("createdAt"),
+                        nodeId = j.optString("id", "")
                     )
                 }
             }
@@ -5410,6 +5459,32 @@ object GitHubManager {
             put("body", body)
         })
         return data?.optJSONObject("addDiscussionComment")?.optJSONObject("comment")?.optString("id").orEmpty().isNotBlank()
+    }
+
+    suspend fun markDiscussionCommentAsAnswer(context: Context, commentId: String): Boolean {
+        val data = graphql(context, """
+            mutation(${'$'}id: ID!) {
+              markDiscussionCommentAsAnswer(input: {id: ${'$'}id}) {
+                discussion { id }
+              }
+            }
+        """.trimIndent(), JSONObject().apply {
+            put("id", commentId)
+        })
+        return data?.optJSONObject("markDiscussionCommentAsAnswer")?.optJSONObject("discussion") != null
+    }
+
+    suspend fun unmarkDiscussionCommentAsAnswer(context: Context, commentId: String): Boolean {
+        val data = graphql(context, """
+            mutation(${'$'}id: ID!) {
+              unmarkDiscussionCommentAsAnswer(input: {id: ${'$'}id}) {
+                discussion { id }
+              }
+            }
+        """.trimIndent(), JSONObject().apply {
+            put("id", commentId)
+        })
+        return data?.optJSONObject("unmarkDiscussionCommentAsAnswer")?.optJSONObject("discussion") != null
     }
 
     private suspend fun getRepositoryNodeId(context: Context, owner: String, repo: String): String? {
@@ -7156,7 +7231,7 @@ data class GHPullReview(
     val htmlUrl: String
 )
 
-data class GHComment(val id: Long, val body: String, val author: String, val avatarUrl: String, val createdAt: String)
+data class GHComment(val id: Long, val body: String, val author: String, val avatarUrl: String, val createdAt: String, val nodeId: String = "")
 
 data class GHContributor(val login: String, val avatarUrl: String, val contributions: Int)
 
@@ -7227,7 +7302,10 @@ data class GHAsset(
 )
 
 data class GHGist(val id: String, val description: String, val isPublic: Boolean, val files: List<String>,
-    val createdAt: String, val updatedAt: String)
+    val createdAt: String, val updatedAt: String, val owner: String = "", val comments: Int = 0,
+    val htmlUrl: String = "")
+
+data class GHGistComment(val id: Long, val body: String, val user: String, val createdAt: String)
 
 data class GHCommitDetail(val sha: String, val message: String, val author: String, val date: String,
     val files: List<GHDiffFile>, val totalAdditions: Int, val totalDeletions: Int)

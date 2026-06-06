@@ -65,6 +65,10 @@ internal fun GistsScreen(
     var showCreate by remember { mutableStateOf(false) }
     var viewingGist by remember { mutableStateOf<GHGist?>(null) }
     var gistContent by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var isStarred by remember { mutableStateOf(false) }
+    var gistComments by remember { mutableStateOf<List<GHGistComment>>(emptyList()) }
+    var newComment by remember { mutableStateOf("") }
+    var commentSending by remember { mutableStateOf(false) }
     val palette = AiModuleTheme.colors
 
     fun handleGistsBack() {
@@ -86,12 +90,39 @@ internal fun GistsScreen(
     AiModuleSurface {
         if (viewingGist != null) {
             val current = viewingGist!!
+            LaunchedEffect(current.id) {
+                isStarred = GitHubManager.isGistStarred(context, current.id)
+                gistComments = GitHubManager.getGistComments(context, current.id)
+            }
             Column(Modifier.fillMaxSize().background(palette.background)) {
                 GitHubPageBar(
                     title = "> ${current.description.ifBlank { "gist" }.lowercase()}",
                     subtitle = "${current.files.size} file${if (current.files.size == 1) "" else "s"}",
                     onBack = ::handleGistsBack,
                     trailing = {
+                        GitHubTopBarAction(
+                            glyph = if (isStarred) GhGlyphs.STAR_ON else GhGlyphs.STAR_OFF,
+                            onClick = {
+                                scope.launch {
+                                    if (isStarred) GitHubManager.unstarGist(context, current.id)
+                                    else GitHubManager.starGist(context, current.id)
+                                    isStarred = !isStarred
+                                }
+                            },
+                            tint = if (isStarred) Color(0xFFFF9500) else palette.textSecondary,
+                            contentDescription = if (isStarred) "unstar" else "star",
+                        )
+                        GitHubTopBarAction(
+                            glyph = GhGlyphs.FORK,
+                            onClick = {
+                                scope.launch {
+                                    val ok = GitHubManager.forkGist(context, current.id)
+                                    Toast.makeText(context, if (ok) "Forked" else "Fork failed", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            tint = palette.textSecondary,
+                            contentDescription = "fork gist",
+                        )
                         GitHubTopBarAction(
                             glyph = GhGlyphs.DELETE,
                             onClick = {
@@ -113,6 +144,7 @@ internal fun GistsScreen(
                 LazyColumn(
                     Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     gistContent.forEach { (n, t) ->
                         item {
@@ -141,7 +173,47 @@ internal fun GistsScreen(
                                     lineHeight = 16.sp,
                                 )
                             }
-                            Spacer(Modifier.height(12.dp))
+                        }
+                    }
+                    // Comments section
+                    item {
+                        Spacer(Modifier.height(4.dp))
+                        Text("comments", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = palette.accent, fontFamily = JetBrainsMono)
+                    }
+                    if (gistComments.isEmpty()) {
+                        item { Text("no comments", fontSize = 11.sp, color = palette.textMuted, fontFamily = JetBrainsMono) }
+                    } else {
+                        items(gistComments) { comment ->
+                            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(6.dp)).background(palette.surface).border(1.dp, palette.border, RoundedCornerShape(6.dp)).padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text(comment.user, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = palette.accent, fontFamily = JetBrainsMono)
+                                    Text(comment.createdAt.take(10), fontSize = 10.sp, color = palette.textMuted, fontFamily = JetBrainsMono)
+                                }
+                                Text(comment.body, fontSize = 11.sp, color = palette.textPrimary, fontFamily = JetBrainsMono, lineHeight = 16.sp)
+                            }
+                        }
+                    }
+                    item {
+                        Spacer(Modifier.height(4.dp))
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Box(Modifier.weight(1f).height(32.dp).clip(RoundedCornerShape(4.dp)).background(palette.surface).border(1.dp, palette.border, RoundedCornerShape(4.dp)).padding(horizontal = 8.dp), contentAlignment = Alignment.CenterStart) {
+                                BasicTextField(value = newComment, onValueChange = { newComment = it }, textStyle = TextStyle(fontFamily = JetBrainsMono, fontSize = 11.sp, color = palette.textPrimary), singleLine = true, modifier = Modifier.fillMaxSize())
+                                if (newComment.isEmpty()) Text("comment…", fontFamily = JetBrainsMono, fontSize = 11.sp, color = palette.textMuted)
+                            }
+                            Box(Modifier.clip(RoundedCornerShape(4.dp)).background(palette.accent.copy(alpha = 0.15f)).border(1.dp, palette.accent.copy(alpha = 0.3f), RoundedCornerShape(4.dp)).clickable(enabled = !commentSending && newComment.isNotBlank()) {
+                                commentSending = true
+                                scope.launch {
+                                    val ok = GitHubManager.addGistComment(context, current.id, newComment)
+                                    Toast.makeText(context, if (ok) "Comment added" else "Failed", Toast.LENGTH_SHORT).show()
+                                    if (ok) {
+                                        newComment = ""
+                                        gistComments = GitHubManager.getGistComments(context, current.id)
+                                    }
+                                    commentSending = false
+                                }
+                            }.padding(horizontal = 10.dp, vertical = 6.dp)) {
+                                Text(if (commentSending) "…" else "send", fontFamily = JetBrainsMono, fontSize = 10.sp, fontWeight = FontWeight.Medium, color = palette.accent)
+                            }
                         }
                     }
                 }

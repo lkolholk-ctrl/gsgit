@@ -393,7 +393,18 @@ private fun DiscussionDetailScreen(
                     }
                 }
             } else {
-                items(comments) { comment -> DiscussionCommentCard(comment) }
+                items(comments) { comment ->
+                    DiscussionCommentCard(
+                        comment = comment,
+                        onMarkAnswer = if (discussion.isAnswerable && comment.nodeId.isNotBlank()) { {
+                            scope.launch {
+                                val ok = GitHubManager.markDiscussionCommentAsAnswer(context, comment.nodeId)
+                                Toast.makeText(context, if (ok) "Marked as answer" else "Failed", Toast.LENGTH_SHORT).show()
+                                if (ok) loadDetail()
+                            }
+                        } } else null
+                    )
+                }
                 if (comments.isEmpty()) {
                     item { EmptyDiscussionsCard("No comments yet") }
                 }
@@ -493,15 +504,28 @@ private fun DiscussionBodyCard(discussion: GHDiscussion) {
 }
 
 @Composable
-private fun DiscussionCommentCard(comment: GHComment) {
+private fun DiscussionCommentCard(comment: GHComment, onMarkAnswer: (() -> Unit)? = null) {
+    val palette = AiModuleTheme.colors
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).border(1.dp, AiModuleTheme.colors.border, RoundedCornerShape(GitHubControlRadius)).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (comment.avatarUrl.isNotBlank()) {
                 AsyncImage(comment.avatarUrl, comment.author, Modifier.size(28.dp).clip(CircleShape))
             }
-            Column {
+            Column(Modifier.weight(1f)) {
                 Text(comment.author.ifBlank { "Unknown" }, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = AiModuleTheme.colors.accent)
                 Text(comment.createdAt.take(10), fontSize = 10.sp, color = AiModuleTheme.colors.textMuted)
+            }
+            if (onMarkAnswer != null && comment.nodeId.isNotBlank()) {
+                Box(
+                    Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color(0xFF34C759).copy(alpha = 0.1f))
+                        .border(1.dp, Color(0xFF34C759).copy(alpha = 0.3f), RoundedCornerShape(4.dp))
+                        .clickable(onClick = onMarkAnswer)
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                ) {
+                    Text("mark answer", fontFamily = JetBrainsMono, fontSize = 9.sp, fontWeight = FontWeight.Medium, color = Color(0xFF34C759))
+                }
             }
         }
         Text(comment.body, fontSize = 13.sp, color = AiModuleTheme.colors.textPrimary, lineHeight = 18.sp)
