@@ -40,6 +40,7 @@ import gs.git.vps.data.github.GHAutolink
 import gs.git.vps.data.github.GHDeployKey
 import gs.git.vps.data.github.GHInteractionLimitEntry
 import gs.git.vps.data.github.GHRepoSettings
+import gs.git.vps.data.github.GHRepositorySecuritySettings
 import gs.git.vps.data.github.GHTag
 import gs.git.vps.data.github.GitHubManager
 import gs.git.vps.ui.theme.AiModuleTheme
@@ -108,6 +109,9 @@ internal fun RepoSettingsScreen(
     var deployKeyTitle by remember { mutableStateOf("") }
     var deployKeyValue by remember { mutableStateOf("") }
     var deployKeyReadOnly by remember { mutableStateOf(true) }
+    var isWatching by remember { mutableStateOf(false) }
+    var securitySettings by remember { mutableStateOf<GHRepositorySecuritySettings?>(null) }
+    var watchBusy by remember { mutableStateOf(false) }
 
     LaunchedEffect(repoOwner, repoName) {
         val s = GitHubManager.getRepoSettings(context, repoOwner, repoName)
@@ -115,6 +119,8 @@ internal fun RepoSettingsScreen(
         tags = GitHubManager.getRepoTags(context, repoOwner, repoName)
         branches = fetchedBranches
         deployKeys = GitHubManager.getRepoDeployKeys(context, repoOwner, repoName)
+        isWatching = GitHubManager.isWatchingRepo(context, repoOwner, repoName)
+        securitySettings = try { GitHubManager.getRepositorySecuritySettings(context, repoOwner, repoName) } catch (_: Exception) { null }
         settings = s
         if (s != null) {
             description = s.description
@@ -465,6 +471,80 @@ internal fun RepoSettingsScreen(
                                     Text("Limit interactions for this repo", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted)
                                 }
                                 Icon(Icons.Rounded.ChevronRight, null, Modifier.size(16.dp), tint = AiModuleTheme.colors.textMuted)
+                            }
+
+                            // Watch toggle
+                            Row(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius))
+                                    .background(AiModuleTheme.colors.background)
+                                    .clickable {
+                                        if (!watchBusy) {
+                                            watchBusy = true
+                                            scope.launch {
+                                                val ok = if (isWatching) GitHubManager.unwatchRepo(context, repoOwner, repoName) else GitHubManager.watchRepo(context, repoOwner, repoName)
+                                                if (ok) isWatching = !isWatching
+                                                watchBusy = false
+                                            }
+                                        }
+                                    }
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Icon(
+                                    if (isWatching) Icons.Rounded.Visibility else Icons.Rounded.VisibilityOff,
+                                    null, Modifier.size(22.dp),
+                                    tint = if (isWatching) AiModuleTheme.colors.accent else AiModuleTheme.colors.textSecondary
+                                )
+                                Column(Modifier.weight(1f)) {
+                                    Text("Watching", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = AiModuleTheme.colors.textPrimary)
+                                    Text(if (isWatching) "You are watching this repository" else "Not watching this repository", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted)
+                                }
+                                if (watchBusy) AiModuleSpinner() else TerminalToggleIndicator(checked = isWatching)
+                            }
+
+                            // Security settings toggles
+                            if (securitySettings != null) {
+                                val sec = securitySettings!!
+                                SectionHeader("Security Settings")
+                                SettingsCard {
+                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        SecurityToggleRow(
+                                            label = "Dependabot security updates",
+                                            checked = sec.automatedSecurityFixes,
+                                            info = if (sec.automatedSecurityFixesPaused) "paused" else "active",
+                                            onToggle = { enabled ->
+                                                scope.launch {
+                                                    val ok = GitHubManager.setAutomatedSecurityFixes(context, repoOwner, repoName, enabled)
+                                                    if (ok) securitySettings = sec.copy(automatedSecurityFixes = enabled)
+                                                    Toast.makeText(context, if (ok) "Updated" else "Failed", Toast.LENGTH_SHORT).show()
+                                                }
+                                            }
+                                        )
+                                        SecurityToggleRow(
+                                            label = "Vulnerability alerts",
+                                            checked = sec.vulnerabilityAlerts,
+                                            onToggle = { enabled ->
+                                                scope.launch {
+                                                    val ok = GitHubManager.setVulnerabilityAlerts(context, repoOwner, repoName, enabled)
+                                                    if (ok) securitySettings = sec.copy(vulnerabilityAlerts = enabled)
+                                                    Toast.makeText(context, if (ok) "Updated" else "Failed", Toast.LENGTH_SHORT).show()
+                                                }
+                                            }
+                                        )
+                                        SecurityToggleRow(
+                                            label = "Private vulnerability reporting",
+                                            checked = sec.privateVulnerabilityReporting,
+                                            onToggle = { enabled ->
+                                                scope.launch {
+                                                    val ok = GitHubManager.setPrivateVulnerabilityReporting(context, repoOwner, repoName, enabled)
+                                                    if (ok) securitySettings = sec.copy(privateVulnerabilityReporting = enabled)
+                                                    Toast.makeText(context, if (ok) "Updated" else "Failed", Toast.LENGTH_SHORT).show()
+                                                }
+                                            }
+                                        )
+                                    }
+                                }
                             }
 
                             // Archive toggle
@@ -1527,5 +1607,32 @@ internal fun InteractionLimitsPanel(owner: String, repo: String) {
             }, accent = true)
         }
         Text("Temporarily limit interactions for this repository.", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted, fontFamily = JetBrainsMono)
+    }
+}
+
+@Composable
+private fun SecurityToggleRow(
+    label: String,
+    checked: Boolean,
+    info: String = "",
+    onToggle: (Boolean) -> Unit
+) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius))
+            .clickable { onToggle(!checked) }
+            .padding(horizontal = 8.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Icon(
+            if (checked) Icons.Rounded.CheckCircle else Icons.Rounded.Cancel,
+            null, Modifier.size(20.dp),
+            tint = if (checked) Color(0xFF34C759) else AiModuleTheme.colors.textMuted
+        )
+        Column(Modifier.weight(1f)) {
+            Text(label, fontSize = 14.sp, color = AiModuleTheme.colors.textPrimary)
+            if (info.isNotBlank()) Text(info, fontSize = 11.sp, color = AiModuleTheme.colors.textMuted)
+        }
+        TerminalToggleIndicator(checked = checked, tint = if (checked) Color(0xFF34C759) else AiModuleTheme.colors.textMuted)
     }
 }

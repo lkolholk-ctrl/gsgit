@@ -3244,6 +3244,12 @@ object GitHubManager {
         return r.success && JSONObject(r.body).optBoolean("subscribed", false)
     }
 
+    suspend fun isWatchingRepo(context: Context, owner: String, repo: String): Boolean {
+        val r = request(context, "/repos/$owner/$repo/subscription")
+        if (!r.success) return false
+        return try { JSONObject(r.body).optString("subscribed", "false") == "true" } catch (_: Exception) { false }
+    }
+
     suspend fun watchRepo(context: Context, owner: String, repo: String): Boolean =
         request(context, "/repos/$owner/$repo/subscription", "PUT", "{\"subscribed\":true}").success
 
