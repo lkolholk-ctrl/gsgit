@@ -53,7 +53,8 @@ fun BuildsScreen(
     branches: List<String>,
     workflows: List<GHWorkflow>,
     selectedBranch: String?,
-    onRunSelected: (Long?) -> Unit
+    onRunSelected: (Long?) -> Unit,
+    onBack: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -84,7 +85,7 @@ fun BuildsScreen(
     GitHubScreenFrame(
         title = "> builds",
         subtitle = "$owner/$name",
-        onBack = {},
+        onBack = onBack,
     ) {
         Column(Modifier.fillMaxSize()) {
             // Filters

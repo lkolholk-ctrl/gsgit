@@ -520,7 +520,7 @@ internal fun RepoDetailScreen(
     if (showAutolinks) { GitHubScreenFrame(title = "> autolinks", onBack = { closeRepoSettingsChild { showAutolinks = false } }) { Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)) { AutolinksPanel(owner = repo.owner, repo = repo.name) } }; return }
     if (showLfs) { GitHubScreenFrame(title = "> git lfs", onBack = { closeRepoSettingsChild { showLfs = false } }) { Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)) { LfsPanel(owner = repo.owner, repo = repo.name) } }; return }
     if (showInteractionLimits) { GitHubScreenFrame(title = "> interaction limits", onBack = { closeRepoSettingsChild { showInteractionLimits = false } }) { Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)) { InteractionLimitsPanel(owner = repo.owner, repo = repo.name) } }; return }
-    if (showBuilds) { BuildsScreen(repo = repo, branches = branches, workflows = workflows, selectedBranch = repo.defaultBranch, onRunSelected = { selectedRunId = it }); return }
+    if (showBuilds) { BuildsScreen(repo = repo, branches = branches, workflows = workflows, selectedBranch = repo.defaultBranch, onRunSelected = { selectedRunId = it }, onBack = { showBuilds = false }); return }
     if (showActionsTroubleshoot) {
         GitHubActionsTroubleshootScreen(
             repo = repo,
@@ -2673,7 +2673,7 @@ internal fun PullsTab(
                 Column(Modifier.weight(1f).padding(12.dp)) {
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
                         Box(Modifier.size(28.dp).clip(CircleShape).background(prColor.copy(alpha = 0.12f)), contentAlignment = Alignment.Center) {
-                            AiModuleGlyph(GhGlyphs.MERGE, Modifier.size(18.dp), tint = prColor, fontSize = 12.sp)
+                            Icon(Icons.Rounded.MergeType, contentDescription = null, modifier = Modifier.size(16.dp), tint = prColor)
                         }
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                             AiModuleText(pr.title, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = palette.textPrimary, lineHeight = 18.sp, maxLines = 2)
@@ -5246,14 +5246,15 @@ internal fun IssueDetailScreen(repo: GHRepo, issueNumber: Int, onBack: () -> Uni
                 }
             }
             Column(
-                Modifier.fillMaxWidth().background(issuePalette.background).border(1.dp, issuePalette.border).padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("> comment", color = issuePalette.accent, fontFamily = JetBrainsMono, fontWeight = FontWeight.Medium, fontSize = 12.sp)
                     GitHubTerminalTab("write", selected = !previewComment) { previewComment = false }
                     GitHubTerminalTab("preview", selected = previewComment) { previewComment = true }
                     Spacer(Modifier.weight(1f))
-                    GitHubTerminalButton("send ↵", enabled = !sending && newComment.isNotBlank(), color = if (sending || newComment.isBlank()) issuePalette.textMuted else issuePalette.accent, onClick = {
+                    if (sending) AiModuleSpinner() else GitHubTerminalButton("send ↵", enabled = newComment.isNotBlank(), color = if (newComment.isBlank()) issuePalette.textMuted else issuePalette.accent, onClick = {
                         if (newComment.isBlank() || sending) return@GitHubTerminalButton
                         sending = true
                         scope.launch {
@@ -5269,8 +5270,8 @@ internal fun IssueDetailScreen(repo: GHRepo, issueNumber: Int, onBack: () -> Uni
                     })
                 }
                 if (previewComment) {
-                    Box(Modifier.fillMaxWidth().heightIn(min = 82.dp, max = 180.dp).border(1.dp, issuePalette.textMuted).background(issuePalette.surface).padding(12.dp).verticalScroll(rememberScrollState())) {
-                        if (newComment.isBlank()) Text(Strings.ghAddComment, color = TextTertiary, fontSize = 14.sp)
+                    Box(Modifier.fillMaxWidth().heightIn(min = 72.dp, max = 180.dp).clip(RoundedCornerShape(GitHubControlRadius)).background(issuePalette.surface).border(1.dp, issuePalette.border, RoundedCornerShape(GitHubControlRadius)).padding(12.dp).verticalScroll(rememberScrollState())) {
+                        if (newComment.isBlank()) Text(Strings.ghAddComment, color = issuePalette.textMuted, fontFamily = JetBrainsMono, fontSize = 13.sp, lineHeight = 18.sp)
                         else IssueMarkdownBlock(newComment)
                     }
                 } else {
@@ -5278,7 +5279,7 @@ internal fun IssueDetailScreen(repo: GHRepo, issueNumber: Int, onBack: () -> Uni
                         value = newComment,
                         onValueChange = { newComment = it },
                         placeholder = Strings.ghAddComment,
-                        minHeight = 82.dp,
+                        minHeight = 72.dp,
                         maxLines = 8,
                     )
                 }

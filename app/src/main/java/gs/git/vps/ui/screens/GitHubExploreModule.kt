@@ -425,7 +425,7 @@ internal fun LicensesScreen(onBack: () -> Unit) {
                     Text(l.name, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono)
                     AiModuleKeyValueRow("key", l.key)
                     AiModuleKeyValueRow("spdx", l.spdxId)
-                    if (l.description.isNotBlank()) Text(l.description, fontSize = 12.sp, color = AiModuleTheme.colors.textSecondary)
+                    if (l.description.isNotBlank()) Text(l.description, fontSize = 12.sp, color = AiModuleTheme.colors.textSecondary, fontFamily = JetBrainsMono)
                     if (l.body.isNotBlank()) {
                         AiModuleSectionLabel(text = "full text")
                         Text(l.body, fontSize = 11.sp, color = AiModuleTheme.colors.textPrimary, lineHeight = 16.sp, fontFamily = JetBrainsMono)
@@ -446,7 +446,7 @@ internal fun LicensesScreen(onBack: () -> Unit) {
                                 scope.launch { selectedLicense = GitHubManager.getLicense(context, license.key) }
                             }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text(license.name, fontSize = 12.sp, fontFamily = JetBrainsMono, color = AiModuleTheme.colors.textPrimary, modifier = Modifier.weight(1f))
-                                if (license.featured) Text("★", fontSize = 12.sp, color = AiModuleTheme.colors.accent)
+                                if (license.featured) Text("★", fontSize = 12.sp, color = AiModuleTheme.colors.accent, fontFamily = JetBrainsMono)
                             }
                         }
                     }
@@ -567,8 +567,8 @@ private fun TopicRow(topic: GHTopicSearchResult, onClick: () -> Unit) {
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(topic.displayName.ifBlank { topic.name }, color = palette.textPrimary, fontFamily = JetBrainsMono, fontWeight = FontWeight.Medium, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (topic.featured) Text("★", color = palette.accent, fontSize = 12.sp)
-                if (topic.curated) Text("✓", color = Color(0xFF34C759), fontSize = 11.sp)
+                if (topic.featured) Text("★", color = palette.accent, fontSize = 12.sp, fontFamily = JetBrainsMono)
+                if (topic.curated) Text("✓", color = Color(0xFF34C759), fontSize = 11.sp, fontFamily = JetBrainsMono)
             }
             if (topic.shortDescription.isNotBlank()) {
                 Text(topic.shortDescription, color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 11.sp, lineHeight = 1.3.em, maxLines = 2, overflow = TextOverflow.Ellipsis)

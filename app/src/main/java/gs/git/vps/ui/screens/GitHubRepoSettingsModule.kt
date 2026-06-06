@@ -312,8 +312,8 @@ internal fun RepoSettingsScreen(
                             ) {
                                 Icon(Icons.Rounded.Shield, null, Modifier.size(22.dp), tint = AiModuleTheme.colors.accent)
                                 Column(Modifier.weight(1f)) {
-                                    Text("Branch protection rules", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = AiModuleTheme.colors.textPrimary)
-                                    Text("Require reviews, status checks, and more", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted)
+                                    Text("Branch protection rules", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono)
+                                    Text("Require reviews, status checks, and more", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted, fontFamily = JetBrainsMono)
                                 }
                                 Icon(Icons.Rounded.ChevronRight, null, Modifier.size(16.dp), tint = AiModuleTheme.colors.textMuted)
                             }
@@ -329,8 +329,8 @@ internal fun RepoSettingsScreen(
                             ) {
                                 Icon(Icons.Rounded.Group, null, Modifier.size(22.dp), tint = AiModuleTheme.colors.accent)
                                 Column(Modifier.weight(1f)) {
-                                    Text("Manage collaborators", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = AiModuleTheme.colors.textPrimary)
-                                    Text("Add, remove, or change permissions", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted)
+                                    Text("Manage collaborators", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono)
+                                    Text("Add, remove, or change permissions", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted, fontFamily = JetBrainsMono)
                                 }
                                 Icon(Icons.Rounded.ChevronRight, null, Modifier.size(16.dp), tint = AiModuleTheme.colors.textMuted)
                             }
@@ -345,8 +345,8 @@ internal fun RepoSettingsScreen(
                             ) {
                                 Icon(Icons.Rounded.Group, null, Modifier.size(22.dp), tint = AiModuleTheme.colors.accent)
                                 Column(Modifier.weight(1f)) {
-                                    Text("Manage teams", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = AiModuleTheme.colors.textPrimary)
-                                    Text("Org team access and permissions", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted)
+                                    Text("Manage teams", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono)
+                                    Text("Org team access and permissions", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted, fontFamily = JetBrainsMono)
                                 }
                                 Icon(Icons.Rounded.ChevronRight, null, Modifier.size(16.dp), tint = AiModuleTheme.colors.textMuted)
                             }
@@ -365,8 +365,8 @@ internal fun RepoSettingsScreen(
                             ) {
                                 Icon(Icons.Rounded.Webhook, null, Modifier.size(22.dp), tint = AiModuleTheme.colors.accent)
                                 Column(Modifier.weight(1f)) {
-                                    Text("Webhooks", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = AiModuleTheme.colors.textPrimary)
-                                    Text("Manage repository webhooks", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted)
+                                    Text("Webhooks", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono)
+                                    Text("Manage repository webhooks", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted, fontFamily = JetBrainsMono)
                                 }
                                 Icon(Icons.Rounded.ChevronRight, null, Modifier.size(16.dp), tint = AiModuleTheme.colors.textMuted)
                             }
@@ -382,8 +382,8 @@ internal fun RepoSettingsScreen(
                             ) {
                                 Icon(Icons.Rounded.Forum, null, Modifier.size(22.dp), tint = AiModuleTheme.colors.accent)
                                 Column(Modifier.weight(1f)) {
-                                    Text("Discussions", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = AiModuleTheme.colors.textPrimary)
-                                    Text("View repository discussions", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted)
+                                    Text("Discussions", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono)
+                                    Text("View repository discussions", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted, fontFamily = JetBrainsMono)
                                 }
                                 Icon(Icons.Rounded.ChevronRight, null, Modifier.size(16.dp), tint = AiModuleTheme.colors.textMuted)
                             }
@@ -399,8 +399,8 @@ internal fun RepoSettingsScreen(
                             ) {
                                 Icon(Icons.Rounded.Rule, null, Modifier.size(22.dp), tint = AiModuleTheme.colors.accent)
                                 Column(Modifier.weight(1f)) {
-                                    Text("Rulesets", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = AiModuleTheme.colors.textPrimary)
-                                    Text("View repository rulesets", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted)
+                                    Text("Rulesets", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono)
+                                    Text("View repository rulesets", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted, fontFamily = JetBrainsMono)
                                 }
                                 Icon(Icons.Rounded.ChevronRight, null, Modifier.size(16.dp), tint = AiModuleTheme.colors.textMuted)
                             }
@@ -416,8 +416,8 @@ internal fun RepoSettingsScreen(
                             ) {
                                 Icon(Icons.Rounded.Security, null, Modifier.size(22.dp), tint = Color(0xFFFF3B30))
                                 Column(Modifier.weight(1f)) {
-                                    Text("Security", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = AiModuleTheme.colors.textPrimary)
-                                    Text("Dependabot alerts", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted)
+                                    Text("Security", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono)
+                                    Text("Dependabot alerts", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted, fontFamily = JetBrainsMono)
                                 }
                                 Icon(Icons.Rounded.ChevronRight, null, Modifier.size(16.dp), tint = AiModuleTheme.colors.textMuted)
                             }
@@ -433,8 +433,8 @@ internal fun RepoSettingsScreen(
                             ) {
                                 Icon(Icons.Rounded.Link, null, Modifier.size(22.dp), tint = AiModuleTheme.colors.accent)
                                 Column(Modifier.weight(1f)) {
-                                    Text("Autolinks", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = AiModuleTheme.colors.textPrimary)
-                                    Text("Reference autolink patterns", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted)
+                                    Text("Autolinks", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono)
+                                    Text("Reference autolink patterns", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted, fontFamily = JetBrainsMono)
                                 }
                                 Icon(Icons.Rounded.ChevronRight, null, Modifier.size(16.dp), tint = AiModuleTheme.colors.textMuted)
                             }
@@ -450,8 +450,8 @@ internal fun RepoSettingsScreen(
                             ) {
                                 Icon(Icons.Rounded.Storage, null, Modifier.size(22.dp), tint = AiModuleTheme.colors.accent)
                                 Column(Modifier.weight(1f)) {
-                                    Text("Git LFS", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = AiModuleTheme.colors.textPrimary)
-                                    Text("Large File Storage settings", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted)
+                                    Text("Git LFS", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono)
+                                    Text("Large File Storage settings", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted, fontFamily = JetBrainsMono)
                                 }
                                 Icon(Icons.Rounded.ChevronRight, null, Modifier.size(16.dp), tint = AiModuleTheme.colors.textMuted)
                             }
@@ -467,8 +467,8 @@ internal fun RepoSettingsScreen(
                             ) {
                                 Icon(Icons.Rounded.Block, null, Modifier.size(22.dp), tint = AiModuleTheme.colors.accent)
                                 Column(Modifier.weight(1f)) {
-                                    Text("Interaction Limits", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = AiModuleTheme.colors.textPrimary)
-                                    Text("Limit interactions for this repo", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted)
+                                    Text("Interaction Limits", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono)
+                                    Text("Limit interactions for this repo", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted, fontFamily = JetBrainsMono)
                                 }
                                 Icon(Icons.Rounded.ChevronRight, null, Modifier.size(16.dp), tint = AiModuleTheme.colors.textMuted)
                             }
@@ -497,8 +497,8 @@ internal fun RepoSettingsScreen(
                                     tint = if (isWatching) AiModuleTheme.colors.accent else AiModuleTheme.colors.textSecondary
                                 )
                                 Column(Modifier.weight(1f)) {
-                                    Text("Watching", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = AiModuleTheme.colors.textPrimary)
-                                    Text(if (isWatching) "You are watching this repository" else "Not watching this repository", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted)
+                                    Text("Watching", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono)
+                                    Text(if (isWatching) "You are watching this repository" else "Not watching this repository", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted, fontFamily = JetBrainsMono)
                                 }
                                 if (watchBusy) AiModuleSpinner() else TerminalToggleIndicator(checked = isWatching)
                             }
@@ -1630,8 +1630,8 @@ private fun SecurityToggleRow(
             tint = if (checked) Color(0xFF34C759) else AiModuleTheme.colors.textMuted
         )
         Column(Modifier.weight(1f)) {
-            Text(label, fontSize = 14.sp, color = AiModuleTheme.colors.textPrimary)
-            if (info.isNotBlank()) Text(info, fontSize = 11.sp, color = AiModuleTheme.colors.textMuted)
+            Text(label, fontSize = 14.sp, color = AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono)
+            if (info.isNotBlank()) Text(info, fontSize = 11.sp, color = AiModuleTheme.colors.textMuted, fontFamily = JetBrainsMono)
         }
         TerminalToggleIndicator(checked = checked, tint = if (checked) Color(0xFF34C759) else AiModuleTheme.colors.textMuted)
     }
