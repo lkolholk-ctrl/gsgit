@@ -974,8 +974,8 @@ fun CodeEditorScreen(
 
             androidx.compose.animation.AnimatedVisibility(
                 visible = showOutline && !zenMode && !isImage && symbols.isNotEmpty(),
-                enter = slideInHorizontally(initialOffset = { w -> w }) + fadeIn(),
-                exit = slideOutHorizontally(targetOffset = { w -> w }) + fadeOut()
+                enter = slideInHorizontally(initialOffsetX = { w -> w }) + fadeIn(),
+                exit = slideOutHorizontally(targetOffsetX = { w -> w }) + fadeOut()
             ) {
                 Box(
                     Modifier
