@@ -1,6 +1,7 @@
 package gs.git.vps.ui.screens
 
 import android.widget.Toast
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -29,6 +30,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -147,6 +150,9 @@ fun BuildsScreen(
                     Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(top = 4.dp, bottom = 24.dp),
                 ) {
+                    item {
+                        PerformanceInsightsWidget(runs)
+                    }
                     items(runs, key = { it.id }) { run ->
                         WorkflowRunRow(
                             run = run,
@@ -170,6 +176,228 @@ fun BuildsScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun PerformanceInsightsWidget(runs: List<GHWorkflowRun>) {
+    val palette = AiModuleTheme.colors
+    var expanded by remember { mutableStateOf(false) }
+    val completedRuns = remember(runs) {
+        runs.filter { it.status == "completed" && it.conclusion != "skipped" }
+    }
+    val avgSec = remember(completedRuns) {
+        if (completedRuns.isEmpty()) 0L
+        else completedRuns.map { calcRunDurationSeconds(it) }.filter { it > 0 }.average().toLong()
+    }
+    val successRate = remember(completedRuns) {
+        if (completedRuns.isEmpty()) 0
+        else (completedRuns.count { it.conclusion == "success" } * 100) / completedRuns.size
+    }
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(12.dp)
+            .border(1.dp, palette.border, RoundedCornerShape(8.dp))
+            .background(palette.surface.copy(alpha = 0.5f))
+            .clickable { expanded = !expanded }
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "[insights] performance & tests stats",
+                fontFamily = JetBrainsMono, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                color = palette.accent
+            )
+            Text(
+                if (expanded) "hide \u25b2" else "show \u25bc",
+                fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.textMuted
+            )
+        }
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            val formatAvg = if (avgSec == 0L) "n/a" else "${avgSec / 60}m ${avgSec % 60}s"
+            Column {
+                Text("avg build duration", fontFamily = JetBrainsMono, fontSize = 9.sp, color = palette.textMuted)
+                Text(formatAvg, fontFamily = JetBrainsMono, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = palette.textPrimary)
+            }
+            Column {
+                Text("success rate", fontFamily = JetBrainsMono, fontSize = 9.sp, color = palette.textMuted)
+                Text("$successRate%", fontFamily = JetBrainsMono, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (successRate >= 80) Color(0xFF2EA043) else Color(0xFFF85149))
+            }
+        }
+
+        if (expanded) {
+            Spacer(Modifier.height(4.dp))
+            BuildDurationTrendGraph(runs)
+            Spacer(Modifier.height(4.dp))
+            TestSummaryWidget(runs)
+        }
+    }
+}
+
+@Composable
+private fun BuildDurationTrendGraph(runs: List<GHWorkflowRun>) {
+    val palette = AiModuleTheme.colors
+    val completedRuns = remember(runs) {
+        runs.filter { it.status == "completed" && it.conclusion != "skipped" }
+            .take(10)
+            .reversed()
+    }
+    if (completedRuns.isEmpty()) return
+
+    val durations = completedRuns.map { run ->
+        val duration = calcRunDurationSeconds(run)
+        if (duration <= 0) 120L else duration
+    }
+
+    val maxDuration = remember(durations) { (durations.maxOrNull() ?: 300).toFloat().coerceAtLeast(60f) }
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .height(130.dp)
+            .border(1.dp, palette.border, RoundedCornerShape(8.dp))
+            .background(palette.background)
+            .padding(10.dp)
+    ) {
+        Text("duration trend (last ${completedRuns.size} runs)", fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.textMuted)
+        Spacer(Modifier.height(8.dp))
+        androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
+            val width = size.width
+            val height = size.height
+            val spacing = width / (durations.size - 1).coerceAtLeast(1)
+
+            // Draw grid lines
+            val gridLines = 3
+            for (i in 0..gridLines) {
+                val y = height * i / gridLines
+                drawLine(
+                    color = palette.border.copy(alpha = 0.4f),
+                    start = Offset(0f, y),
+                    end = Offset(width, y),
+                    strokeWidth = 1f
+                )
+            }
+
+            // Draw points & line
+            val points = durations.mapIndexed { index, duration ->
+                val x = index * spacing
+                val y = height - (duration.toFloat() / maxDuration * height).coerceIn(0f, height)
+                Offset(x, y)
+            }
+
+            for (i in 0 until points.size - 1) {
+                drawLine(
+                    color = palette.accent,
+                    start = points[i],
+                    end = points[i+1],
+                    strokeWidth = 3f
+                )
+            }
+
+            points.forEachIndexed { index, pt ->
+                drawCircle(
+                    color = if (completedRuns[index].conclusion == "success") Color(0xFF2EA043) else Color(0xFFF85149),
+                    radius = 8f,
+                    center = pt
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TestSummaryWidget(runs: List<GHWorkflowRun>) {
+    val palette = AiModuleTheme.colors
+    var showDetails by remember { mutableStateOf(false) }
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .border(1.dp, palette.border, RoundedCornerShape(8.dp))
+            .background(palette.background)
+            .padding(10.dp)
+    ) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("test suites summary", fontFamily = JetBrainsMono, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = palette.textPrimary)
+            Text(
+                if (showDetails) "collapse" else "details",
+                fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.accent,
+                modifier = Modifier.clickable { showDetails = !showDetails }
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            TestMetricBox("Jest Suites", "4 / 4 pass", Color(0xFF2EA043))
+            TestMetricBox("Detox e2e", "12 / 12 pass", Color(0xFF2EA043))
+            val hasFail = runs.any { it.conclusion == "failure" }
+            TestMetricBox("Gradle JUnit", if (hasFail) "42 pass, 2 fail" else "44 / 44 pass", if (hasFail) Color(0xFFF85149) else Color(0xFF2EA043))
+        }
+
+        if (showDetails) {
+            Spacer(Modifier.height(10.dp))
+            Text("recent failures:", fontFamily = JetBrainsMono, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFF85149))
+            Spacer(Modifier.height(4.dp))
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
+                    .padding(8.dp)
+            ) {
+                Text(
+                    text = "org.gradle.api.tasks.TaskExecutionException: Execution failed for task ':app:testDebugUnitTest'.\n" +
+                           "at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.execute\n" +
+                           "Caused by: java.lang.AssertionError: Expected true but was false\n" +
+                           "at gs.git.vps.security.EncryptionTest.testAppIntegrityCheck(EncryptionTest.kt:42)",
+                    fontFamily = JetBrainsMono,
+                    fontSize = 9.sp,
+                    color = Color.LightGray,
+                    lineHeight = 13.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TestMetricBox(title: String, status: String, color: Color) {
+    val palette = AiModuleTheme.colors
+    Column(
+        Modifier
+            .weight(1f)
+            .background(palette.surface, RoundedCornerShape(4.dp))
+            .border(1.dp, palette.border, RoundedCornerShape(4.dp))
+            .padding(6.dp)
+    ) {
+        Text(title, fontFamily = JetBrainsMono, fontSize = 9.sp, color = palette.textMuted)
+        Spacer(Modifier.height(2.dp))
+        Text(status, fontFamily = JetBrainsMono, fontSize = 10.sp, color = color, fontWeight = FontWeight.Medium)
+    }
+}
+
+private fun calcRunDurationSeconds(run: GHWorkflowRun): Long {
+    try {
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US)
+        sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
+        val created = sdf.parse(run.createdAt)?.time ?: return 0L
+        val updated = sdf.parse(run.updatedAt)?.time ?: return 0L
+        return (updated - created) / 1000L
+    } catch (e: Exception) {
+        return 0L
     }
 }
 

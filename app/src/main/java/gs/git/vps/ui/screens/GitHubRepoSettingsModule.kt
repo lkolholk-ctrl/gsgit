@@ -1,6 +1,8 @@
 package gs.git.vps.ui.screens
 
 import android.widget.Toast
+import android.content.Context
+import gs.git.vps.security.BiometricHelper
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -721,18 +723,20 @@ internal fun RepoSettingsScreen(
                         onTransferConfirmChange = { transferConfirm = it },
                         onTransferRepo = {
                             if (!adminActionInFlight) {
-                                val newOwner = transferOwner.trim()
-                                val newName = transferName.trim().takeIf { it.isNotBlank() }
-                                adminActionInFlight = true
-                                scope.launch {
-                                    val ok = GitHubManager.transferRepo(context, repoOwner, repoName, newOwner, newName)
-                                    Toast.makeText(context, if (ok) "Transfer requested" else "Transfer failed", Toast.LENGTH_SHORT).show()
-                                    if (ok) {
-                                        transferOwner = ""
-                                        transferName = ""
-                                        transferConfirm = ""
+                                verifyBiometricsAndRun(context, "transfer repository", "Confirm identity to transfer repository") {
+                                    val newOwner = transferOwner.trim()
+                                    val newName = transferName.trim().takeIf { it.isNotBlank() }
+                                    adminActionInFlight = true
+                                    scope.launch {
+                                        val ok = GitHubManager.transferRepo(context, repoOwner, repoName, newOwner, newName)
+                                        Toast.makeText(context, if (ok) "Transfer requested" else "Transfer failed", Toast.LENGTH_SHORT).show()
+                                        if (ok) {
+                                            transferOwner = ""
+                                            transferName = ""
+                                            transferConfirm = ""
+                                        }
+                                        adminActionInFlight = false
                                     }
-                                    adminActionInFlight = false
                                 }
                             }
                         },
@@ -897,16 +901,18 @@ internal fun RepoSettingsScreen(
                     label = "delete permanently",
                     onClick = {
                         if (confirmName == expectedName && !deleteBusy) {
-                            deleteBusy = true
-                            scope.launch {
-                                val ok = GitHubManager.deleteRepo(context, repoOwner, repoName)
-                                if (ok) {
-                                    Toast.makeText(context, "Repository deleted", Toast.LENGTH_SHORT).show()
-                                    onDeleteRepo()
-                                } else {
-                                    Toast.makeText(context, "Delete failed", Toast.LENGTH_SHORT).show()
+                            verifyBiometricsAndRun(context, "delete repository", "Confirm identity to delete repository") {
+                                deleteBusy = true
+                                scope.launch {
+                                    val ok = GitHubManager.deleteRepo(context, repoOwner, repoName)
+                                    if (ok) {
+                                        Toast.makeText(context, "Repository deleted", Toast.LENGTH_SHORT).show()
+                                        onDeleteRepo()
+                                    } else {
+                                        Toast.makeText(context, "Delete failed", Toast.LENGTH_SHORT).show()
+                                    }
+                                    deleteBusy = false
                                 }
-                                deleteBusy = false
                             }
                         }
                     },
@@ -1636,3 +1642,31 @@ private fun SecurityToggleRow(
         TerminalToggleIndicator(checked = checked, tint = if (checked) Color(0xFF34C759) else AiModuleTheme.colors.textMuted)
     }
 }
+
+private fun verifyBiometricsAndRun(
+    context: Context,
+    title: String,
+    subtitle: String,
+    onVerified: () -> Unit
+) {
+    val activity = context as? androidx.fragment.app.FragmentActivity
+    val prefs = context.getSharedPreferences("github_prefs", Context.MODE_PRIVATE)
+    val biometricEnabled = prefs.getBoolean("biometric_lock_enabled", false)
+    
+    if (biometricEnabled && activity != null && BiometricHelper.isBiometricAvailable(context)) {
+        BiometricHelper.showBiometricPrompt(
+            activity = activity,
+            title = title,
+            subtitle = subtitle,
+            onSuccess = {
+                onVerified()
+            },
+            onError = { err ->
+                Toast.makeText(context, "Authentication required: $err", Toast.LENGTH_SHORT).show()
+            }
+        )
+    } else {
+        onVerified()
+    }
+}
+

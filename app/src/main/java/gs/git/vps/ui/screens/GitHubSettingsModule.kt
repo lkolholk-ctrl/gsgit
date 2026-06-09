@@ -63,6 +63,17 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import gs.git.vps.data.Strings
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.Backup
+import androidx.compose.material.icons.rounded.DeleteSweep
+import androidx.compose.material.icons.rounded.Fingerprint
+import androidx.compose.material.icons.rounded.Restore
+import androidx.compose.material.icons.rounded.Security
+import gs.git.vps.security.BackupManager
+import gs.git.vps.security.BiometricHelper
+import java.io.File
+import gs.git.vps.ui.screens.ToggleRow
+import gs.git.vps.ui.screens.TerminalToggleIndicator
+
 import gs.git.vps.ui.theme.AiModuleTheme
 import gs.git.vps.ui.theme.JetBrainsMono
 import gs.git.vps.data.github.GHBlockedEntry
@@ -104,7 +115,8 @@ private enum class SettingsSection(val title: String, val subtitle: String) {
     ORGANIZATIONS("Organizations", "Your organizations"),
     REPOSITORIES("Repositories", "Stars, watches and invitations"),
     DEVELOPER("Developer", "Token and cache"),
-    THEMES("Themes", "Custom retro terminal color palettes")
+    THEMES("Themes", "Custom retro terminal color palettes"),
+    SECURITY("Security & Backups", "Biometric lock and secure backup configuration")
 }
 
 private enum class KeyMode { SSH, SSH_SIGNING, GPG }
@@ -129,6 +141,18 @@ internal fun GitHubSettingsScreen(
     var user by remember { mutableStateOf<GHUser?>(GitHubManager.getCachedUser(context)) }
     var currentSection by remember { mutableStateOf<SettingsSection?>(null) }
     var loading by remember { mutableStateOf(false) }
+
+    val prefs = remember { context.getSharedPreferences("github_prefs", Context.MODE_PRIVATE) }
+    var biometricEnabled by remember { mutableStateOf(prefs.getBoolean("biometric_lock_enabled", false)) }
+    var showExportPasswordDialog by remember { mutableStateOf(false) }
+    var showImportPasswordDialog by remember { mutableStateOf(false) }
+    var exportPassword by remember { mutableStateOf("") }
+    var importPassword by remember { mutableStateOf("") }
+
+    var currentCacheSize by remember { mutableStateOf(getCacheSize(context)) }
+    var cacheLimitMb by remember { mutableStateOf(prefs.getInt("cache_limit_mb", 100)) }
+    var autoCleanLogs by remember { mutableStateOf(prefs.getBoolean("auto_clean_logs", true)) }
+
 
     var profile by remember { mutableStateOf<GHUserProfile?>(null) }
     var profileName by remember { mutableStateOf("") }
@@ -249,6 +273,7 @@ internal fun GitHubSettingsScreen(
             }
             SettingsSection.DEVELOPER -> rateLimitSummary = GitHubManager.getRateLimitSummaryNative(context)
             SettingsSection.THEMES -> {}
+            SettingsSection.SECURITY -> {}
         }
         loading = false
     }
@@ -855,6 +880,119 @@ internal fun GitHubSettingsScreen(
                                 }
                             }
                         }
+                        
+                        SettingsSection.SECURITY -> SectionCard("Security & Backups") {
+                            Text(
+                                text = "// local authentication",
+                                color = AiModuleTheme.colors.textMuted,
+                                fontSize = 11.sp,
+                                fontFamily = JetBrainsMono,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(bottom = 6.dp)
+                            )
+                            ToggleRow(
+                                label = "Enforce Biometric Lock",
+                                checked = biometricEnabled,
+                                icon = Icons.Rounded.Fingerprint
+                            ) {
+                                if (it && !BiometricHelper.isBiometricAvailable(context)) {
+                                    Toast.makeText(context, "Biometrics not available on this device", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    biometricEnabled = it
+                                    prefs.edit().putBoolean("biometric_lock_enabled", it).apply()
+                                    addLog("Biometric lock ${if (it) "enabled" else "disabled"}")
+                                }
+                            }
+                            
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                text = "// secure account backup (aes-256)",
+                                color = AiModuleTheme.colors.textMuted,
+                                fontSize = 11.sp,
+                                fontFamily = JetBrainsMono,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(bottom = 6.dp)
+                            )
+                            ActionRow(Icons.Rounded.Backup, "Export backup to downloads") {
+                                showExportPasswordDialog = true
+                            }
+                            ActionRow(Icons.Rounded.Restore, "Import backup from downloads") {
+                                if (BackupManager.getBackupFile().exists()) {
+                                    showImportPasswordDialog = true
+                                } else {
+                                    Toast.makeText(context, "Backup file not found in Downloads folder.", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                            
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                text = "// storage & cache limits",
+                                color = AiModuleTheme.colors.textMuted,
+                                fontSize = 11.sp,
+                                fontFamily = JetBrainsMono,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(bottom = 6.dp)
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Current Cache Size:", fontSize = 13.sp, color = AiModuleTheme.colors.textPrimary, modifier = Modifier.weight(1f))
+                                Text(ghFmtSize(currentCacheSize), fontSize = 13.sp, color = AiModuleTheme.colors.accent, fontFamily = JetBrainsMono)
+                            }
+                            
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Cache Limit:", fontSize = 13.sp, color = AiModuleTheme.colors.textPrimary, modifier = Modifier.weight(1f))
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    listOf(50, 100, 250, 500).forEach { limit ->
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(GitHubControlRadius))
+                                                .background(if (cacheLimitMb == limit) AiModuleTheme.colors.accent.copy(alpha = 0.14f) else AiModuleTheme.colors.border)
+                                                .border(1.dp, if (cacheLimitMb == limit) AiModuleTheme.colors.accent else Color.Transparent, RoundedCornerShape(GitHubControlRadius))
+                                                .clickable {
+                                                    cacheLimitMb = limit
+                                                    prefs.edit().putInt("cache_limit_mb", limit).apply()
+                                                    addLog("Cache limit set to ${limit}MB")
+                                                }
+                                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                        ) {
+                                            Text("${limit}M", fontSize = 11.sp, color = if (cacheLimitMb == limit) AiModuleTheme.colors.accent else AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono)
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            ToggleRow(
+                                label = "Auto Clean Old Logs (>7d)",
+                                checked = autoCleanLogs,
+                                icon = Icons.Rounded.DeleteSweep
+                            ) {
+                                autoCleanLogs = it
+                                prefs.edit().putBoolean("auto_clean_logs", it).apply()
+                                if (it) {
+                                    BackupManager.autoCleanOldLogs(context)
+                                    currentCacheSize = getCacheSize(context)
+                                }
+                                addLog("Auto clean logs ${if (it) "enabled" else "disabled"}")
+                            }
+                            
+                            ActionRow(Icons.Rounded.Delete, "Clear all cache files", tint = AiModuleTheme.colors.error) {
+                                confirmAction(
+                                    title = "clear cache files",
+                                    body = "Are you sure you want to clear all cache files? This will clear logs, syntax highlighter metadata and temporary files.",
+                                    confirmLabel = "clear cache",
+                                ) {
+                                    clearCache(context)
+                                    currentCacheSize = getCacheSize(context)
+                                    addLog("Cleared all cache files")
+                                    Toast.makeText(context, "Cache files cleared", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
                     
                         null -> Unit
                     }
@@ -956,6 +1094,76 @@ internal fun GitHubSettingsScreen(
                 }
             }
         }
+    }
+
+    if (showExportPasswordDialog) {
+        AiModuleAlertDialog(
+            onDismissRequest = { showExportPasswordDialog = false; exportPassword = "" },
+            title = "export backup",
+            content = {
+                CompactField("Backup encryption password", exportPassword, password = true) { exportPassword = it }
+            },
+            confirmButton = {
+                AiModuleTextAction(
+                    label = "export",
+                    enabled = exportPassword.isNotBlank(),
+                    onClick = {
+                        try {
+                            val file = BackupManager.createBackup(context, exportPassword.toCharArray())
+                            addLog("Exported backup to ${file.name}")
+                            Toast.makeText(context, "Backup exported to ${file.absolutePath}", Toast.LENGTH_LONG).show()
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Backup failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
+                        showExportPasswordDialog = false
+                        exportPassword = ""
+                        currentCacheSize = getCacheSize(context)
+                    }
+                )
+            },
+            dismissButton = {
+                AiModuleTextAction(label = Strings.cancel.lowercase(), onClick = { showExportPasswordDialog = false; exportPassword = "" }, tint = AiModuleTheme.colors.textSecondary)
+            }
+        )
+    }
+
+    if (showImportPasswordDialog) {
+        AiModuleAlertDialog(
+            onDismissRequest = { showImportPasswordDialog = false; importPassword = "" },
+            title = "import backup",
+            content = {
+                CompactField("Backup decryption password", importPassword, password = true) { importPassword = it }
+            },
+            confirmButton = {
+                AiModuleTextAction(
+                    label = "import",
+                    enabled = importPassword.isNotBlank(),
+                    onClick = {
+                        try {
+                            val ok = BackupManager.restoreBackup(context, importPassword.toCharArray())
+                            if (ok) {
+                                addLog("Imported backup successfully")
+                                Toast.makeText(context, "Backup restored. Please restart app to apply all changes.", Toast.LENGTH_LONG).show()
+                                user = GitHubManager.getCachedUser(context)
+                                biometricEnabled = prefs.getBoolean("biometric_lock_enabled", false)
+                                cacheLimitMb = prefs.getInt("cache_limit_mb", 100)
+                                autoCleanLogs = prefs.getBoolean("auto_clean_logs", true)
+                            } else {
+                                Toast.makeText(context, "Restore failed. Backup file missing or invalid.", Toast.LENGTH_SHORT).show()
+                            }
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Decrypt failed. Invalid password?", Toast.LENGTH_SHORT).show()
+                        }
+                        showImportPasswordDialog = false
+                        importPassword = ""
+                        currentCacheSize = getCacheSize(context)
+                    }
+                )
+            },
+            dismissButton = {
+                AiModuleTextAction(label = Strings.cancel.lowercase(), onClick = { showImportPasswordDialog = false; importPassword = "" }, tint = AiModuleTheme.colors.textSecondary)
+            }
+        )
     }
 
     if (showChangeToken) {
@@ -1093,6 +1301,8 @@ private fun HomeSettingsMenu(user: GHUser?, onOpen: (SettingsSection) -> Unit) {
         item { MenuRow(Icons.Rounded.Code, SettingsSection.DEVELOPER, onOpen); AiModuleHairline() }
         item { TerminalSectionHeader("customization") }
         item { MenuRow(Icons.Rounded.Palette, SettingsSection.THEMES, onOpen); AiModuleHairline() }
+        item { TerminalSectionHeader("security") }
+        item { MenuRow(Icons.Rounded.Security, SettingsSection.SECURITY, onOpen); AiModuleHairline() }
     }
 }
 
@@ -1594,3 +1804,28 @@ private fun matchesSettingsQuery(query: String, vararg values: String): Boolean 
     if (q.isBlank()) return true
     return values.any { it.contains(q, ignoreCase = true) }
 }
+
+private fun getCacheSize(context: Context): Long {
+    var size = 0L
+    try {
+        context.cacheDir.walkTopDown().forEach { file ->
+            if (file.isFile) size += file.length()
+        }
+    } catch (_: Exception) {}
+    return size
+}
+
+private fun clearCache(context: Context) {
+    try {
+        context.cacheDir.deleteRecursively()
+    } catch (_: Exception) {}
+}
+
+private fun ghFmtSize(bytes: Long): String = when {
+    bytes <= 0L -> "0 B"
+    bytes < 1024L -> "$bytes B"
+    bytes < 1024L * 1024L -> "${bytes / 1024L} KB"
+    bytes < 1024L * 1024L * 1024L -> String.format(java.util.Locale.US, "%.2f MB", bytes.toDouble() / (1024L * 1024L))
+    else -> String.format(java.util.Locale.US, "%.2f GB", bytes.toDouble() / (1024L * 1024L * 1024L))
+}
+

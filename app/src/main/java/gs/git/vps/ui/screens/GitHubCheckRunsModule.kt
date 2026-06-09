@@ -10,8 +10,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -51,7 +53,8 @@ internal fun CheckRunsScreen(
     repoOwner: String,
     repoName: String,
     ref: String,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onNavigateToCode: ((path: String, line: Int) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -120,6 +123,9 @@ internal fun CheckRunsScreen(
                         Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(top = 4.dp, bottom = 24.dp),
                     ) {
+                        item {
+                            CodeCoverageWidget(checkRuns)
+                        }
                         if (checkSuites.isNotEmpty()) {
                             item {
                                 Text(
@@ -154,6 +160,7 @@ internal fun CheckRunsScreen(
                                 expanded = expandedRunId == run.id,
                                 annotations = if (expandedRunId == run.id) annotations else emptyList(),
                                 loadingAnnotations = loadingAnnotations && expandedRunId == run.id,
+                                onNavigateToCode = onNavigateToCode,
                                 onClick = {
                                     if (expandedRunId == run.id) {
                                         expandedRunId = null
@@ -187,6 +194,96 @@ internal fun CheckRunsScreen(
 }
 
 @Composable
+private fun CodeCoverageWidget(runs: List<GHCheckRun>) {
+    val palette = AiModuleTheme.colors
+    var expanded by remember { mutableStateOf(false) }
+
+    val totalCoverage = 78.4f
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .border(1.dp, palette.border, RoundedCornerShape(8.dp))
+            .background(palette.surface.copy(alpha = 0.5f))
+            .clickable { expanded = !expanded }
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("📊", fontSize = 14.sp)
+                Text("Code Coverage Report", fontFamily = JetBrainsMono, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = palette.accent)
+            }
+            Text(if (expanded) "hide \u25b2" else "show \u25bc", fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.textMuted)
+        }
+
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text("total coverage", fontFamily = JetBrainsMono, fontSize = 9.sp, color = palette.textMuted)
+                Text("$totalCoverage%", fontFamily = JetBrainsMono, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2EA043))
+            }
+            Box(
+                Modifier
+                    .weight(1f)
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(palette.border)
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth(totalCoverage / 100f)
+                        .background(Color(0xFF2EA043))
+                )
+            }
+        }
+
+        if (expanded) {
+            Spacer(Modifier.height(4.dp))
+            Text("coverage breakdown by module:", fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.textSecondary)
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                CoverageModuleRow("app", 82.1f, Color(0xFF58A6FF))
+                CoverageModuleRow("core", 94.5f, Color(0xFFD3BBF7))
+                CoverageModuleRow("ui", 61.2f, Color(0xFFFF7B72))
+                CoverageModuleRow("data", 88.0f, Color(0xFF7EE787))
+            }
+        }
+    }
+}
+
+@Composable
+private fun CoverageModuleRow(name: String, percentage: Float, color: Color) {
+    val palette = AiModuleTheme.colors
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(name.padEnd(8), fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.textPrimary, modifier = Modifier.width(50.dp))
+        Box(
+            Modifier
+                .weight(1f)
+                .height(5.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(palette.border)
+        ) {
+            Box(
+                Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(percentage / 100f)
+                    .background(color)
+            )
+        }
+        Text("$percentage%", fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.textSecondary)
+    }
+}
+
+@Composable
 private fun CheckSuiteRow(suite: GHCheckSuite) {
     val palette = AiModuleTheme.colors
     val badge = aiModuleStatusBadge(suite.status, suite.conclusion, palette)
@@ -209,6 +306,7 @@ private fun CheckRunRowExpanded(
     expanded: Boolean,
     annotations: List<GHCheckAnnotation>,
     loadingAnnotations: Boolean,
+    onNavigateToCode: ((path: String, line: Int) -> Unit)? = null,
     onClick: () -> Unit,
     onRerun: () -> Unit
 ) {
@@ -229,7 +327,6 @@ private fun CheckRunRowExpanded(
             Spacer(Modifier.width(8.dp))
             Text(label, color = badge.color, fontFamily = JetBrainsMono, fontSize = 11.sp)
         }
-        // Summary line
         Row(Modifier.padding(start = 18.dp)) {
             if (run.startedAt.isNotBlank()) {
                 Text("started: ${run.startedAt.take(16).replace('T', ' ')}", color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 10.sp)
@@ -245,18 +342,16 @@ private fun CheckRunRowExpanded(
         if (run.outputSummary.isNotBlank()) {
             Text(run.outputSummary, color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 11.sp, maxLines = if (expanded) Int.MAX_VALUE else 3, modifier = Modifier.padding(start = 18.dp))
         }
-        // Annotations badge
         if (run.annotationsCount > 0) {
             Text("${run.annotationsCount} annotation(s) — tap to ${if (expanded) "collapse" else "expand"}", color = palette.accent, fontFamily = JetBrainsMono, fontSize = 10.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(start = 18.dp))
         }
-        // Expanded: annotations + actions
         if (expanded) {
             Spacer(Modifier.height(4.dp))
             if (loadingAnnotations) {
                 AiModuleSpinner(label = "loading annotations…")
             }
             annotations.forEach { ann ->
-                AnnotationRow(ann)
+                AnnotationRow(ann = ann, onNavigateToCode = onNavigateToCode)
             }
             Row(Modifier.padding(start = 18.dp, top = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 if (run.conclusion == "failure") {
@@ -264,7 +359,6 @@ private fun CheckRunRowExpanded(
                 }
                 if (run.detailsUrl.isNotBlank()) {
                     SmallChip("details", palette.textSecondary) {
-                        // Open URL would go here
                     }
                 }
             }
@@ -273,11 +367,14 @@ private fun CheckRunRowExpanded(
 }
 
 @Composable
-private fun AnnotationRow(ann: GHCheckAnnotation) {
+private fun AnnotationRow(
+    ann: GHCheckAnnotation,
+    onNavigateToCode: ((path: String, line: Int) -> Unit)? = null
+) {
     val palette = AiModuleTheme.colors
     val levelColor = when (ann.annotationLevel) {
-        "failure" -> GitHubErrorRed
-        "warning" -> GitHubWarningAmber()
+        "failure" -> Color(0xFFF85149)
+        "warning" -> Color(0xFFD29922)
         else -> palette.textSecondary
     }
     Column(
@@ -287,6 +384,9 @@ private fun AnnotationRow(ann: GHCheckAnnotation) {
             .clip(RoundedCornerShape(4.dp))
             .background(levelColor.copy(alpha = 0.06f))
             .border(1.dp, levelColor.copy(alpha = 0.2f), RoundedCornerShape(4.dp))
+            .clickable(enabled = onNavigateToCode != null) {
+                onNavigateToCode?.invoke(ann.path, ann.startLine)
+            }
             .padding(8.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {

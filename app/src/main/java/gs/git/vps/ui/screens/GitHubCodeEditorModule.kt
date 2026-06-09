@@ -137,6 +137,7 @@ fun CodeEditorScreen(
     file: GHContent,
     branch: String,
     initialContent: String,
+    initialLine: Int? = null,
     onBack: () -> Unit,
     onAskAi: ((prompt: String?) -> Unit)? = null
 ) {
@@ -168,6 +169,15 @@ fun CodeEditorScreen(
     var fontSize by rememberSaveable(file.path, branch) { mutableIntStateOf(13) }
     var zenMode by rememberSaveable(file.path, branch) { mutableStateOf(false) }
     
+    LaunchedEffect(initialLine) {
+        if (initialLine != null) {
+            val linesList = initialContent.lines()
+            val safe = initialLine.coerceIn(1, linesList.size.coerceAtLeast(1))
+            val offset = linesList.take(safe - 1).sumOf { it.length + 1 }.coerceAtMost(initialContent.length)
+            textState = textState.copy(selection = androidx.compose.ui.text.TextRange(offset))
+        }
+    }
+
     var currentBranch by rememberSaveable(file.path) { mutableStateOf(branch) }
     var loadingFile by remember { mutableStateOf(false) }
     var showBranchSwitcher by remember { mutableStateOf(false) }

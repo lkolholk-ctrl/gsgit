@@ -175,6 +175,7 @@ internal fun RepoDetailScreen(
     var showActionsTroubleshoot by remember { mutableStateOf(false) }
     var showBuilds by remember { mutableStateOf(false) }
     var returnToRepoSettings by remember { mutableStateOf(false) }
+    var editorInitialLine by remember { mutableStateOf<Int?>(null) }
     var languages by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }; var contributors by remember { mutableStateOf<List<GHContributor>>(emptyList()) }
     // Pagination
     var commitsPage by rememberSaveable(repo.fullName) { mutableIntStateOf(1) }; var commitsHasMore by rememberSaveable(repo.fullName) { mutableStateOf(true) }
@@ -545,9 +546,11 @@ internal fun RepoDetailScreen(
             file = safeEditingFile,
             branch = selectedBranch,
             initialContent = safeFileContent,
+            initialLine = editorInitialLine,
             onBack = { 
                 editingFile = null
                 fileContent = null
+                editorInitialLine = null
                 scope.launch { contents = GitHubManager.getRepoContents(context, repo.owner, repo.name, currentPath, selectedBranch) }
             },
             onAskAi = onOpenAiAgent?.let { open ->
@@ -2943,7 +2946,33 @@ internal fun PullsTab(
             repoOwner = repo.owner,
             repoName = repo.name,
             ref = checkRunTarget!!.headSha.ifBlank { checkRunTarget!!.head },
-            onBack = { checkRunTarget = null }
+            onBack = { checkRunTarget = null },
+            onNavigateToCode = { path, line ->
+                scope.launch {
+                    try {
+                        val content = GitHubManager.getFileContent(context, repo.owner, repo.name, path, selectedBranch)
+                        val name = path.substringAfterLast("/")
+                        val dir = path.substringBeforeLast("/", "").ifEmpty { "/" }
+                        val contentsList = GitHubManager.getRepoContents(context, repo.owner, repo.name, dir, selectedBranch)
+                        val targetFile = contentsList.find { it.path == path || it.name == name } ?: GHContent(
+                            name = name,
+                            path = path,
+                            type = "file",
+                            size = 0L,
+                            downloadUrl = "https://raw.githubusercontent.com/${repo.owner}/${repo.name}/${selectedBranch}/$path",
+                            sha = ""
+                        )
+                        openedFile = null
+                        fileContent = content
+                        editingFile = targetFile
+                        editorInitialLine = line
+                        checkRunTarget = null
+                        showChecks = false
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Failed to open file: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
         )
     }
 }
@@ -3015,7 +3044,32 @@ private fun PullRequestDetailScreen(
             repoOwner = repo.owner,
             repoName = repo.name,
             ref = current.headSha.ifBlank { current.head },
-            onBack = ::handlePullDetailBack
+            onBack = ::handlePullDetailBack,
+            onNavigateToCode = { path, line ->
+                scope.launch {
+                    try {
+                        val content = GitHubManager.getFileContent(context, repo.owner, repo.name, path, selectedBranch)
+                        val name = path.substringAfterLast("/")
+                        val dir = path.substringBeforeLast("/", "").ifEmpty { "/" }
+                        val contentsList = GitHubManager.getRepoContents(context, repo.owner, repo.name, dir, selectedBranch)
+                        val targetFile = contentsList.find { it.path == path || it.name == name } ?: GHContent(
+                            name = name,
+                            path = path,
+                            type = "file",
+                            size = 0L,
+                            downloadUrl = "https://raw.githubusercontent.com/${repo.owner}/${repo.name}/${selectedBranch}/$path",
+                            sha = ""
+                        )
+                        openedFile = null
+                        fileContent = content
+                        editingFile = targetFile
+                        editorInitialLine = line
+                        showChecks = false
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Failed to open file: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
         )
         return
     }

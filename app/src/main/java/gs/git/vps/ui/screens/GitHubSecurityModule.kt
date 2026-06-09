@@ -704,12 +704,24 @@ internal fun SecurityScreen(
     var showEditAdvisory by remember { mutableStateOf<GHRepositorySecurityAdvisory?>(null) }
     var advisoryActionInFlight by remember { mutableStateOf(false) }
 
+    var repoSecrets by remember { mutableStateOf<List<gs.git.vps.data.github.GHActionSecret>>(emptyList()) }
+    var loadingSecrets by remember { mutableStateOf(false) }
+    var showAddSecretDialog by remember { mutableStateOf(false) }
+    var newSecretName by remember { mutableStateOf("") }
+    var newSecretValue by remember { mutableStateOf("") }
+    var secretActionInFlight by remember { mutableStateOf(false) }
+
     fun loadAlerts() {
         loading = true
         scope.launch {
             when (selectedTab) {
                 "Code" -> codeAlerts = GitHubManager.getCodeScanningAlerts(context, repoOwner, repoName)
-                "Secrets" -> secretAlerts = GitHubManager.getSecretScanningAlerts(context, repoOwner, repoName)
+                "Secrets" -> {
+                    secretAlerts = GitHubManager.getSecretScanningAlerts(context, repoOwner, repoName)
+                    loadingSecrets = true
+                    repoSecrets = GitHubManager.getRepoActionsSecrets(context, repoOwner, repoName)
+                    loadingSecrets = false
+                }
                 "Advisories" -> advisories = GitHubManager.getRepositorySecurityAdvisories(context, repoOwner, repoName)
                 "Community" -> communityProfile = GitHubManager.getCommunityProfile(context, repoOwner, repoName)
                 "Settings" -> settings = GitHubManager.getRepositorySecuritySettings(context, repoOwner, repoName)
@@ -887,6 +899,66 @@ internal fun SecurityScreen(
                         }
                     }
                     "Secrets" -> {
+                        item {
+                            Column(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(14.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Icon(Icons.Rounded.VpnKey, null, Modifier.size(20.dp), tint = AiModuleTheme.colors.accent)
+                                        Text("Repository Secrets", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = AiModuleTheme.colors.textPrimary)
+                                    }
+                                    AiModulePillButton(label = "+ add secret", onClick = { showAddSecretDialog = true }, accent = true)
+                                }
+                                Spacer(Modifier.height(10.dp))
+                                if (loadingSecrets) {
+                                    AiModuleSpinner(label = "loading secrets...")
+                                } else if (repoSecrets.isEmpty()) {
+                                    Text("No repository secrets configured.", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted, modifier = Modifier.padding(vertical = 12.dp))
+                                } else {
+                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        repoSecrets.forEach { secret ->
+                                            Row(
+                                                Modifier
+                                                    .fillMaxWidth()
+                                                    .clip(RoundedCornerShape(GitHubControlRadius))
+                                                    .background(AiModuleTheme.colors.background)
+                                                    .padding(10.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Column(Modifier.weight(1f)) {
+                                                    Text(secret.name, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = AiModuleTheme.colors.textPrimary)
+                                                    if (secret.createdAt.isNotBlank()) {
+                                                        Text("Created: ${secret.createdAt.take(10)}", fontSize = 11.sp, color = AiModuleTheme.colors.textMuted)
+                                                    }
+                                                }
+                                                IconButton(
+                                                    onClick = {
+                                                        secretActionInFlight = true
+                                                        scope.launch {
+                                                            val ok = GitHubManager.deleteRepoActionsSecret(context, repoOwner, repoName, secret.name)
+                                                            if (ok) {
+                                                                repoSecrets = GitHubManager.getRepoActionsSecrets(context, repoOwner, repoName)
+                                                            } else {
+                                                                android.widget.Toast.makeText(context, "Failed to delete secret", android.widget.Toast.LENGTH_SHORT).show()
+                                                            }
+                                                            secretActionInFlight = false
+                                                        }
+                                                    },
+                                                    enabled = !secretActionInFlight
+                                                ) {
+                                                    Icon(Icons.Rounded.Delete, null, tint = AiModuleTheme.colors.error, modifier = Modifier.size(16.dp))
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        item {
+                            Spacer(Modifier.height(8.dp))
+                            Text("secret scanning alerts", fontSize = 11.sp, fontFamily = JetBrainsMono, color = AiModuleTheme.colors.textMuted, modifier = Modifier.padding(vertical = 4.dp))
+                        }
+
                         val visibleAlerts = secretAlerts.filter { alert ->
                             (stateFilter == "all" || alert.state.equals(stateFilter, ignoreCase = true)) &&
                                 secretAlertMatches(alert, query)
@@ -983,7 +1055,42 @@ internal fun SecurityScreen(
                     advisories = GitHubManager.getRepositorySecurityAdvisories(context, repoOwner, repoName)
                 }
             }
-        )
+    }
+    if (showAddSecretDialog) {
+        AiModuleAlertDialog(
+            onDismissRequest = { showAddSecretDialog = false },
+            title = "add repository secret",
+            confirmButton = {
+                AiModuleTextAction(
+                    label = "add",
+                    enabled = !secretActionInFlight && newSecretName.isNotBlank() && newSecretValue.isNotBlank(),
+                    onClick = {
+                        secretActionInFlight = true
+                        scope.launch {
+                            val ok = GitHubManager.createOrUpdateRepoActionsSecret(context, repoOwner, repoName, newSecretName.trim(), newSecretValue.trim())
+                            if (ok) {
+                                repoSecrets = GitHubManager.getRepoActionsSecrets(context, repoOwner, repoName)
+                                showAddSecretDialog = false
+                                newSecretName = ""
+                                newSecretValue = ""
+                            } else {
+                                android.widget.Toast.makeText(context, "Failed to create secret", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                            secretActionInFlight = false
+                        }
+                    },
+                    tint = AiModuleTheme.colors.accent,
+                )
+            },
+            dismissButton = {
+                AiModuleTextAction(label = "cancel", onClick = { showAddSecretDialog = false }, tint = AiModuleTheme.colors.textSecondary)
+            },
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                AiModuleTextField(newSecretName, { newSecretName = it }, placeholder = "Secret Name")
+                AiModuleTextField(newSecretValue, { newSecretValue = it }, placeholder = "Value", minLines = 3, maxLines = 6)
+            }
+        }
     }
 }
 

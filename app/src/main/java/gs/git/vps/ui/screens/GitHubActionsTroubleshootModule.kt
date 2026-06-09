@@ -1,5 +1,6 @@
 package gs.git.vps.ui.screens
 
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
@@ -176,7 +177,13 @@ internal fun GitHubActionsTroubleshootScreen(
                 }
             }
             items(problemRuns, key = { it.id }) { run ->
-                GitHubProblemRunCard(run, failedJobsByRun[run.id].orEmpty(), onOpenRun = { onOpenRun(run.id) })
+                GitHubProblemRunCard(
+                    repoOwner = repo.owner,
+                    repoName = repo.name,
+                    run = run,
+                    jobs = failedJobsByRun[run.id].orEmpty(),
+                    onOpenRun = { onOpenRun(run.id) }
+                )
             }
 
             if (apiErrors.isNotEmpty()) {
@@ -222,9 +229,22 @@ private fun GitHubActionsPermissionPanel(
 }
 
 @Composable
-private fun GitHubProblemRunCard(run: GHWorkflowRun, jobs: List<GHJob>, onOpenRun: () -> Unit) {
+private fun GitHubProblemRunCard(
+    repoOwner: String,
+    repoName: String,
+    run: GHWorkflowRun,
+    jobs: List<GHJob>,
+    onOpenRun: () -> Unit
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
     val palette = AiModuleTheme.colors
     val color = run.actionsTroubleColor()
+
+    var isScanning by remember { mutableStateOf(false) }
+    var scannedIssues by remember { mutableStateOf<List<String>>(emptyList()) }
+    var hasScanned by remember { mutableStateOf(false) }
+
     GitHubTroublePanel {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Column(Modifier.weight(1f)) {
@@ -232,6 +252,22 @@ private fun GitHubProblemRunCard(run: GHWorkflowRun, jobs: List<GHJob>, onOpenRu
                 Text("#${run.runNumber} · ${run.branch.ifBlank { "no branch" }} · ${run.event} · ${run.actor}", color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Text(run.conclusion.ifBlank { run.status }, color = color, fontFamily = JetBrainsMono, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+            var rerunBusy by remember { mutableStateOf(false) }
+            if (run.conclusion in setOf("failure", "timed_out", "cancelled")) {
+                GitHubTerminalButton(
+                    label = if (rerunBusy) "rerunning…" else "rerun failed",
+                    onClick = {
+                        rerunBusy = true
+                        scope.launch {
+                            val ok = GitHubManager.rerunFailedJobs(context, repoOwner, repoName, run.id)
+                            Toast.makeText(context, if (ok) "Rerun queued" else "Rerun failed", Toast.LENGTH_SHORT).show()
+                            rerunBusy = false
+                        }
+                    },
+                    color = palette.error,
+                    enabled = !rerunBusy
+                )
+            }
             GitHubTerminalButton("open", onClick = onOpenRun, color = palette.accent)
         }
         val failedJobs = jobs.filter { it.conclusion in setOf("failure", "timed_out", "cancelled", "action_required") }
@@ -259,6 +295,44 @@ private fun GitHubProblemRunCard(run: GHWorkflowRun, jobs: List<GHJob>, onOpenRu
                         )
                     }
                 }
+            }
+
+            if (isScanning) {
+                Spacer(Modifier.height(8.dp))
+                AiModuleSpinner(label = "scanning logs for patterns…")
+            } else if (hasScanned) {
+                Spacer(Modifier.height(8.dp))
+                Text("scanned log issues:", color = palette.accent, fontFamily = JetBrainsMono, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                if (scannedIssues.isEmpty()) {
+                    Text("  No compiler or execution errors matched in signature catalog.", color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        scannedIssues.forEach { issue ->
+                            Text("  • $issue", color = palette.textSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                        }
+                    }
+                }
+            } else {
+                Spacer(Modifier.height(8.dp))
+                GitHubTerminalButton("🔍 scan logs for patterns", onClick = {
+                    isScanning = true
+                    scope.launch {
+                        val catalog = KernelErrorPatterns.load(context)
+                        val allIssues = mutableListOf<String>()
+                        failedJobs.forEach { job ->
+                            try {
+                                val log = GitHubManager.getJobLogs(context, repoOwner, repoName, job.id)
+                                val diagnostics = KernelErrorPatterns.diagnose(context, catalog, log)
+                                allIssues.addAll(diagnostics)
+                            } catch (e: Exception) {
+                                // Ignore log loading errors
+                            }
+                        }
+                        scannedIssues = allIssues.distinct()
+                        hasScanned = true
+                        isScanning = false
+                    }
+                }, color = palette.accent)
             }
         } else if (jobs.isNotEmpty()) {
             Spacer(Modifier.height(8.dp))
