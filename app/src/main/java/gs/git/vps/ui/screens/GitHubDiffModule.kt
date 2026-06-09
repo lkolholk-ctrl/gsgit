@@ -13,6 +13,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -813,7 +815,14 @@ private fun SplitDiffLineRow(
                         else -> Color.Transparent
                     }
                 )
-                .border(end = 0.5.dp, color = palette.border.copy(alpha = 0.3f))
+                .drawBehind {
+                    drawLine(
+                        color = palette.border.copy(alpha = 0.3f),
+                        start = Offset(size.width, 0f),
+                        end = Offset(size.width, size.height),
+                        strokeWidth = 0.5.dp.toPx()
+                    )
+                }
                 .padding(horizontal = 4.dp, vertical = 2.dp)
         ) {
             when (val left = pair.left) {

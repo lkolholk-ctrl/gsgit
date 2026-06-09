@@ -5,6 +5,10 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,6 +23,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -69,6 +74,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -968,15 +974,22 @@ fun CodeEditorScreen(
 
             androidx.compose.animation.AnimatedVisibility(
                 visible = showOutline && !zenMode && !isImage && symbols.isNotEmpty(),
-                enter = slideInHorizontally(initialOffset = { it }) + fadeIn(),
-                exit = slideOutHorizontally(targetOffset = { it }) + fadeOut()
+                enter = slideInHorizontally(initialOffset = { w -> w }) + fadeIn(),
+                exit = slideOutHorizontally(targetOffset = { w -> w }) + fadeOut()
             ) {
                 Box(
                     Modifier
                         .width(220.dp)
                         .fillMaxHeight()
                         .background(palette.surface)
-                        .border(start = 1.dp, color = palette.border)
+                        .drawBehind {
+                            drawLine(
+                                color = palette.border,
+                                start = Offset(0f, 0f),
+                                end = Offset(0f, size.height),
+                                strokeWidth = 1.dp.toPx()
+                            )
+                        }
                 ) {
                     Column(Modifier.fillMaxSize().padding(10.dp)) {
                         Row(

@@ -1046,7 +1046,6 @@ internal fun ReposScreen(user: GHUser?, onBack: () -> Unit, onMinimize: () -> Un
     }
     }
 }
-}
 
 @Composable
 private fun TerminalQuickChip(label: String, onClick: () -> Unit) {
