@@ -204,6 +204,44 @@ static const uint8_t ENC_APATCH[] = {
     X('a',4),X('t',5),X('c',6),X('h',7),0x00
 };
 
+/* "/proc/self/status" */
+static const uint8_t ENC_STATUS[] = {
+    X('/',0),X('p',1),X('r',2),X('o',3),X('c',4),X('/',5),
+    X('s',6),X('e',7),X('l',0),X('f',1),X('/',2),X('s',3),
+    X('t',4),X('a',5),X('t',6),X('u',7),X('s',0),0x00
+};
+
+/* "TracerPid:" */
+static const uint8_t ENC_TRACER[] = {
+    X('T',0),X('r',1),X('a',2),X('c',3),X('e',4),X('r',5),
+    X('P',6),X('i',7),X('d',0),X(':',1),0x00
+};
+
+/* "ro.kernel.qemu" */
+static const uint8_t ENC_PROP_QEMU[] = {
+    X('r',0),X('o',1),X('.',2),X('k',3),X('e',4),X('r',5),
+    X('n',6),X('e',7),X('l',0),X('.',1),X('q',2),X('e',3),
+    X('m',4),X('u',5),0x00
+};
+
+/* "ro.hardware" */
+static const uint8_t ENC_PROP_HW[] = {
+    X('r',0),X('o',1),X('.',2),X('h',3),X('a',4),X('r',5),
+    X('d',6),X('w',7),X('a',0),X('r',1),X('e',2),0x00
+};
+
+/* "goldfish" */
+static const uint8_t ENC_GOLDFISH[] = {
+    X('g',0),X('o',1),X('l',2),X('d',3),X('f',4),X('i',5),
+    X('s',6),X('h',7),0x00
+};
+
+/* "ranchu" */
+static const uint8_t ENC_RANCHU[] = {
+    X('r',0),X('a',1),X('n',2),X('c',3),X('h',4),X('u',5),
+    0x00
+};
+
 /* Декодировать строку во временный буфер */
 #define DECODE_STR(enc, tmp) \
     uint8_t tmp[sizeof(enc)]; \
@@ -321,11 +359,56 @@ static int detect_magisk(void) {
     return found;
 }
 
+static int detect_debugger(void) {
+    DECODE_STR(ENC_STATUS, path_buf);
+    FILE* f = fopen((char*)path_buf, "r");
+    WIPE(path_buf, sizeof(path_buf));
+    if (!f) return 0;
+
+    DECODE_STR(ENC_TRACER, prefix);
+    char line[128];
+    int tracer_pid = 0;
+    while (fgets(line, sizeof(line), f)) {
+        if (strncmp(line, (char*)prefix, 10) == 0) {
+            tracer_pid = atoi(&line[10]);
+            break;
+        }
+    }
+    fclose(f);
+    WIPE(prefix, sizeof(prefix));
+    return tracer_pid != 0;
+}
+
+static int detect_emulator(void) {
+    char qemu[PROP_VALUE_MAX] = {0};
+    char hw[PROP_VALUE_MAX] = {0};
+
+    DECODE_STR(ENC_PROP_QEMU, prop_qemu);
+    __system_property_get((char*)prop_qemu, qemu);
+    WIPE(prop_qemu, sizeof(prop_qemu));
+
+    DECODE_STR(ENC_PROP_HW, prop_hw);
+    __system_property_get((char*)prop_hw, hw);
+    WIPE(prop_hw, sizeof(prop_hw));
+
+    if (strcmp(qemu, "1") == 0) return 1;
+
+    DECODE_STR(ENC_GOLDFISH, val_goldfish);
+    DECODE_STR(ENC_RANCHU, val_ranchu);
+    int is_emu = (strstr(hw, (char*)val_goldfish) != NULL || strstr(hw, (char*)val_ranchu) != NULL);
+    WIPE(val_goldfish, sizeof(val_goldfish));
+    WIPE(val_ranchu, sizeof(val_ranchu));
+
+    return is_emu;
+}
+
 static int run_all_checks(void) {
     if (detect_frida_ports()) return 1;
     if (detect_frida_maps())  return 2;
     if (detect_root())        return 3;
     if (detect_magisk())      return 4;
+    if (detect_debugger())    return 5;
+    if (detect_emulator())    return 6;
     return 0;
 }
 
@@ -414,6 +497,20 @@ Java_gs_git_vps_security_NativeSecurity_isMagiskDetected(
         JNIEnv* env, jclass clazz) {
     (void)env; (void)clazz;
     return (jboolean)detect_magisk();
+}
+
+JNIEXPORT jboolean JNICALL
+Java_gs_git_vps_security_NativeSecurity_isDebuggerDetected(
+        JNIEnv* env, jclass clazz) {
+    (void)env; (void)clazz;
+    return (jboolean)detect_debugger();
+}
+
+JNIEXPORT jboolean JNICALL
+Java_gs_git_vps_security_NativeSecurity_isEmulatorDetected(
+        JNIEnv* env, jclass clazz) {
+    (void)env; (void)clazz;
+    return (jboolean)detect_emulator();
 }
 
 JNIEXPORT jboolean JNICALL

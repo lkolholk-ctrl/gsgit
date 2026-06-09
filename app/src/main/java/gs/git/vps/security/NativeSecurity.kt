@@ -15,6 +15,8 @@ object NativeSecurity {
     external fun isFridaDetected(): Boolean
     external fun isRooted(): Boolean
     external fun isMagiskDetected(): Boolean
+    external fun isDebuggerDetected(): Boolean
+    external fun isEmulatorDetected(): Boolean
     external fun isEnvironmentSafe(): Boolean
 
     /**
