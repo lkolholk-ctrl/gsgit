@@ -352,12 +352,19 @@ object GitHubManager {
                 val j = arr.getJSONObject(i)
                 val commit = j.getJSONObject("commit")
                 val author = commit.optJSONObject("author")
+                val parentsArr = j.optJSONArray("parents")
+                val parentsList = if (parentsArr != null) {
+                    (0 until parentsArr.length()).map { pIdx ->
+                        parentsArr.getJSONObject(pIdx).optString("sha").take(7)
+                    }
+                } else emptyList()
                 GHCommit(
                     sha = j.optString("sha").take(7),
                     message = commit.optString("message"),
                     author = author?.optString("name") ?: "?",
                     date = author?.optString("date") ?: "",
-                    avatarUrl = j.optJSONObject("author")?.optString("avatar_url") ?: ""
+                    avatarUrl = j.optJSONObject("author")?.optString("avatar_url") ?: "",
+                    parents = parentsList
                 )
             }
         } catch (e: Exception) { return emptyList() }
@@ -376,12 +383,19 @@ object GitHubManager {
                 val j = arr.getJSONObject(i)
                 val commit = j.getJSONObject("commit")
                 val author = commit.optJSONObject("author")
+                val parentsArr = j.optJSONArray("parents")
+                val parentsList = if (parentsArr != null) {
+                    (0 until parentsArr.length()).map { pIdx ->
+                        parentsArr.getJSONObject(pIdx).optString("sha").take(7)
+                    }
+                } else emptyList()
                 GHCommit(
                     sha = j.optString("sha").take(7),
                     message = commit.optString("message"),
                     author = author?.optString("name") ?: "?",
                     date = author?.optString("date") ?: "",
-                    avatarUrl = j.optJSONObject("author")?.optString("avatar_url") ?: ""
+                    avatarUrl = j.optJSONObject("author")?.optString("avatar_url") ?: "",
+                    parents = parentsList
                 )
             }
         } catch (e: Exception) { emptyList() }
@@ -5003,12 +5017,19 @@ object GitHubManager {
                 val commit = cj.optJSONObject("commit")
                 val author = commit?.optJSONObject("author")
                 val user = cj.optJSONObject("author")
+                val parentsArr = cj.optJSONArray("parents")
+                val parentsList = if (parentsArr != null) {
+                    (0 until parentsArr.length()).map { pIdx ->
+                        parentsArr.getJSONObject(pIdx).optString("sha").take(7)
+                    }
+                } else emptyList()
                 commits.add(GHCommit(
                     sha = cj.optString("sha"),
                     message = commit?.optString("message", "") ?: "",
                     author = user?.optString("login", "")?.ifBlank { author?.optString("name", "") ?: "" } ?: "",
                     date = author?.optString("date", "") ?: "",
-                    avatarUrl = user?.optString("avatar_url", "") ?: ""
+                    avatarUrl = user?.optString("avatar_url", "") ?: "",
+                    parents = parentsList
                 ))
             }
             GHCompareResult(
@@ -7135,7 +7156,7 @@ data class GHAppInstallation(
     val suspendedBy: String
 )
 
-data class GHCommit(val sha: String, val message: String, val author: String, val date: String, val avatarUrl: String)
+data class GHCommit(val sha: String, val message: String, val author: String, val date: String, val avatarUrl: String, val parents: List<String> = emptyList())
 
 data class GHIssue(val number: Int, val title: String, val state: String, val author: String,
     val createdAt: String, val comments: Int, val isPR: Boolean)

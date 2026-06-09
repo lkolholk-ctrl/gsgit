@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -1421,23 +1423,222 @@ private fun fileTint(name: String): Color = when (name.substringAfterLast(".", "
     else -> TextSecondary
 }
 
+internal class GitGraphLayout(val commits: List<GHCommit>) {
+    class CommitNode(
+        val commit: GHCommit,
+        val lane: Int,
+        val activeLanes: List<String>,
+        val nextActiveLanes: List<String>
+    )
+
+    val nodes: List<CommitNode>
+
+    init {
+        val list = mutableListOf<CommitNode>()
+        val currentLanes = mutableListOf<String>()
+
+        commits.forEach { c ->
+            var laneIdx = currentLanes.indexOf(c.sha)
+            if (laneIdx == -1) {
+                laneIdx = currentLanes.size
+                currentLanes.add(c.sha)
+            }
+
+            val snapshotBefore = currentLanes.toList()
+
+            if (c.parents.isNotEmpty()) {
+                currentLanes[laneIdx] = c.parents[0]
+                for (pIdx in 1 until c.parents.size) {
+                    val p = c.parents[pIdx]
+                    if (p !in currentLanes) {
+                        currentLanes.add(p)
+                    }
+                }
+            } else {
+                currentLanes.removeAt(laneIdx)
+            }
+
+            list.add(CommitNode(c, laneIdx, snapshotBefore, currentLanes.toList()))
+        }
+        nodes = list
+    }
+}
+
 @Composable
-internal fun CommitsTab(commits: List<GHCommit>, hasMore: Boolean, onLoadMore: () -> Unit, listState: LazyListState, onClick: (GHCommit) -> Unit) { LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = 16.dp)) { items(commits) { c ->
+private fun GitGraphCanvas(
+    node: GitGraphLayout.CommitNode?,
+    modifier: Modifier = Modifier
+) {
     val palette = AiModuleTheme.colors
-    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 7.dp).ghGlassCard(14.dp).clickable { onClick(c) }.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
-        if (c.avatarUrl.isNotBlank()) AsyncImage(c.avatarUrl, c.author, Modifier.size(34.dp).clip(CircleShape))
-        else Box(Modifier.size(34.dp).clip(CircleShape).background(palette.accent.copy(0.12f)), contentAlignment = Alignment.Center) { AiModuleText(c.sha.take(2).uppercase(), fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, color = palette.accent, letterSpacing = 0.6.sp) }
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            AiModuleText(c.message.lines().firstOrNull().orEmpty(), fontSize = 14.sp, fontWeight = FontWeight.Medium, color = palette.textPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 18.sp)
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.horizontalScroll(rememberScrollState())) {
-                AiModuleText(c.author.ifBlank { "unknown" }, fontSize = 11.sp, color = palette.accent, fontWeight = FontWeight.Medium)
-                AiModuleText(c.sha.take(7), fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = palette.textMuted, letterSpacing = 0.5.sp)
-                AiModuleText(c.date.take(10), fontSize = 11.sp, color = palette.textMuted)
+    val spacing = 12.dp
+    val spacingPx = with(androidx.compose.ui.platform.LocalDensity.current) { spacing.toPx() }
+    val nodeRadius = 4.dp
+    val nodeRadiusPx = with(androidx.compose.ui.platform.LocalDensity.current) { nodeRadius.toPx() }
+
+    val colors = listOf(
+        Color(0xFF58A6FF), // Blue
+        Color(0xFF3FB950), // Green
+        Color(0xFFBC8CFF), // Purple
+        Color(0xFFF0883E), // Orange
+        Color(0xFFFF7B72), // Red
+        Color(0xFFDB6D28)  // Dark Orange
+    )
+
+    Canvas(modifier = modifier) {
+        val h = size.height
+        if (node == null) return@Canvas
+
+        node.activeLanes.forEachIndexed { idx, sha ->
+            val nextIdx = node.nextActiveLanes.indexOf(sha)
+            val color = colors[idx % colors.size]
+            val xFrom = (idx + 1) * spacingPx
+            
+            if (sha == node.commit.sha) {
+                drawLine(
+                    color = color,
+                    start = androidx.compose.ui.geometry.Offset(xFrom, 0f),
+                    end = androidx.compose.ui.geometry.Offset(xFrom, h / 2),
+                    strokeWidth = 2.dp.toPx()
+                )
+                node.commit.parents.forEach { parentSha ->
+                    val pIdx = node.nextActiveLanes.indexOf(parentSha)
+                    if (pIdx != -1) {
+                        val xTo = (pIdx + 1) * spacingPx
+                        val path = androidx.compose.ui.graphics.Path().apply {
+                            moveTo(xFrom, h / 2)
+                            cubicTo(xFrom, h * 0.75f, xTo, h * 0.25f, xTo, h)
+                        }
+                        drawPath(
+                            path = path,
+                            color = colors[pIdx % colors.size],
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
+                        )
+                    }
+                }
+            } else if (nextIdx != -1) {
+                val xTo = (nextIdx + 1) * spacingPx
+                val path = androidx.compose.ui.graphics.Path().apply {
+                    moveTo(xFrom, 0f)
+                    cubicTo(xFrom, h / 2, xTo, h / 2, xTo, h)
+                }
+                drawPath(
+                    path = path,
+                    color = color,
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
+                )
             }
         }
-        AiModuleGlyph(GhGlyphs.ARROW_RIGHT, Modifier.size(16.dp), tint = palette.textMuted, fontSize = 13.sp)
+
+        val nodeX = (node.lane + 1) * spacingPx
+        val nodeY = h / 2
+        drawCircle(
+            color = colors[node.lane % colors.size],
+            radius = nodeRadiusPx,
+            center = androidx.compose.ui.geometry.Offset(nodeX, nodeY)
+        )
+        drawCircle(
+            color = palette.background,
+            radius = nodeRadiusPx / 2,
+            center = androidx.compose.ui.geometry.Offset(nodeX, nodeY)
+        )
     }
-}; if (hasMore) item { Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) { GitHubTerminalButton("load more", onClick = onLoadMore, color = AiModuleTheme.colors.accent) } } } }
+}
+
+@Composable
+internal fun CommitsTab(commits: List<GHCommit>, hasMore: Boolean, onLoadMore: () -> Unit, listState: LazyListState, onClick: (GHCommit) -> Unit) {
+    val graphLayout = remember(commits) { GitGraphLayout(commits) }
+    LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = 16.dp)) {
+        itemsIndexed(commits) { index, c ->
+            val node = graphLayout.nodes.getOrNull(index)
+            val palette = AiModuleTheme.colors
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 7.dp)
+                    .ghGlassCard(14.dp)
+                    .clickable { onClick(c) }
+                    .padding(14.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                val graphWidth = remember(node) {
+                    val maxLanes = maxOf(
+                        node?.activeLanes?.size ?: 0,
+                        node?.nextActiveLanes?.size ?: 0
+                    ).coerceAtLeast(1)
+                    (maxLanes * 12 + 12).dp
+                }
+                GitGraphCanvas(
+                    node = node,
+                    modifier = Modifier
+                        .width(graphWidth)
+                        .height(38.dp)
+                )
+
+                if (c.avatarUrl.isNotBlank()) {
+                    AsyncImage(c.avatarUrl, c.author, Modifier.size(34.dp).clip(CircleShape))
+                } else {
+                    Box(
+                        Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .background(palette.accent.copy(0.12f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        AiModuleText(
+                            c.sha.take(2).uppercase(),
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            color = palette.accent,
+                            letterSpacing = 0.6.sp
+                        )
+                    }
+                }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    AiModuleText(
+                        c.message.lines().firstOrNull().orEmpty(),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = palette.textPrimary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        lineHeight = 18.sp
+                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.horizontalScroll(rememberScrollState())
+                    ) {
+                        AiModuleText(
+                            c.author.ifBlank { "unknown" },
+                            fontSize = 11.sp,
+                            color = palette.accent,
+                            fontWeight = FontWeight.Medium
+                        )
+                        AiModuleText(
+                            c.sha.take(7),
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = palette.textMuted,
+                            letterSpacing = 0.5.sp
+                        )
+                        AiModuleText(c.date.take(10), fontSize = 11.sp, color = palette.textMuted)
+                    }
+                }
+                AiModuleGlyph(GhGlyphs.ARROW_RIGHT, Modifier.size(16.dp), tint = palette.textMuted, fontSize = 13.sp)
+            }
+        }
+        if (hasMore) {
+            item {
+                Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                    GitHubTerminalButton("load more", onClick = onLoadMore, color = AiModuleTheme.colors.accent)
+                }
+            }
+        }
+    }
+}
+
 
 @Composable
 internal fun IssuesTab(issues: List<GHIssue>, hasMore: Boolean, onLoadMore: () -> Unit, listState: LazyListState, onClick: (GHIssue) -> Unit) { LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = 16.dp)) { items(issues) { issue ->
