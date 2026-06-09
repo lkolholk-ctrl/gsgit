@@ -184,6 +184,8 @@ private fun FileDiffScreen(
         }
     }
 
+    val splitLines = remember(lines) { alignSplitLines(lines) }
+
     GitHubScreenFrame(
         title = "> ${file.filename.substringAfterLast("/")}",
         subtitle = "${file.status} +${file.additions} -${file.deletions}",
@@ -204,35 +206,68 @@ private fun FileDiffScreen(
             Modifier.fillMaxSize().padding(horizontal = 8.dp),
             contentPadding = PaddingValues(vertical = 8.dp)
         ) {
-            items(lines) { line ->
-                val lineNum = when (line) {
-                    is PatchDiffLine.Added -> line.lineNum
-                    is PatchDiffLine.Context -> line.newLineNum
-                    else -> 0
-                }
-                val lineComments = if (lineNum > 0) comments.filter { it.line == lineNum } else emptyList()
+            if (viewMode == DiffViewMode.UNIFIED) {
+                items(lines) { line ->
+                    val lineNum = when (line) {
+                        is PatchDiffLine.Added -> line.lineNum
+                        is PatchDiffLine.Context -> line.newLineNum
+                        else -> 0
+                    }
+                    val lineComments = if (lineNum > 0) comments.filter { it.line == lineNum } else emptyList()
 
-                Column {
-                    DiffLineItem(
-                        line = line,
-                        viewMode = viewMode,
-                        onAddComment = if (pullNumber != null && lineNum > 0) {
-                            {
-                                commentLine = lineNum
-                                commentPath = file.filename
-                                showCommentDialog = true
+                    Column {
+                        DiffLineItem(
+                            line = line,
+                            viewMode = viewMode,
+                            onAddComment = if (pullNumber != null && lineNum > 0) {
+                                {
+                                    commentLine = lineNum
+                                    commentPath = file.filename
+                                    showCommentDialog = true
+                                }
+                            } else null
+                        )
+
+                        if (lineComments.isNotEmpty()) {
+                            lineComments.forEach { comment ->
+                                CommentBubble(
+                                    comment = comment,
+                                    onEdit = if (canMutateComments) ({ editComment = comment }) else null,
+                                    onDelete = if (canMutateComments) ({ deleteComment = comment }) else null
+                                )
                             }
-                        } else null
-                    )
+                        }
+                    }
+                }
+            } else {
+                items(splitLines) { pair ->
+                    val lineNum = when (val right = pair.right) {
+                        is PatchDiffLine.Added -> right.lineNum
+                        is PatchDiffLine.Context -> right.newLineNum
+                        else -> 0
+                    }
+                    val lineComments = if (lineNum > 0) comments.filter { it.line == lineNum } else emptyList()
 
-                    // Show comments for this line
-                    if (lineComments.isNotEmpty()) {
-                        lineComments.forEach { comment ->
-                            CommentBubble(
-                                comment = comment,
-                                onEdit = if (canMutateComments) ({ editComment = comment }) else null,
-                                onDelete = if (canMutateComments) ({ deleteComment = comment }) else null
-                            )
+                    Column {
+                        SplitDiffLineRow(
+                            pair = pair,
+                            onAddCommentRight = if (pullNumber != null && lineNum > 0) {
+                                {
+                                    commentLine = lineNum
+                                    commentPath = file.filename
+                                    showCommentDialog = true
+                                }
+                            } else null
+                        )
+
+                        if (lineComments.isNotEmpty()) {
+                            lineComments.forEach { comment ->
+                                CommentBubble(
+                                    comment = comment,
+                                    onEdit = if (canMutateComments) ({ editComment = comment }) else null,
+                                    onDelete = if (canMutateComments) ({ deleteComment = comment }) else null
+                                )
+                            }
                         }
                     }
                 }
@@ -707,4 +742,135 @@ fun CommitDiffScreen(
         totalDeletions = detail!!.totalDeletions,
         onBack = onBack
     )
+}
+
+private data class SplitDiffLine(
+    val left: PatchDiffLine?,
+    val right: PatchDiffLine?
+)
+
+private fun alignSplitLines(lines: List<PatchDiffLine>): List<SplitDiffLine> {
+    val result = mutableListOf<SplitDiffLine>()
+    var i = 0
+    val n = lines.size
+    while (i < n) {
+        val line = lines[i]
+        if (line is PatchDiffLine.Header || line is PatchDiffLine.NoNewline) {
+            result.add(SplitDiffLine(line, null))
+            i++
+        } else if (line is PatchDiffLine.Context) {
+            result.add(SplitDiffLine(line, line))
+            i++
+        } else {
+            val removedRun = mutableListOf<PatchDiffLine.Removed>()
+            val addedRun = mutableListOf<PatchDiffLine.Added>()
+            var j = i
+            while (j < n && (lines[j] is PatchDiffLine.Removed || lines[j] is PatchDiffLine.Added)) {
+                val curr = lines[j]
+                if (curr is PatchDiffLine.Removed) removedRun.add(curr)
+                if (curr is PatchDiffLine.Added) addedRun.add(curr)
+                j++
+            }
+            val maxLen = maxOf(removedRun.size, addedRun.size)
+            for (k in 0 until maxLen) {
+                val left = removedRun.getOrNull(k)
+                val right = addedRun.getOrNull(k)
+                result.add(SplitDiffLine(left, right))
+            }
+            i = j
+        }
+    }
+    return result
+}
+
+@Composable
+private fun SplitDiffLineRow(
+    pair: SplitDiffLine,
+    onAddCommentLeft: (() -> Unit)? = null,
+    onAddCommentRight: (() -> Unit)? = null
+) {
+    val palette = AiModuleTheme.colors
+    
+    if (pair.left is PatchDiffLine.Header) {
+        Box(Modifier.fillMaxWidth().background(Color(0xFF2C2C2E)).padding(horizontal = 8.dp, vertical = 4.dp)) {
+            Text(pair.left.text, fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = Color(0xFF8E8E93))
+        }
+        return
+    }
+    if (pair.left is PatchDiffLine.NoNewline) {
+        Text(pair.left.text, modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp), fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = Color(0xFFFF9500))
+        return
+    }
+    
+    Row(Modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .background(
+                    when (pair.left) {
+                        is PatchDiffLine.Removed -> Color(0x0DFF3B30)
+                        else -> Color.Transparent
+                    }
+                )
+                .border(end = 0.5.dp, color = palette.border.copy(alpha = 0.3f))
+                .padding(horizontal = 4.dp, vertical = 2.dp)
+        ) {
+            when (val left = pair.left) {
+                is PatchDiffLine.Removed -> {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("-${left.lineNum}", modifier = Modifier.width(30.dp), fontFamily = FontFamily.Monospace, fontSize = 9.sp, color = Color(0xFFFF3B30))
+                        Text(left.text, modifier = Modifier.weight(1f), fontFamily = FontFamily.Monospace, fontSize = 10.sp, color = palette.textPrimary, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    }
+                }
+                is PatchDiffLine.Context -> {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("${left.oldLineNum}", modifier = Modifier.width(30.dp), fontFamily = FontFamily.Monospace, fontSize = 9.sp, color = Color(0xFF6E7681))
+                        Text(left.text, modifier = Modifier.weight(1f), fontFamily = FontFamily.Monospace, fontSize = 10.sp, color = palette.textSecondary, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    }
+                }
+                else -> {
+                    Spacer(Modifier.height(14.dp))
+                }
+            }
+        }
+        
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .background(
+                    when (pair.right) {
+                        is PatchDiffLine.Added -> Color(0x0D34C759)
+                        else -> Color.Transparent
+                    }
+                )
+                .clickable(enabled = onAddCommentRight != null && pair.right != null) { onAddCommentRight?.invoke() }
+                .padding(horizontal = 4.dp, vertical = 2.dp)
+        ) {
+            when (val right = pair.right) {
+                is PatchDiffLine.Added -> {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("+${right.lineNum}", modifier = Modifier.width(30.dp), fontFamily = FontFamily.Monospace, fontSize = 9.sp, color = Color(0xFF34C759))
+                        Text(right.text, modifier = Modifier.weight(1f), fontFamily = FontFamily.Monospace, fontSize = 10.sp, color = palette.textPrimary, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        if (onAddCommentRight != null) {
+                            Icon(Icons.Rounded.AddComment, null, Modifier.size(11.dp), tint = palette.accent.copy(0.5f))
+                        }
+                    }
+                }
+                is PatchDiffLine.Context -> {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("${right.newLineNum}", modifier = Modifier.width(30.dp), fontFamily = FontFamily.Monospace, fontSize = 9.sp, color = Color(0xFF6E7681))
+                        Text(right.text, modifier = Modifier.weight(1f), fontFamily = FontFamily.Monospace, fontSize = 10.sp, color = palette.textSecondary, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        if (onAddCommentRight != null) {
+                            Icon(Icons.Rounded.AddComment, null, Modifier.size(11.dp), tint = palette.accent.copy(0.3f))
+                        }
+                    }
+                }
+                else -> {
+                    Spacer(Modifier.height(14.dp))
+                }
+            }
+        }
+    }
 }

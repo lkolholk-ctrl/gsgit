@@ -634,7 +634,7 @@ fun CodeEditorScreen(
                 },
                 onFontSizeChange = { fontSize = it },
                 onGoToLine = { showGoToLine = true; showMoreMenu = false },
-                onOutline = { showOutlineDialog = true; showMoreMenu = false },
+                onOutline = { showOutline = !showOutline; showMoreMenu = false },
                 onCopy = {
                     clipboard.setText(AnnotatedString(text))
                     Toast.makeText(context, Strings.copied, Toast.LENGTH_SHORT).show()
@@ -896,67 +896,194 @@ fun CodeEditorScreen(
             )
         }
 
-        Box(
+        Row(
             Modifier
                 .weight(1f)
-                .padding(if (zenMode) PaddingValues(0.dp) else PaddingValues(horizontal = 10.dp, vertical = 8.dp))
-                .let { if (zenMode) it else it.clip(RoundedCornerShape(22.dp)).border(1.dp, palette.border, RoundedCornerShape(22.dp)) }
-                .background(palette.background)
+                .fillMaxWidth()
         ) {
-            val contentModifier = if (zenMode) Modifier.statusBarsPadding().fillMaxSize() else Modifier.fillMaxSize()
-            Box(contentModifier) {
-                when {
-                    isImage -> ModernImageCanvas(file)
-                    isMarkdown && mode == GitHubEditorMode.PREVIEW -> {
-                        val mdRepo = remember(repoOwner, repoName, branch) {
-                            GHRepo(name = repoName, fullName = "$repoOwner/$repoName", description = "",
-                                language = "", stars = 0, forks = 0, isPrivate = false, isFork = false,
-                                defaultBranch = branch, updatedAt = "", owner = repoOwner)
-                        }
-                        GitHubMarkdownDocument(
-                            markdown = lines.joinToString("\n"),
-                            repo = mdRepo,
-                            readmePath = file.path,
-                            modifier = Modifier.fillMaxSize(),
-                            onLinkClick = { url ->
-                                try { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }) }
-                                catch (_: Exception) {}
+            Box(
+                Modifier
+                    .weight(1f)
+                    .padding(if (zenMode) PaddingValues(0.dp) else PaddingValues(horizontal = 10.dp, vertical = 8.dp))
+                    .let { if (zenMode) it else it.clip(RoundedCornerShape(22.dp)).border(1.dp, palette.border, RoundedCornerShape(22.dp)) }
+                    .background(palette.background)
+            ) {
+                val contentModifier = if (zenMode) Modifier.statusBarsPadding().fillMaxSize() else Modifier.fillMaxSize()
+                Box(contentModifier) {
+                    when {
+                        isImage -> ModernImageCanvas(file)
+                        isMarkdown && mode == GitHubEditorMode.PREVIEW -> {
+                            val mdRepo = remember(repoOwner, repoName, branch) {
+                                GHRepo(name = repoName, fullName = "$repoOwner/$repoName", description = "",
+                                    language = "", stars = 0, forks = 0, isPrivate = false, isFork = false,
+                                    defaultBranch = branch, updatedAt = "", owner = repoOwner)
                             }
+                            GitHubMarkdownDocument(
+                                markdown = lines.joinToString("\n"),
+                                repo = mdRepo,
+                                readmePath = file.path,
+                                modifier = Modifier.fillMaxSize(),
+                                onLinkClick = { url ->
+                                    try { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }) }
+                                    catch (_: Exception) {}
+                                }
+                            )
+                        }
+                        mode == GitHubEditorMode.READ -> ModernReadCanvas(lines, ext, lineNumbers, wrapLines, currentMatch?.line, fontSize)
+                        mode == GitHubEditorMode.DIFF -> ModernDiffCanvas(savedContent, text, fontSize)
+                        else -> ModernEditCanvas(
+                            textState = textState,
+                            lines = lines,
+                            lineNumbers = lineNumbers,
+                            wrapLines = wrapLines,
+                            ext = ext,
+                            fontSize = fontSize,
+                            searchQuery = searchState.text,
+                            currentHighlightedLine = currentMatch?.line,
+                            currentMatchRange = currentMatch?.let { it.start until it.end },
+                            verticalScrollState = verticalScrollState,
+                            highlightedText = highlightedText,
+                            onValueChange = { applyEditorInput(it) }
                         )
                     }
-                    mode == GitHubEditorMode.READ -> ModernReadCanvas(lines, ext, lineNumbers, wrapLines, currentMatch?.line, fontSize)
-                    mode == GitHubEditorMode.DIFF -> ModernDiffCanvas(savedContent, text, fontSize)
-                    else -> ModernEditCanvas(
-                        textState = textState,
-                        lines = lines,
-                        lineNumbers = lineNumbers,
-                        wrapLines = wrapLines,
-                        ext = ext,
-                        fontSize = fontSize,
-                        searchQuery = searchState.text,
-                        currentHighlightedLine = currentMatch?.line,
-                        currentMatchRange = currentMatch?.let { it.start until it.end },
-                        verticalScrollState = verticalScrollState,
-                        highlightedText = highlightedText,
-                        onValueChange = { applyEditorInput(it) }
-                    )
+                }
+
+                if (zenMode) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .statusBarsPadding()
+                            .padding(12.dp)
+                            .clip(RoundedCornerShape(GitHubControlRadius))
+                            .background(palette.surface.copy(alpha = 0.7f))
+                            .border(0.5.dp, palette.border.copy(alpha = 0.7f), RoundedCornerShape(GitHubControlRadius))
+                            .clickable { zenMode = false }
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("exit zen", color = palette.accent, fontFamily = JetBrainsMono, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
 
-            if (zenMode) {
+            androidx.compose.animation.AnimatedVisibility(
+                visible = showOutline && !zenMode && !isImage && symbols.isNotEmpty(),
+                enter = slideInHorizontally(initialOffset = { it }) + fadeIn(),
+                exit = slideOutHorizontally(targetOffset = { it }) + fadeOut()
+            ) {
                 Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .statusBarsPadding()
-                        .padding(12.dp)
-                        .clip(RoundedCornerShape(GitHubControlRadius))
-                        .background(palette.surface.copy(alpha = 0.7f))
-                        .border(0.5.dp, palette.border.copy(alpha = 0.7f), RoundedCornerShape(GitHubControlRadius))
-                        .clickable { zenMode = false }
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
-                    contentAlignment = Alignment.Center
+                    Modifier
+                        .width(220.dp)
+                        .fillMaxHeight()
+                        .background(palette.surface)
+                        .border(start = 1.dp, color = palette.border)
                 ) {
-                    Text("exit zen", color = palette.accent, fontFamily = JetBrainsMono, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Column(Modifier.fillMaxSize().padding(10.dp)) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                ":: file outline",
+                                color = palette.accent,
+                                fontFamily = JetBrainsMono,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Box(
+                                Modifier
+                                    .clip(CircleShape)
+                                    .clickable { showOutline = false }
+                                    .padding(4.dp)
+                            ) {
+                                Text("×", color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        Spacer(Modifier.height(6.dp))
+                        
+                        var symbolQuery by remember { mutableStateOf("") }
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(GitHubControlRadius))
+                                .background(palette.background)
+                                .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
+                                .padding(horizontal = 8.dp, vertical = 6.dp)
+                        ) {
+                            if (symbolQuery.isEmpty()) {
+                                Text("filter symbols...", color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 11.sp)
+                            }
+                            BasicTextField(
+                                value = symbolQuery,
+                                onValueChange = { symbolQuery = it },
+                                textStyle = TextStyle(color = palette.textPrimary, fontSize = 11.sp, fontFamily = JetBrainsMono),
+                                singleLine = true,
+                                cursorBrush = SolidColor(palette.accent),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                        
+                        Spacer(Modifier.height(6.dp))
+                        
+                        val filteredSymbols = remember(symbols, symbolQuery) {
+                            if (symbolQuery.isBlank()) symbols else symbols.filter { it.name.contains(symbolQuery, true) }
+                        }
+                        
+                        if (filteredSymbols.isEmpty()) {
+                            Text("No symbols found", color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 11.sp, modifier = Modifier.padding(top = 16.dp))
+                        } else {
+                            LazyColumn(
+                                Modifier.fillMaxSize(),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                itemsIndexed(filteredSymbols) { _, symbol ->
+                                    Row(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(GitHubControlRadius))
+                                            .background(palette.surfaceElevated.copy(alpha = 0.5f))
+                                            .border(0.5.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
+                                            .clickable {
+                                                goToLine(symbol.line + 1)
+                                            }
+                                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(
+                                            text = when (symbol.kind.lowercase()) {
+                                                "class", "object", "interface", "enum", "struct" -> "C"
+                                                "fun", "function", "def", "fn" -> "F"
+                                                "tag" -> "T"
+                                                "css", "selector" -> "#"
+                                                else -> "•"
+                                            },
+                                            color = palette.accent,
+                                            fontFamily = JetBrainsMono,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = symbol.name,
+                                            color = palette.textPrimary,
+                                            fontFamily = JetBrainsMono,
+                                            fontSize = 11.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        Text(
+                                            text = "${symbol.line + 1}",
+                                            color = palette.textMuted,
+                                            fontFamily = JetBrainsMono,
+                                            fontSize = 9.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

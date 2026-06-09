@@ -1594,12 +1594,100 @@ object GitHubManager {
                     action = payload?.optString("action", "") ?: "",
                     ref = payload?.optString("ref", "") ?: "",
                     refType = payload?.optString("ref_type", "") ?: "",
-                    size = payload?.optInt("size", 0) ?: 0
+                    size = payload?.optInt("size", 0) ?: 0,
+                    repoName = "$owner/$repo"
                 )
             }
         } catch (e: Exception) { return emptyList() }
         val nextPage = parseNextPage(r.headers) ?: return events
         return events + getRepoEvents(context, owner, repo, nextPage)
+    }
+
+    suspend fun getUserReceivedEvents(context: Context, username: String, page: Int = 1): List<GHRepoEvent> {
+        val r = request(context, "/users/$username/received_events?per_page=30&page=$page")
+        if (!r.success) return emptyList()
+        return try {
+            val arr = JSONArray(r.body)
+            (0 until arr.length()).map { i ->
+                val j = arr.getJSONObject(i)
+                val payload = j.optJSONObject("payload")
+                GHRepoEvent(
+                    id = j.optString("id", ""),
+                    type = j.optString("type", ""),
+                    actor = j.optJSONObject("actor")?.optString("login") ?: "",
+                    createdAt = j.optString("created_at", ""),
+                    action = payload?.optString("action", "") ?: "",
+                    ref = payload?.optString("ref", "") ?: "",
+                    refType = payload?.optString("ref_type", "") ?: "",
+                    size = payload?.optInt("size", 0) ?: 0,
+                    repoName = j.optJSONObject("repo")?.optString("name") ?: ""
+                )
+            }
+        } catch (e: Exception) { emptyList() }
+    }
+
+    suspend fun getQuickGlanceStats(context: Context): QuickGlanceStats {
+        var prsCount = 0
+        var issuesCount = 0
+        val issuesRes = request(context, "/issues?filter=assigned&state=open")
+        if (issuesRes.success) {
+            try {
+                val arr = JSONArray(issuesRes.body)
+                for (i in 0 until arr.length()) {
+                    val item = arr.getJSONObject(i)
+                    if (item.has("pull_request")) {
+                        prsCount++
+                    } else {
+                        issuesCount++
+                    }
+                }
+            } catch (e: Exception) {}
+        }
+
+        var failedRuns = 0
+        val reposRes = request(context, "/user/repos?sort=updated&per_page=5")
+        if (reposRes.success) {
+            try {
+                val reposArr = JSONArray(reposRes.body)
+                for (i in 0 until reposArr.length()) {
+                    val repo = reposArr.getJSONObject(i)
+                    val ownerObj = repo.optJSONObject("owner")
+                    val owner = ownerObj?.optString("login") ?: ""
+                    val name = repo.optString("name", "")
+                    if (owner.isNotBlank() && name.isNotBlank()) {
+                        val runsRes = request(context, "/repos/$owner/$name/actions/runs?per_page=5")
+                        if (runsRes.success) {
+                            val runsObj = JSONObject(runsRes.body)
+                            val runsArr = runsObj.optJSONArray("workflow_runs")
+                            if (runsArr != null) {
+                                for (j in 0 until runsArr.length()) {
+                                    val run = runsArr.getJSONObject(j)
+                                    val conclusion = run.optString("conclusion", "")
+                                    val createdAtStr = run.optString("created_at", "")
+                                    if (conclusion == "failure" && createdAtStr.isNotBlank()) {
+                                        try {
+                                            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US)
+                                            sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
+                                            val date = sdf.parse(createdAtStr)
+                                            if (date != null && System.currentTimeMillis() - date.time < 24 * 60 * 60 * 1000) {
+                                                failedRuns++
+                                            }
+                                        } catch (e: Exception) {}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {}
+        }
+
+        return QuickGlanceStats(
+            assignedPrsCount = prsCount,
+            openIssuesCount = issuesCount,
+            failedBuildsCount = failedRuns,
+            loading = false
+        )
     }
 
     suspend fun getReleases(context: Context, owner: String, repo: String, page: Int = 1): List<GHRelease> {
@@ -7321,7 +7409,15 @@ data class GHRepoEvent(
     val action: String,
     val ref: String,
     val refType: String,
-    val size: Int
+    val size: Int,
+    val repoName: String = ""
+)
+
+data class QuickGlanceStats(
+    val assignedPrsCount: Int = 0,
+    val openIssuesCount: Int = 0,
+    val failedBuildsCount: Int = 0,
+    val loading: Boolean = true
 )
 
 data class GHRelease(
