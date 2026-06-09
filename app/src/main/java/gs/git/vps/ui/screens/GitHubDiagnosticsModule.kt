@@ -1,6 +1,7 @@
 package gs.git.vps.ui.screens
 
 import android.content.Context
+import gs.git.vps.security.NativeSecurity
 import android.os.Environment
 import android.widget.Toast
 import androidx.compose.foundation.background
@@ -160,6 +161,8 @@ internal fun GitHubDiagnosticsScreen(onBack: () -> Unit) {
                     }
                 }
             }
+
+            item { LocalSecurityPanel() }
 
             report?.let { current ->
                 item { TokenValidationPanel() }
@@ -704,6 +707,84 @@ private fun CacheManagementPanel(onClearCache: () -> Unit) {
         if (showConfirm) {
             Spacer(Modifier.height(4.dp))
             Text("tap again to confirm cache clear", color = GitHubWarningAmber(), fontFamily = JetBrainsMono, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+        }
+    }
+}
+
+@Composable
+private fun LocalSecurityPanel() {
+    val palette = AiModuleTheme.colors
+    var frida by remember { mutableStateOf(false) }
+    var rooted by remember { mutableStateOf(false) }
+    var magisk by remember { mutableStateOf(false) }
+    var debugger by remember { mutableStateOf(false) }
+    var emulator by remember { mutableStateOf(false) }
+    var safe by remember { mutableStateOf(true) }
+    var loaded by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        try {
+            frida = NativeSecurity.isFridaDetected()
+            rooted = NativeSecurity.isRooted()
+            magisk = NativeSecurity.isMagiskDetected()
+            debugger = NativeSecurity.isDebuggerDetected()
+            emulator = NativeSecurity.isEmulatorDetected()
+            safe = NativeSecurity.isEnvironmentSafe()
+            loaded = true
+        } catch (e: Exception) {
+            // Native library load failed or missing method
+        }
+    }
+
+    GitHubDiagnosticPanel {
+        Text(
+            "local security environment",
+            color = palette.accent,
+            fontFamily = JetBrainsMono,
+            fontWeight = FontWeight.Medium,
+            fontSize = 13.sp
+        )
+        Text(
+            "native integrity & security environment validation",
+            color = palette.textMuted,
+            fontFamily = JetBrainsMono,
+            fontSize = 11.sp
+        )
+        Spacer(Modifier.height(8.dp))
+
+        if (loaded) {
+            val integrityColor = if (safe) GitHubSuccessGreen else GitHubErrorRed
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Box(
+                    Modifier
+                        .width(92.dp)
+                        .border(1.dp, integrityColor, RoundedCornerShape(GitHubControlRadius))
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        if (safe) "SAFE" else "COMPROMISED",
+                        color = integrityColor,
+                        fontFamily = JetBrainsMono,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Text(
+                    if (safe) "Device environment is clean and safe" else "Environment violates integrity policy",
+                    color = palette.textPrimary,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 11.sp
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            GitHubDiagnosticKV("Frida client", if (frida) "DETECTED" else "CLEAN")
+            GitHubDiagnosticKV("SU binary / Root", if (rooted) "DETECTED" else "CLEAN")
+            GitHubDiagnosticKV("Magisk / KSU / APatch", if (magisk) "DETECTED" else "CLEAN")
+            GitHubDiagnosticKV("Debugger attached", if (debugger) "DETECTED" else "CLEAN")
+            GitHubDiagnosticKV("Emulator / Virtualized", if (emulator) "DETECTED" else "CLEAN")
+        } else {
+            Text("Checking device integrity...", color = palette.textMuted, fontSize = 11.sp, fontFamily = JetBrainsMono)
         }
     }
 }
