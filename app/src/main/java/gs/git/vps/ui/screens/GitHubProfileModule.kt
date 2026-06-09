@@ -3,6 +3,10 @@ package gs.git.vps.ui.screens
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.graphics.Color
+import gs.git.vps.data.github.GHContributionDay
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -74,6 +78,7 @@ fun ProfileScreen(
     var followers by remember { mutableStateOf<List<GHFollowerEntry>?>(null) }
     var following by remember { mutableStateOf<List<GHFollowerEntry>?>(null) }
     var showEdit by remember { mutableStateOf(false) }
+    var contributions by remember { mutableStateOf<List<GHContributionDay>>(emptyList()) }
     val listState = rememberSaveable(username, saver = LazyListState.Saver) { LazyListState(0, 0) }
     val cachedSelf = GitHubManager.getCachedUser(context)?.login
 
@@ -81,6 +86,7 @@ fun ProfileScreen(
         profile = GitHubManager.getUserProfile(context, username)
         repos = GitHubManager.getUserRepos(context, username)
         isFollowing = GitHubManager.isFollowing(context, username)
+        contributions = GitHubManager.getUserContributions(context, username)
         loading = false
     }
 
@@ -143,6 +149,12 @@ fun ProfileScreen(
                     item {
                         ProfileMetaBlock(p)
                         AiModuleHairline()
+                    }
+                    if (contributions.isNotEmpty()) {
+                        item {
+                            ContributionGridPanel(contributions)
+                            AiModuleHairline()
+                        }
                     }
                     item {
                         ProfileStatsRow(p, onSelect = { tab = it })
@@ -422,4 +434,70 @@ private fun EditField(label: String, value: String, singleLine: Boolean = true, 
 private fun copyClipboard(context: Context, label: String, text: String) {
     val clip = ClipData.newPlainText(label, text)
     (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(clip)
+}
+
+@Composable
+private fun ContributionGridPanel(days: List<GHContributionDay>) {
+    val palette = AiModuleTheme.colors
+    Column(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
+        Text(
+            text = "contribution matrix",
+            fontFamily = JetBrainsMono,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 11.sp,
+            color = palette.accent,
+            modifier = Modifier.padding(horizontal = 12.dp)
+        )
+        Spacer(Modifier.height(8.dp))
+        
+        val dayOfWeek = remember(days) {
+            try {
+                if (days.isEmpty()) 0 else {
+                    val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+                    val firstDate = sdf.parse(days.first().date)
+                    val cal = java.util.Calendar.getInstance().apply { time = firstDate }
+                    cal.get(java.util.Calendar.DAY_OF_WEEK) - 1
+                }
+            } catch (_: Exception) { 0 }
+        }
+        
+        val weeks = remember(days, dayOfWeek) {
+            val padded = mutableListOf<GHContributionDay?>().apply {
+                repeat(dayOfWeek) { add(null) }
+                addAll(days)
+            }
+            padded.chunked(7)
+        }
+
+        Row(
+            modifier = Modifier
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            weeks.forEach { week ->
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    week.forEach { day ->
+                        if (day != null) {
+                            val color = when (day.level) {
+                                1 -> Color(0xFF0e4429)
+                                2 -> Color(0xFF006d32)
+                                3 -> Color(0xFF26a641)
+                                4 -> Color(0xFF39d353)
+                                else -> palette.border.copy(alpha = 0.4f)
+                            }
+                            Box(
+                                Modifier
+                                    .size(10.dp)
+                                    .clip(RoundedCornerShape(2.dp))
+                                    .background(color)
+                            )
+                        } else {
+                            Box(Modifier.size(10.dp))
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

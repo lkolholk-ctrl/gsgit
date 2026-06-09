@@ -3422,6 +3422,25 @@ object GitHubManager {
         } catch (e: Exception) { null }
     }
 
+    suspend fun getUserContributions(context: Context, username: String): List<GHContributionDay> {
+        val r = request(context, "https://github.com/users/$username/contributions", extraHeaders = mapOf("Accept" to "text/html"))
+        if (!r.success) return emptyList()
+        return try {
+            val tdRegex = """<td[^>]*class="[^"]*ContributionCalendar-day[^"]*"[^>]*>""".toRegex()
+            val dateRegex = """data-date="(\d{4}-\d{2}-\d{2})"""".toRegex()
+            val levelRegex = """data-level="(\d)"""".toRegex()
+
+            tdRegex.findAll(r.body).mapNotNull { td ->
+                val content = td.value
+                val date = dateRegex.find(content)?.groupValues?.get(1) ?: return@mapNotNull null
+                val level = levelRegex.find(content)?.groupValues?.get(1)?.toIntOrNull() ?: return@mapNotNull null
+                GHContributionDay(date, level)
+            }.toList()
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
     private fun parseUserProfile(j: JSONObject): GHUserProfile =
         GHUserProfile(
             login = j.cleanString("login"),
@@ -7596,6 +7615,11 @@ data class GHUserProfile(
     val planName: String = "",
     val planSpace: Long = 0L,
     val updatedAt: String = ""
+)
+
+data class GHContributionDay(
+    val date: String,
+    val level: Int
 )
 
 data class GHOrg(val login: String, val avatarUrl: String, val description: String)
