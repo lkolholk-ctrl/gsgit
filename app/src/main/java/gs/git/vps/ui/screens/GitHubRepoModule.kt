@@ -61,6 +61,11 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.em
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.graphics.SolidColor
 
 
 import coil.ImageLoader
@@ -1593,6 +1598,7 @@ private fun GitGraphCanvas(
     }
 }
 
+@Composable
 internal fun CommitsTab(
     commits: List<GHCommit>,
     hasMore: Boolean,

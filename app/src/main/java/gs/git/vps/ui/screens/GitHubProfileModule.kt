@@ -1872,6 +1872,7 @@ private fun ActivityDonutChart(slices: List<ActivitySlice>) {
             }
         }
     }
+}
 
 private fun exportDevCardToPng(
     context: Context,
