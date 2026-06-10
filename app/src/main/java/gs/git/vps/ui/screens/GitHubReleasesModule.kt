@@ -40,10 +40,15 @@ import gs.git.vps.ui.components.AiModuleSpinner
 import gs.git.vps.ui.components.AiModuleText as Text
 import gs.git.vps.ui.components.AiModuleTextAction
 import gs.git.vps.ui.components.AiModuleTextField
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.workDataOf
 import gs.git.vps.data.github.GHAsset
+import gs.git.vps.data.github.GHCommit
 import gs.git.vps.data.github.GHRepo
 import gs.git.vps.data.github.GHRelease
 import gs.git.vps.data.github.GitHubManager
+import gs.git.vps.workers.ReleaseDownloadWorker
 import gs.git.vps.ui.theme.AiModuleTheme
 import gs.git.vps.ui.theme.*
 import kotlinx.coroutines.launch
@@ -233,11 +238,19 @@ private fun ReleaseCard(
                         AssetRow(
                             asset = asset,
                             onDownload = {
-                                scope.launch {
-                                    val dest = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "GlassFiles_Git/${asset.name}")
-                                    val ok = GitHubManager.downloadReleaseAsset(context, asset, dest)
-                                    Toast.makeText(context, if (ok) "${Strings.done}: ${dest.name}" else Strings.error, Toast.LENGTH_SHORT).show()
-                                }
+                                val workManager = WorkManager.getInstance(context)
+                                val workRequest = OneTimeWorkRequestBuilder<ReleaseDownloadWorker>()
+                                    .setInputData(
+                                        workDataOf(
+                                            ReleaseDownloadWorker.KEY_ASSET_NAME to asset.name,
+                                            ReleaseDownloadWorker.KEY_ASSET_SIZE to asset.size,
+                                            ReleaseDownloadWorker.KEY_ASSET_URL to asset.downloadUrl,
+                                            ReleaseDownloadWorker.KEY_ASSET_ID to asset.id
+                                        )
+                                    )
+                                    .build()
+                                workManager.enqueue(workRequest)
+                                Toast.makeText(context, "Download started in background", Toast.LENGTH_SHORT).show()
                             },
                             onDelete = if (canWrite && asset.id > 0L) { { deletingAsset = asset } } else null
                         )
@@ -460,8 +473,8 @@ private fun CreateReleaseDialog(
                         onClick = {
                             generating = true
                             scope.launch {
-                                val commits = GitHubManager.getCommits(context, repoOwner, repoName).take(20)
-                                body = commits.joinToString("\n") { "- ${it.message.lineSequence().firstOrNull().orEmpty()} (${it.sha})" }
+                                val commits = GitHubManager.getCommits(context, repoOwner, repoName).take(30)
+                                body = generateChangelogFromCommits(commits)
                                 generating = false
                             }
                         },
@@ -618,3 +631,74 @@ private fun Context.queryDisplayName(uri: Uri): String {
 
 private fun String.sanitizeReleaseAssetName(): String =
     replace(Regex("""[\\/:*?"<>|]+"""), "-").trim().ifBlank { "release-asset.bin" }
+
+private fun generateChangelogFromCommits(commits: List<GHCommit>): String {
+    val features = mutableListOf<String>()
+    val fixes = mutableListOf<String>()
+    val performance = mutableListOf<String>()
+    val docs = mutableListOf<String>()
+    val refactor = mutableListOf<String>()
+    val build = mutableListOf<String>()
+    val other = mutableListOf<String>()
+
+    for (commit in commits) {
+        val firstLine = commit.message.lineSequence().firstOrNull().orEmpty().trim()
+        if (firstLine.isBlank()) continue
+        
+        val shaAbbr = if (commit.sha.length >= 7) commit.sha.substring(0, 7) else commit.sha
+        val cleanMsg = firstLine.replace(Regex("^\\*\\s+"), "")
+        val formatted = "- $cleanMsg ($shaAbbr)"
+        
+        val lower = cleanMsg.lowercase()
+        when {
+            lower.startsWith("feat") -> features.add(formatted)
+            lower.startsWith("fix") -> fixes.add(formatted)
+            lower.startsWith("perf") -> performance.add(formatted)
+            lower.startsWith("docs") || lower.startsWith("style") -> docs.add(formatted)
+            lower.startsWith("refactor") -> refactor.add(formatted)
+            lower.startsWith("build") || lower.startsWith("ci") || lower.startsWith("chore") -> build.add(formatted)
+            else -> other.add(formatted)
+        }
+    }
+
+    val sb = StringBuilder()
+    sb.append("## Changelog\n\n")
+    
+    if (features.isNotEmpty()) {
+        sb.append("### 🚀 Features\n")
+        features.forEach { sb.append(it).append("\n") }
+        sb.append("\n")
+    }
+    if (fixes.isNotEmpty()) {
+        sb.append("### 🐛 Bug Fixes\n")
+        fixes.forEach { sb.append(it).append("\n") }
+        sb.append("\n")
+    }
+    if (performance.isNotEmpty()) {
+        sb.append("### ⚡ Performance\n")
+        performance.forEach { sb.append(it).append("\n") }
+        sb.append("\n")
+    }
+    if (refactor.isNotEmpty()) {
+        sb.append("### ⚙️ Refactoring\n")
+        refactor.forEach { sb.append(it).append("\n") }
+        sb.append("\n")
+    }
+    if (docs.isNotEmpty()) {
+        sb.append("### 📝 Documentation\n")
+        docs.forEach { sb.append(it).append("\n") }
+        sb.append("\n")
+    }
+    if (build.isNotEmpty()) {
+        sb.append("### 🔧 Chore & Build\n")
+        build.forEach { sb.append(it).append("\n") }
+        sb.append("\n")
+    }
+    if (other.isNotEmpty()) {
+        sb.append("### 📦 Other Changes\n")
+        other.forEach { sb.append(it).append("\n") }
+        sb.append("\n")
+    }
+    
+    return sb.toString().trim()
+}

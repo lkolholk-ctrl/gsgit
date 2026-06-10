@@ -1839,6 +1839,49 @@ object GitHubManager {
             }
         }
 
+    suspend fun downloadReleaseAssetWithProgress(
+        context: Context,
+        asset: GHAsset,
+        destFile: java.io.File,
+        onProgress: (bytesDownloaded: Long, totalBytes: Long) -> Unit
+    ): Boolean =
+        withContext(Dispatchers.IO) {
+            try {
+                if (asset.downloadUrl.isBlank()) return@withContext false
+                val token = getToken(context)
+                val conn = (URL(asset.downloadUrl).openConnection() as HttpURLConnection).apply {
+                    if (token.isNotBlank()) setRequestProperty("Authorization", "Bearer $token")
+                    setRequestProperty("Accept", "application/octet-stream")
+                    connectTimeout = 15000
+                    readTimeout = 60000
+                }
+                val code = conn.responseCode
+                if (code !in 200..299) {
+                    conn.disconnect()
+                    return@withContext false
+                }
+                destFile.parentFile?.mkdirs()
+                val totalBytes = if (conn.contentLengthLong > 0) conn.contentLengthLong else asset.size
+                conn.inputStream.use { input ->
+                    destFile.outputStream().use { out ->
+                        val buffer = ByteArray(8192)
+                        var bytesRead: Int
+                        var bytesDownloaded = 0L
+                        while (input.read(buffer).also { bytesRead = it } != -1) {
+                            out.write(buffer, 0, bytesRead)
+                            bytesDownloaded += bytesRead
+                            onProgress(bytesDownloaded, totalBytes)
+                        }
+                    }
+                }
+                conn.disconnect()
+                true
+            } catch (e: Exception) {
+                Log.e(TAG, "Download release asset with progress: ${e.message}")
+                false
+            }
+        }
+
     suspend fun uploadReleaseAsset(context: Context, owner: String, repo: String, releaseId: Long, file: java.io.File, label: String = ""): Boolean =
         withContext(Dispatchers.IO) {
             try {
