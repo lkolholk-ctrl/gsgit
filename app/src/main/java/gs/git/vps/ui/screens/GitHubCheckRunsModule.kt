@@ -47,6 +47,18 @@ import gs.git.vps.ui.components.aiModuleStatusLabel
 import gs.git.vps.ui.theme.AiModuleTheme
 import gs.git.vps.ui.theme.JetBrainsMono
 import kotlinx.coroutines.launch
+import java.util.Locale
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntSize
 
 @Composable
 internal fun CheckRunsScreen(
@@ -193,12 +205,119 @@ internal fun CheckRunsScreen(
     }
 }
 
+private data class CoverageNode(
+    val name: String,
+    val size: Float,
+    val coverage: Float
+)
+
+private data class TreemapRect(
+    val node: CoverageNode,
+    val x: Float,
+    val y: Float,
+    val width: Float,
+    val height: Float
+)
+
+private fun layoutTreemap(
+    nodes: List<CoverageNode>,
+    x: Float,
+    y: Float,
+    width: Float,
+    height: Float
+): List<TreemapRect> {
+    if (nodes.isEmpty()) return emptyList()
+    if (nodes.size == 1) {
+        return listOf(TreemapRect(nodes[0], x, y, width, height))
+    }
+
+    val totalWeight = nodes.sumOf { it.size.toDouble() }.toFloat()
+    var leftWeight = 0f
+    var splitIdx = 0
+    for (i in nodes.indices) {
+        leftWeight += nodes[i].size
+        if (leftWeight >= totalWeight / 2f) {
+            splitIdx = i
+            break
+        }
+    }
+    if (splitIdx == nodes.size - 1) {
+        splitIdx = (nodes.size / 2).coerceAtLeast(1) - 1
+    }
+    
+    val leftGroup = nodes.subList(0, splitIdx + 1)
+    val rightGroup = nodes.subList(splitIdx + 1, nodes.size)
+    
+    val leftSum = leftGroup.sumOf { it.size.toDouble() }.toFloat()
+    val rightSum = rightGroup.sumOf { it.size.toDouble() }.toFloat()
+    val ratio = leftSum / (leftSum + rightSum)
+
+    val results = mutableListOf<TreemapRect>()
+    if (width > height) {
+        val leftWidth = width * ratio
+        results.addAll(layoutTreemap(leftGroup, x, y, leftWidth, height))
+        results.addAll(layoutTreemap(rightGroup, x + leftWidth, y, width - leftWidth, height))
+    } else {
+        val topHeight = height * ratio
+        results.addAll(layoutTreemap(leftGroup, x, y, width, topHeight))
+        results.addAll(layoutTreemap(rightGroup, x, y + topHeight, width, height - topHeight))
+    }
+    return results
+}
+
 @Composable
 private fun CodeCoverageWidget(runs: List<GHCheckRun>) {
     val palette = AiModuleTheme.colors
+    val density = LocalDensity.current
     var expanded by remember { mutableStateOf(false) }
+    var viewMode by remember { mutableStateOf("treemap") } // "treemap" or "list"
 
-    val totalCoverage = 78.4f
+    val coverageNodes = remember {
+        listOf(
+            CoverageNode("app", 5200f, 82.1f),
+            CoverageNode("core", 3800f, 94.5f),
+            CoverageNode("ui", 4500f, 61.2f),
+            CoverageNode("data", 2900f, 88.0f),
+            CoverageNode("security", 1500f, 98.0f),
+            CoverageNode("net", 2100f, 73.5f),
+            CoverageNode("notifications", 1200f, 85.0f)
+        ).sortedByDescending { it.size }
+    }
+
+    val totalCoverage = remember(coverageNodes) {
+        val totalSize = coverageNodes.sumOf { it.size.toDouble() }
+        val coveredSize = coverageNodes.sumOf { (it.size * (it.coverage / 100f)).toDouble() }
+        if (totalSize > 0) ((coveredSize / totalSize) * 100).toFloat() else 0f
+    }
+    
+    val formattedTotalCoverage = remember(totalCoverage) {
+        String.format(Locale.US, "%.1f", totalCoverage)
+    }
+
+    var canvasSize by remember { mutableStateOf(IntSize.Zero) }
+    val treemapRects = remember(canvasSize, coverageNodes) {
+        if (canvasSize.width == 0 || canvasSize.height == 0) emptyList()
+        else layoutTreemap(coverageNodes, 0f, 0f, canvasSize.width.toFloat(), canvasSize.height.toFloat())
+    }
+    
+    var selectedRect by remember { mutableStateOf<TreemapRect?>(null) }
+
+    val textPaint = remember(palette.textPrimary) {
+        android.graphics.Paint().apply {
+            color = palette.textPrimary.toArgb()
+            textSize = with(density) { 10.sp.toPx() }
+            typeface = android.graphics.Typeface.create(android.graphics.Typeface.MONOSPACE, android.graphics.Typeface.BOLD)
+            isAntiAlias = true
+        }
+    }
+    val subTextPaint = remember(palette.textSecondary) {
+        android.graphics.Paint().apply {
+            color = palette.textSecondary.toArgb()
+            textSize = with(density) { 9.sp.toPx() }
+            typeface = android.graphics.Typeface.MONOSPACE
+            isAntiAlias = true
+        }
+    }
 
     Column(
         Modifier
@@ -206,7 +325,6 @@ private fun CodeCoverageWidget(runs: List<GHCheckRun>) {
             .padding(horizontal = 12.dp, vertical = 6.dp)
             .border(1.dp, palette.border, RoundedCornerShape(8.dp))
             .background(palette.surface.copy(alpha = 0.5f))
-            .clickable { expanded = !expanded }
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -215,11 +333,27 @@ private fun CodeCoverageWidget(runs: List<GHCheckRun>) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.clickable { expanded = !expanded }
+            ) {
                 Text("📊", fontSize = 14.sp)
                 Text("Code Coverage Report", fontFamily = JetBrainsMono, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = palette.accent)
+                Text(if (expanded) "hide \u25b2" else "show \u25bc", fontFamily = JetBrainsMono, fontSize = 9.sp, color = palette.textMuted)
             }
-            Text(if (expanded) "hide \u25b2" else "show \u25bc", fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.textMuted)
+            if (expanded) {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    SmallChip(
+                        label = "treemap",
+                        color = if (viewMode == "treemap") palette.accent else palette.textMuted
+                    ) { viewMode = "treemap" }
+                    SmallChip(
+                        label = "list",
+                        color = if (viewMode == "list") palette.accent else palette.textMuted
+                    ) { viewMode = "list" }
+                }
+            }
         }
 
         Row(
@@ -229,7 +363,13 @@ private fun CodeCoverageWidget(runs: List<GHCheckRun>) {
         ) {
             Column {
                 Text("total coverage", fontFamily = JetBrainsMono, fontSize = 9.sp, color = palette.textMuted)
-                Text("$totalCoverage%", fontFamily = JetBrainsMono, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2EA043))
+                val totalColor = when {
+                    totalCoverage >= 90f -> Color(0xFF2EA043)
+                    totalCoverage >= 80f -> Color(0xFF39D353)
+                    totalCoverage >= 70f -> Color(0xFFD29922)
+                    else -> Color(0xFFF85149)
+                }
+                Text("$formattedTotalCoverage%", fontFamily = JetBrainsMono, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = totalColor)
             }
             Box(
                 Modifier
@@ -238,23 +378,160 @@ private fun CodeCoverageWidget(runs: List<GHCheckRun>) {
                     .clip(RoundedCornerShape(3.dp))
                     .background(palette.border)
             ) {
+                val totalColor = when {
+                    totalCoverage >= 90f -> Color(0xFF2EA043)
+                    totalCoverage >= 80f -> Color(0xFF39D353)
+                    totalCoverage >= 70f -> Color(0xFFD29922)
+                    else -> Color(0xFFF85149)
+                }
                 Box(
                     Modifier
                         .fillMaxHeight()
                         .fillMaxWidth(totalCoverage / 100f)
-                        .background(Color(0xFF2EA043))
+                        .background(totalColor)
                 )
             }
         }
 
         if (expanded) {
             Spacer(Modifier.height(4.dp))
-            Text("coverage breakdown by module:", fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.textSecondary)
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                CoverageModuleRow("app", 82.1f, Color(0xFF58A6FF))
-                CoverageModuleRow("core", 94.5f, Color(0xFFD3BBF7))
-                CoverageModuleRow("ui", 61.2f, Color(0xFFFF7B72))
-                CoverageModuleRow("data", 88.0f, Color(0xFF7EE787))
+            if (viewMode == "treemap") {
+                Text("interactive code coverage map (tap module for details):", fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.textSecondary)
+                
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(180.dp)
+                        .border(1.dp, palette.border, RoundedCornerShape(4.dp))
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color.Black.copy(alpha = 0.3f))
+                        .onSizeChanged { canvasSize = it }
+                        .pointerInput(treemapRects) {
+                            detectTapGestures { offset ->
+                                val clicked = treemapRects.find { rect ->
+                                    offset.x >= rect.x && offset.x <= rect.x + rect.width &&
+                                    offset.y >= rect.y && offset.y <= rect.y + rect.height
+                                }
+                                selectedRect = clicked
+                            }
+                        }
+                ) {
+                    drawIntoCanvas { canvas ->
+                        treemapRects.forEach { rect ->
+                            val isSelected = selectedRect == rect
+                            val coverage = rect.node.coverage
+                            
+                            val baseColor = when {
+                                coverage >= 90f -> Color(0xFF2EA043)
+                                coverage >= 80f -> Color(0xFF39D353)
+                                coverage >= 70f -> Color(0xFFD29922)
+                                else -> Color(0xFFF85149)
+                            }
+                            
+                            val gap = 2f
+                            val rx = rect.x + gap
+                            val ry = rect.y + gap
+                            val rw = rect.width - (gap * 2f)
+                            val rh = rect.height - (gap * 2f)
+                            
+                            if (rw > 0 && rh > 0) {
+                                val fillAlpha = if (isSelected) 0.50f else 0.20f
+                                drawRoundRect(
+                                    color = baseColor,
+                                    topLeft = Offset(rx, ry),
+                                    size = Size(rw, rh),
+                                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(3.dp.toPx()),
+                                    alpha = fillAlpha
+                                )
+                                
+                                val borderStroke = if (isSelected) 2.dp.toPx() else 1.dp.toPx()
+                                val borderColor = if (isSelected) palette.accent else baseColor.copy(alpha = 0.8f)
+                                drawRoundRect(
+                                    color = borderColor,
+                                    topLeft = Offset(rx, ry),
+                                    size = Size(rw, rh),
+                                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(3.dp.toPx()),
+                                    style = androidx.compose.ui.graphics.drawscope.Stroke(borderStroke)
+                                )
+                                
+                                if (rw > 35.dp.toPx() && rh > 20.dp.toPx()) {
+                                    canvas.save()
+                                    canvas.clipRect(rx + 2.dp.toPx(), ry + 2.dp.toPx(), rx + rw - 2.dp.toPx(), ry + rh - 2.dp.toPx())
+                                    
+                                    canvas.nativeCanvas.drawText(
+                                        rect.node.name,
+                                        rx + 4.dp.toPx(),
+                                        ry + 12.dp.toPx(),
+                                        textPaint
+                                    )
+                                    
+                                    canvas.nativeCanvas.drawText(
+                                        "${rect.node.coverage}%",
+                                        rx + 4.dp.toPx(),
+                                        ry + 24.dp.toPx(),
+                                        subTextPaint.apply { color = baseColor.toArgb() }
+                                    )
+                                    
+                                    canvas.restore()
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                selectedRect?.let { rect ->
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, palette.border, RoundedCornerShape(4.dp))
+                            .background(palette.surface.copy(alpha = 0.7f))
+                            .padding(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("module: ${rect.node.name}", fontFamily = JetBrainsMono, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = palette.textPrimary)
+                            Text("size: ${rect.node.size.toInt()} LOC", fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.textMuted)
+                        }
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            val statusStr = when {
+                                rect.node.coverage >= 90f -> "excellent"
+                                rect.node.coverage >= 80f -> "good"
+                                rect.node.coverage >= 70f -> "warning"
+                                else -> "danger"
+                            }
+                            val statusColor = when {
+                                rect.node.coverage >= 90f -> Color(0xFF2EA043)
+                                rect.node.coverage >= 80f -> Color(0xFF39D353)
+                                rect.node.coverage >= 70f -> Color(0xFFD29922)
+                                else -> Color(0xFFF85149)
+                            }
+                            Text("coverage: ${rect.node.coverage}%", fontFamily = JetBrainsMono, fontSize = 10.sp, color = statusColor)
+                            Text("status: $statusStr", fontFamily = JetBrainsMono, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = statusColor)
+                        }
+                    }
+                } ?: Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, palette.border.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
+                        .padding(8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("Select a module in the Treemap to see details", fontFamily = JetBrainsMono, fontSize = 9.sp, color = palette.textMuted)
+                }
+
+            } else {
+                Text("coverage breakdown by module list:", fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.textSecondary)
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    coverageNodes.forEach { node ->
+                        val baseColor = when {
+                            node.coverage >= 90f -> Color(0xFF2EA043)
+                            node.coverage >= 80f -> Color(0xFF39D353)
+                            node.coverage >= 70f -> Color(0xFFD29922)
+                            else -> Color(0xFFF85149)
+                        }
+                        CoverageModuleRow(node.name, node.coverage, baseColor)
+                    }
+                }
             }
         }
     }
@@ -264,7 +541,7 @@ private fun CodeCoverageWidget(runs: List<GHCheckRun>) {
 private fun CoverageModuleRow(name: String, percentage: Float, color: Color) {
     val palette = AiModuleTheme.colors
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(name.padEnd(8), fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.textPrimary, modifier = Modifier.width(50.dp))
+        Text(name.padEnd(14), fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.textPrimary, modifier = Modifier.width(90.dp))
         Box(
             Modifier
                 .weight(1f)
@@ -279,7 +556,7 @@ private fun CoverageModuleRow(name: String, percentage: Float, color: Color) {
                     .background(color)
             )
         }
-        Text("$percentage%", fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.textSecondary)
+        Text(String.format(Locale.US, "%.1f%%", percentage), fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.textSecondary)
     }
 }
 
