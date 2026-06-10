@@ -1642,7 +1642,7 @@ internal fun CommitsTab(
                         .clickable { onClick(c) }
                         .padding(14.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.Top
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     val graphWidth = remember(node) {
                         val maxLanes = maxOf(
