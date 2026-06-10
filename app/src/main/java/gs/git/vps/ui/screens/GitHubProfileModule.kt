@@ -716,46 +716,41 @@ private fun ProfileInsightsPanel(
         
         DeveloperAccessCard(profile, topLanguages, starsCount)
         
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .border(1.dp, palette.border, RoundedCornerShape(8.dp))
+                .background(palette.surface.copy(alpha = 0.5f))
+                .padding(12.dp)
         ) {
-            Box(
-                Modifier
-                    .weight(1f)
-                    .border(1.dp, palette.border, RoundedCornerShape(8.dp))
-                    .background(palette.surface.copy(alpha = 0.5f))
-                    .padding(12.dp)
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = "languages matrix",
-                        color = palette.accent,
-                        fontFamily = JetBrainsMono,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    LanguageRadarChart(topLanguages)
-                }
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "languages matrix",
+                    color = palette.accent,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                LanguageRadarChart(topLanguages)
             }
-            
-            Box(
-                Modifier
-                    .weight(1f)
-                    .border(1.dp, palette.border, RoundedCornerShape(8.dp))
-                    .background(palette.surface.copy(alpha = 0.5f))
-                    .padding(12.dp)
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = "activity donut",
-                        color = palette.accent,
-                        fontFamily = JetBrainsMono,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    ActivityDonutChart(activityBreakdown)
-                }
+        }
+        
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .border(1.dp, palette.border, RoundedCornerShape(8.dp))
+                .background(palette.surface.copy(alpha = 0.5f))
+                .padding(12.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "activity donut",
+                    color = palette.accent,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                ActivityDonutChart(activityBreakdown)
             }
         }
         
@@ -1083,10 +1078,10 @@ private fun ActivityDonutChart(slices: List<ActivitySlice>) {
             .fillMaxWidth()
             .height(110.dp)
     ) {
-        val center = Offset(size.width / 2.7f, size.height / 2f)
-        val outerRadius = size.height * 0.38f
-        val innerRadius = size.height * 0.22f
-        val strokeWidthPx = outerRadius - innerRadius
+        val donutSize = size.height * 0.76f
+        val donutLeft = 16.dp.toPx()
+        val donutTop = (size.height - donutSize) / 2f
+        val strokeWidthPx = 14.dp.toPx()
         
         var startAngle = -90f
         
@@ -1098,15 +1093,15 @@ private fun ActivityDonutChart(slices: List<ActivitySlice>) {
                     startAngle = startAngle,
                     sweepAngle = sweepAngle,
                     useCenter = false,
-                    topLeft = Offset(center.x - outerRadius, center.y - outerRadius),
-                    size = Size(outerRadius * 2f, outerRadius * 2f),
+                    topLeft = Offset(donutLeft, donutTop),
+                    size = Size(donutSize, donutSize),
                     style = Stroke(strokeWidthPx)
                 )
                 startAngle += sweepAngle
             }
         }
         
-        val startX = size.width * 0.65f
+        val startX = donutLeft + donutSize + 32.dp.toPx()
         val startY = size.height * 0.18f
         val lineSpacing = 16.dp.toPx()
         
@@ -1140,7 +1135,7 @@ private fun ActivityDonutChart(slices: List<ActivitySlice>) {
                 )
                 canvas.nativeCanvas.drawText(
                     "${slice.percentage.toInt()}%",
-                    startX + 65.dp.toPx(),
+                    startX + 90.dp.toPx(),
                     y,
                     pctPaint
                 )
