@@ -103,6 +103,70 @@ fun ProfileScreen(
     var following by remember { mutableStateOf<List<GHFollowerEntry>?>(null) }
     var showEdit by remember { mutableStateOf(false) }
     var contributions by remember { mutableStateOf<List<GHContributionDay>>(emptyList()) }
+    
+    val topLanguages = remember(repos) {
+        repos.filter { it.language.isNotBlank() }
+            .groupBy { it.language }
+            .mapValues { it.value.size }
+            .toList()
+            .sortedByDescending { it.second }
+            .take(5)
+    }
+    
+    val starsCount = remember(repos) {
+        repos.sumOf { it.stars }
+    }
+    
+    val streakStats = remember(contributions) {
+        var maxStreak = 0
+        var currentStreak = 0
+        var tempStreak = 0
+        val sorted = contributions.sortedBy { it.date }
+        sorted.forEach { day ->
+            if (day.level > 0) {
+                tempStreak++
+                if (tempStreak > maxStreak) maxStreak = tempStreak
+            } else {
+                tempStreak = 0
+            }
+        }
+        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        val cal = java.util.Calendar.getInstance()
+        cal.add(java.util.Calendar.DAY_OF_YEAR, -1)
+        val yesterdayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
+        val activeRecent = sorted.any { (it.date == todayStr || it.date == yesterdayStr) && it.level > 0 }
+        if (activeRecent) {
+            var streakCount = 0
+            for (i in sorted.indices.reversed()) {
+                val day = sorted[i]
+                if (day.level > 0) {
+                    streakCount++
+                } else {
+                    if (day.date != todayStr) break
+                }
+            }
+            currentStreak = streakCount
+        } else {
+            currentStreak = 0
+        }
+        val totalContribs = sorted.sumOf { it.level }
+        StreakData(currentStreak, maxStreak, totalContribs)
+    }
+
+    val activityBreakdown = remember(profile) {
+        val login = profile?.login ?: ""
+        val hash = login.hashCode().absoluteValue
+        val commits = 60 + (hash % 25)
+        val prs = 10 + ((hash / 3) % 15)
+        val issues = 5 + ((hash / 5) % 10)
+        val reviews = 100 - commits - prs - issues
+        listOf(
+            ActivitySlice("commits", commits.toFloat(), Color(0xFF2EA043)),
+            ActivitySlice("PRs", prs.toFloat(), Color(0xFF58A6FF)),
+            ActivitySlice("issues", issues.toFloat(), Color(0xFFD29922)),
+            ActivitySlice("reviews", reviews.toFloat(), Color(0xFFBC8CFF))
+        )
+    }
     val listState = rememberSaveable(username, saver = LazyListState.Saver) { LazyListState(0, 0) }
     val cachedSelf = GitHubManager.getCachedUser(context)?.login
 
@@ -221,69 +285,6 @@ fun ProfileScreen(
                             else items(fg, key = { it.login }) { entry -> FollowerRow(entry, onClick = { onProfile(entry.login) }); AiModuleHairline() }
                         }
                         4 -> {
-                            val topLanguages = remember(repos) {
-                                repos.filter { it.language.isNotBlank() }
-                                    .groupBy { it.language }
-                                    .mapValues { it.value.size }
-                                    .toList()
-                                    .sortedByDescending { it.second }
-                                    .take(5)
-                            }
-                            
-                            val starsCount = remember(repos) {
-                                repos.sumOf { it.stargazersCount }
-                            }
-                            
-                            val streakStats = remember(contributions) {
-                                var maxStreak = 0
-                                var currentStreak = 0
-                                var tempStreak = 0
-                                val sorted = contributions.sortedBy { it.date }
-                                sorted.forEach { day ->
-                                    if (day.level > 0) {
-                                        tempStreak++
-                                        if (tempStreak > maxStreak) maxStreak = tempStreak
-                                    } else {
-                                        tempStreak = 0
-                                    }
-                                }
-                                val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-                                val cal = java.util.Calendar.getInstance()
-                                cal.add(java.util.Calendar.DAY_OF_YEAR, -1)
-                                val yesterdayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
-                                val activeRecent = sorted.any { (it.date == todayStr || it.date == yesterdayStr) && it.level > 0 }
-                                if (activeRecent) {
-                                    var streakCount = 0
-                                    for (i in sorted.indices.reversed()) {
-                                        val day = sorted[i]
-                                        if (day.level > 0) {
-                                            streakCount++
-                                        } else {
-                                            if (day.date != todayStr) break
-                                        }
-                                    }
-                                    currentStreak = streakCount
-                                } else {
-                                    currentStreak = 0
-                                }
-                                val totalContribs = sorted.sumOf { it.level }
-                                StreakData(currentStreak, maxStreak, totalContribs)
-                            }
-
-                            val activityBreakdown = remember(p.login) {
-                                val hash = p.login.hashCode().absoluteValue
-                                val commits = 60 + (hash % 25)
-                                val prs = 10 + ((hash / 3) % 15)
-                                val issues = 5 + ((hash / 5) % 10)
-                                val reviews = 100 - commits - prs - issues
-                                listOf(
-                                    ActivitySlice("commits", commits.toFloat(), Color(0xFF2EA043)),
-                                    ActivitySlice("PRs", prs.toFloat(), Color(0xFF58A6FF)),
-                                    ActivitySlice("issues", issues.toFloat(), Color(0xFFD29922)),
-                                    ActivitySlice("reviews", reviews.toFloat(), Color(0xFFBC8CFF))
-                                )
-                            }
-                            
                             item {
                                 ProfileInsightsPanel(
                                     profile = p,
@@ -641,6 +642,38 @@ private fun ContributionGridPanel(days: List<GHContributionDay>) {
         
         Spacer(Modifier.height(8.dp))
         
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = selectedDay?.let { "${it.date} · level ${it.level} activity" } ?: "Tap a square to view details",
+                fontFamily = JetBrainsMono,
+                fontSize = 11.sp,
+                color = if (selectedDay != null) palette.textPrimary else palette.textMuted
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Less", fontSize = 10.sp, color = palette.textMuted, fontFamily = JetBrainsMono)
+                listOf(0, 1, 2, 3, 4).forEach { lvl ->
+                    val lvlColor = when (lvl) {
+                        1 -> Color(0xFF0e4429)
+                        2 -> Color(0xFF006d32)
+                        3 -> Color(0xFF26a641)
+                        4 -> Color(0xFF39d353)
+                        else -> palette.border.copy(alpha = 0.4f)
+                    }
+                    Box(
+                        Modifier
+                            .size(8.dp)
+                            .clip(RoundedCornerShape(1.dp))
+                            .background(lvlColor)
+                    )
+                }
+                Text("More", fontSize = 10.sp, color = palette.textMuted, fontFamily = JetBrainsMono)
+            }
         }
     }
 }
