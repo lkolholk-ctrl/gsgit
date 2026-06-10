@@ -364,7 +364,8 @@ object GitHubManager {
                     author = author?.optString("name") ?: "?",
                     date = author?.optString("date") ?: "",
                     avatarUrl = j.optJSONObject("author")?.optString("avatar_url") ?: "",
-                    parents = parentsList
+                    parents = parentsList,
+                    verified = commit.optJSONObject("verification")?.optBoolean("verified", false) ?: false
                 )
             }
         } catch (e: Exception) { return emptyList() }
@@ -395,7 +396,8 @@ object GitHubManager {
                     author = author?.optString("name") ?: "?",
                     date = author?.optString("date") ?: "",
                     avatarUrl = j.optJSONObject("author")?.optString("avatar_url") ?: "",
-                    parents = parentsList
+                    parents = parentsList,
+                    verified = commit.optJSONObject("verification")?.optBoolean("verified", false) ?: false
                 )
             }
         } catch (e: Exception) { emptyList() }
@@ -648,6 +650,45 @@ object GitHubManager {
                 put("message", message)
                 put("tree", newTree)
                 put("parents", JSONArray().put(latestSha))
+
+                if (gs.git.vps.security.PgpKeyManager.isPgpEnabled(context)) {
+                    val privKey = gs.git.vps.security.PgpKeyManager.getPrivateKey(context)
+                    val passphrase = gs.git.vps.security.PgpKeyManager.getPassphrase(context)
+                    if (privKey != null && passphrase != null) {
+                        val rawUser = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_USER, null)
+                        val (name, email) = if (rawUser != null) {
+                            val j = JSONObject(rawUser)
+                            val n = j.optString("name", "")
+                            val e = j.optString("email", "")
+                            Pair(n.ifBlank { j.optString("login", "GsGit") }, e.ifBlank { "${j.optString("login", "gsgit")}@users.noreply.github.com" })
+                        } else {
+                            Pair("GsGit", "gsgit@users.noreply.github.com")
+                        }
+
+                        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'")
+                        sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
+                        val dateStr = sdf.format(java.util.Date())
+
+                        val epochSec = java.util.Date().time / 1000
+                        val gitTime = "$epochSec +0000"
+
+                        val payload = "tree $newTree\nparent $latestSha\nauthor $name <$email> $gitTime\ncommitter $name <$email> $gitTime\n\n$message"
+                        val signature = gs.git.vps.security.PgpKeyManager.signPayload(payload, privKey, passphrase)
+                        if (signature != null) {
+                            put("signature", signature)
+                            put("author", JSONObject().apply {
+                                put("name", name)
+                                put("email", email)
+                                put("date", dateStr)
+                            })
+                            put("committer", JSONObject().apply {
+                                put("name", name)
+                                put("email", email)
+                                put("date", dateStr)
+                            })
+                        }
+                    }
+                }
             }.toString()
             val newCommitR = request(context, "/repos/$owner/$repo/git/commits", "POST", commitBody)
             if (!newCommitR.success) return@withContext ""
@@ -655,7 +696,10 @@ object GitHubManager {
 
             val refBody = JSONObject().apply { put("sha", newCommitSha) }.toString()
             val refUpdate = request(context, "/repos/$owner/$repo/git/refs/heads/$branch", "PATCH", refBody)
-            if (refUpdate.success) newCommitSha else ""
+            if (refUpdate.success) {
+                gs.git.vps.data.github.LocalTimeTravelManager.addReflogEntry(context, "$owner/$repo", "heads/$branch", latestSha, newCommitSha, "commit: $message")
+                newCommitSha
+            } else ""
         } catch (e: Exception) {
             Log.e(TAG, "Workspace commit: ${e.message}")
             ""
@@ -943,7 +987,57 @@ object GitHubManager {
         val body = JSONObject().apply {
             put("message", message)
             put("tree", treeSha.trim())
-            put("parents", JSONArray().apply { parentShas.filter { it.isNotBlank() }.forEach { put(it.trim()) } })
+            val parentsArray = JSONArray().apply { parentShas.filter { it.isNotBlank() }.forEach { put(it.trim()) } }
+            put("parents", parentsArray)
+
+            if (gs.git.vps.security.PgpKeyManager.isPgpEnabled(context)) {
+                val privKey = gs.git.vps.security.PgpKeyManager.getPrivateKey(context)
+                val passphrase = gs.git.vps.security.PgpKeyManager.getPassphrase(context)
+                if (privKey != null && passphrase != null) {
+                    val rawUser = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_USER, null)
+                    val (name, email) = if (rawUser != null) {
+                        val j = JSONObject(rawUser)
+                        val n = j.optString("name", "")
+                        val e = j.optString("email", "")
+                        Pair(n.ifBlank { j.optString("login", "GsGit") }, e.ifBlank { "${j.optString("login", "gsgit")}@users.noreply.github.com" })
+                    } else {
+                        Pair("GsGit", "gsgit@users.noreply.github.com")
+                    }
+
+                    val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'")
+                    sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
+                    val dateStr = sdf.format(java.util.Date())
+
+                    val epochSec = java.util.Date().time / 1000
+                    val gitTime = "$epochSec +0000"
+
+                    val payloadSb = StringBuilder()
+                    payloadSb.append("tree ").append(treeSha.trim()).append("\n")
+                    for (i in 0 until parentsArray.length()) {
+                        payloadSb.append("parent ").append(parentsArray.getString(i)).append("\n")
+                    }
+                    payloadSb.append("author ").append(name).append(" <").append(email).append("> ").append(gitTime).append("\n")
+                    payloadSb.append("committer ").append(name).append(" <").append(email).append("> ").append(gitTime).append("\n")
+                    payloadSb.append("\n")
+                    payloadSb.append(message)
+
+                    val payload = payloadSb.toString()
+                    val signature = gs.git.vps.security.PgpKeyManager.signPayload(payload, privKey, passphrase)
+                    if (signature != null) {
+                        put("signature", signature)
+                        put("author", JSONObject().apply {
+                            put("name", name)
+                            put("email", email)
+                            put("date", dateStr)
+                        })
+                        put("committer", JSONObject().apply {
+                            put("name", name)
+                            put("email", email)
+                            put("date", dateStr)
+                        })
+                    }
+                }
+            }
         }.toString()
         val r = request(context, "/repos/$owner/$repo/git/commits", "POST", body)
         if (!r.success) return null
@@ -970,12 +1064,22 @@ object GitHubManager {
     suspend fun updateGitRef(context: Context, owner: String, repo: String, ref: String, sha: String, force: Boolean = false): GHGitRef? {
         val cleanRef = ref.trim().removePrefix("refs/").trim('/')
         if (cleanRef.isBlank() || sha.isBlank()) return null
+        val oldRefR = request(context, "/repos/$owner/$repo/git/ref/$cleanRef")
+        val oldSha = if (oldRefR.success) {
+            try { JSONObject(oldRefR.body).getJSONObject("object").optString("sha", "") } catch (e: Exception) { "" }
+        } else ""
+
         val body = JSONObject().apply {
             put("sha", sha.trim())
             put("force", force)
         }.toString()
         val r = request(context, "/repos/$owner/$repo/git/refs/$cleanRef", "PATCH", body)
         if (!r.success) return null
+        
+        if (oldSha.isNotBlank() && oldSha != sha) {
+            gs.git.vps.data.github.LocalTimeTravelManager.addReflogEntry(context, "$owner/$repo", cleanRef, oldSha, sha.trim(), "update-ref: reset heads/$cleanRef to ${sha.take(7)}")
+        }
+
         return try { parseGitRef(JSONObject(r.body)) } catch (e: Exception) { null }
     }
 
@@ -7438,7 +7542,7 @@ data class GHAppInstallation(
     val suspendedBy: String
 )
 
-data class GHCommit(val sha: String, val message: String, val author: String, val date: String, val avatarUrl: String, val parents: List<String> = emptyList())
+data class GHCommit(val sha: String, val message: String, val author: String, val date: String, val avatarUrl: String, val parents: List<String> = emptyList(), val verified: Boolean = false)
 
 data class GHIssue(val number: Int, val title: String, val state: String, val author: String,
     val createdAt: String, val comments: Int, val isPR: Boolean)

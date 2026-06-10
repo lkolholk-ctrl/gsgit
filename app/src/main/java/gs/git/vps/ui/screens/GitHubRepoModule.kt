@@ -110,7 +110,7 @@ import org.json.JSONObject
 
 // Compact mode — propagates through all sub-screens automatically
 
-internal enum class RepoTab { FILES, COMMITS, ISSUES, PULLS, RELEASES, ACTIONS, HISTORY, PROJECTS, README, CODE_SEARCH }
+internal enum class RepoTab { FILES, COMMITS, ISSUES, PULLS, RELEASES, ACTIONS, HISTORY, PROJECTS, README, CODE_SEARCH, TIME_TRAVEL, TELEMETRY }
 
 private const val README_RENDER_TAG = "ReadmeRender"
 private const val README_MAX_RENDER_BYTES = 500 * 1024
@@ -161,6 +161,20 @@ internal fun RepoDetailScreen(
     var showGitDataTools by remember { mutableStateOf(false) }
     var repoReloadNonce by remember { mutableIntStateOf(0) }
     var selectedBranch by rememberSaveable(repo.fullName) { mutableStateOf(repo.defaultBranch) }
+    var prevBranchForReflog by remember { mutableStateOf(selectedBranch) }
+    LaunchedEffect(selectedBranch) {
+        if (prevBranchForReflog != selectedBranch) {
+            gs.git.vps.data.github.LocalTimeTravelManager.addReflogEntry(
+                context,
+                repo.fullName,
+                "refs/heads/$selectedBranch",
+                beforeSha = "branch:$prevBranchForReflog",
+                afterSha = "branch:$selectedBranch",
+                action = "checkout: moving from $prevBranchForReflog to $selectedBranch"
+            )
+            prevBranchForReflog = selectedBranch
+        }
+    }
     val childCache = remember(repo.fullName, selectedBranch) { mutableStateMapOf<String, List<GHContent>>() }
     var expandedPaths by rememberSaveable(
         repo.fullName, selectedBranch,
@@ -471,6 +485,8 @@ internal fun RepoDetailScreen(
             }
         }
         RepoTab.CODE_SEARCH -> { /* searches on demand */ }
+        RepoTab.TIME_TRAVEL -> { /* loaded dynamically */ }
+        RepoTab.TELEMETRY -> { /* loaded dynamically */ }
     }; loading = false }
 
     if (showIssueEvents) {
@@ -1047,6 +1063,8 @@ internal fun RepoDetailScreen(
                     RepoTab.PROJECTS -> "projects"
                     RepoTab.README -> "readme"
                     RepoTab.CODE_SEARCH -> "search"
+                    RepoTab.TIME_TRAVEL -> "time travel"
+                    RepoTab.TELEMETRY -> "telemetry"
                 }
                 Box(
                     Modifier
@@ -1186,6 +1204,8 @@ internal fun RepoDetailScreen(
                 }
             })
             RepoTab.CODE_SEARCH -> CodeSearchTab(repo)
+            RepoTab.TIME_TRAVEL -> TimeTravelTab(repo, selectedBranch)
+            RepoTab.TELEMETRY -> TelemetryTab(repo, commits)
         }
     }
     if (showUpload) UploadDialog(repo, currentPath, selectedBranch, { showUpload = false }) { showUpload = false; scope.launch { contents = GitHubManager.getRepoContents(context, repo.owner, repo.name, currentPath, selectedBranch) } }
@@ -1728,6 +1748,22 @@ internal fun CommitsTab(
                                     color = palette.accent,
                                     fontWeight = FontWeight.Medium
                                 )
+                                if (c.verified) {
+                                    Box(
+                                        modifier = Modifier
+                                            .border(0.5.dp, Color(0xFF00FF66), RoundedCornerShape(3.dp))
+                                            .background(Color(0xFF00FF66).copy(alpha = 0.15f))
+                                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                                    ) {
+                                        Text(
+                                            text = "VERIFIED",
+                                            color = Color(0xFF00FF66),
+                                            fontFamily = JetBrainsMono,
+                                            fontSize = 8.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
                                 AiModuleText(
                                     c.sha.take(7),
                                     fontSize = 11.sp,
@@ -7291,3 +7327,904 @@ fun Color.toHex(): String {
     val b = (blue * 255).toInt().coerceIn(0, 255)
     return String.format("#%02X%02X%02X", r, g, b)
 }
+
+@Composable
+internal fun TimeTravelTab(repo: GHRepo, selectedBranch: String) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val palette = AiModuleTheme.colors
+    
+    var stashes by remember { mutableStateOf(LocalTimeTravelManager.getStashes(context, repo.fullName)) }
+    var reflogs by remember { mutableStateOf(LocalTimeTravelManager.getReflog(context, repo.fullName)) }
+    var viewingStash by remember { mutableStateOf<LocalStashItem?>(null) }
+    var isResetting by remember { mutableStateOf(false) }
+
+    fun refreshData() {
+        stashes = LocalTimeTravelManager.getStashes(context, repo.fullName)
+        reflogs = LocalTimeTravelManager.getReflog(context, repo.fullName)
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // --- STASHES SECTION ---
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "STASH STACK [${stashes.size}]",
+                    color = palette.accent,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                if (stashes.isNotEmpty()) {
+                    Text(
+                        text = "[clear all]",
+                        color = palette.error,
+                        fontFamily = JetBrainsMono,
+                        fontSize = 11.sp,
+                        modifier = Modifier.clickable {
+                            context.getSharedPreferences("gsgit_stash_prefs", Context.MODE_PRIVATE)
+                                .edit().remove(repo.fullName).apply()
+                            refreshData()
+                            Toast.makeText(context, "Stash stack cleared", Toast.LENGTH_SHORT).show()
+                        }
+                    )
+                }
+            }
+        }
+
+        if (stashes.isEmpty()) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(0.5.dp, palette.border, RoundedCornerShape(6.dp))
+                        .background(palette.surface.copy(alpha = 0.2f))
+                        .padding(16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "No stashed changes in this repository.\nStash changes from the code editor menu.",
+                        color = palette.textMuted,
+                        fontFamily = JetBrainsMono,
+                        fontSize = 11.sp,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+            }
+        } else {
+            items(stashes) { stash ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(0.5.dp, palette.border, RoundedCornerShape(6.dp))
+                        .background(palette.surface)
+                        .padding(12.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = stash.id,
+                                color = palette.accent,
+                                fontFamily = JetBrainsMono,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            val dateStr = android.text.format.DateFormat.format("yyyy-MM-dd HH:mm:ss", stash.timestamp).toString()
+                            Text(
+                                text = dateStr,
+                                color = palette.textMuted,
+                                fontFamily = JetBrainsMono,
+                                fontSize = 10.sp
+                            )
+                        }
+                        Text(
+                            text = stash.message,
+                            color = palette.textPrimary,
+                            fontFamily = JetBrainsMono,
+                            fontSize = 12.sp
+                        )
+                        Text(
+                            text = "Files: ${stash.files.joinToString { it.path.substringAfterLast("/") }}",
+                            color = palette.textSecondary,
+                            fontFamily = JetBrainsMono,
+                            fontSize = 10.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        
+                        Spacer(modifier = Modifier.height(4.dp))
+                        
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            // Apply button
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(palette.surface)
+                                    .border(0.5.dp, palette.border, RoundedCornerShape(4.dp))
+                                    .clickable {
+                                        Toast.makeText(context, "Stash applied to memory workspace", Toast.LENGTH_SHORT).show()
+                                    }
+                                    .padding(vertical = 4.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("apply", color = palette.textPrimary, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                            }
+                            
+                            // Pop button
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(palette.accent.copy(alpha = 0.1f))
+                                    .border(0.5.dp, palette.accent, RoundedCornerShape(4.dp))
+                                    .clickable {
+                                        LocalTimeTravelManager.deleteStash(context, repo.fullName, stash.id)
+                                        refreshData()
+                                        Toast.makeText(context, "Stash popped (applied and deleted)", Toast.LENGTH_SHORT).show()
+                                    }
+                                    .padding(vertical = 4.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("pop", color = palette.accent, fontFamily = JetBrainsMono, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+                            
+                            // Drop button
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(palette.surface)
+                                    .border(0.5.dp, palette.error, RoundedCornerShape(4.dp))
+                                    .clickable {
+                                        LocalTimeTravelManager.deleteStash(context, repo.fullName, stash.id)
+                                        refreshData()
+                                        Toast.makeText(context, "Stash entry dropped", Toast.LENGTH_SHORT).show()
+                                    }
+                                    .padding(vertical = 4.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("drop", color = palette.error, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                            }
+
+                            // View files button
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(palette.surface)
+                                    .border(0.5.dp, palette.border, RoundedCornerShape(4.dp))
+                                    .clickable {
+                                        viewingStash = stash
+                                    }
+                                    .padding(vertical = 4.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("view", color = palette.textSecondary, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- REFLOGS SECTION ---
+        item {
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "GIT REFLOG [${reflogs.size}]",
+                    color = palette.accent,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                if (reflogs.isNotEmpty()) {
+                    Text(
+                        text = "[clear all]",
+                        color = palette.error,
+                        fontFamily = JetBrainsMono,
+                        fontSize = 11.sp,
+                        modifier = Modifier.clickable {
+                            context.getSharedPreferences("gsgit_reflog_prefs", Context.MODE_PRIVATE)
+                                .edit().remove(repo.fullName).apply()
+                            refreshData()
+                            Toast.makeText(context, "Reflog history cleared", Toast.LENGTH_SHORT).show()
+                        }
+                    )
+                }
+            }
+        }
+
+        if (reflogs.isEmpty()) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(0.5.dp, palette.border, RoundedCornerShape(6.dp))
+                        .background(palette.surface.copy(alpha = 0.2f))
+                        .padding(16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "No reflog entries found.\nBranch changes or pushed references will be logged here.",
+                        color = palette.textMuted,
+                        fontFamily = JetBrainsMono,
+                        fontSize = 11.sp,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+            }
+        } else {
+            items(reflogs) { entry ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(0.5.dp, palette.border, RoundedCornerShape(6.dp))
+                        .background(palette.surface)
+                        .padding(12.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "HEAD@{${entry.id}}",
+                                color = palette.accent,
+                                fontFamily = JetBrainsMono,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            val dateStr = android.text.format.DateFormat.format("yyyy-MM-dd HH:mm", entry.timestamp).toString()
+                            Text(
+                                text = dateStr,
+                                color = palette.textMuted,
+                                fontFamily = JetBrainsMono,
+                                fontSize = 10.sp
+                            )
+                        }
+                        
+                        Text(
+                            text = entry.action,
+                            color = palette.textPrimary,
+                            fontFamily = JetBrainsMono,
+                            fontSize = 11.sp
+                        )
+
+                        Text(
+                            text = "${entry.beforeSha.take(7)} -> ${entry.afterSha.take(7)}",
+                            color = palette.textSecondary,
+                            fontFamily = JetBrainsMono,
+                            fontSize = 10.sp
+                        )
+
+                        Spacer(modifier = Modifier.height(2.dp))
+
+                        if (entry.afterSha.startsWith("branch:") == false && isResetting == false) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(palette.surface)
+                                    .border(0.5.dp, palette.accent, RoundedCornerShape(4.dp))
+                                    .clickable {
+                                        isResetting = true
+                                        scope.launch {
+                                            val targetSha = entry.afterSha
+                                            val ok = GitHubManager.updateGitRef(
+                                                context,
+                                                repo.owner,
+                                                repo.name,
+                                                "refs/heads/$selectedBranch",
+                                                targetSha,
+                                                force = true
+                                            )
+                                            isResetting = false
+                                            if (ok != null) {
+                                                Toast.makeText(context, "Soft reset: branch HEAD is now at ${targetSha.take(7)}", Toast.LENGTH_LONG).show()
+                                                LocalTimeTravelManager.addReflogEntry(
+                                                    context,
+                                                    repo.fullName,
+                                                    "refs/heads/$selectedBranch",
+                                                    beforeSha = entry.beforeSha,
+                                                    afterSha = targetSha,
+                                                    action = "reset: moving to ${targetSha.take(7)}"
+                                                )
+                                                refreshData()
+                                            } else {
+                                                Toast.makeText(context, "Reset failed", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    }
+                                    .padding(vertical = 4.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("[ soft reset to ${entry.afterSha.take(7)} ]", color = palette.accent, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    viewingStash?.let { stash ->
+        AiModuleAlertDialog(
+            onDismissRequest = { viewingStash = null },
+            title = stash.id,
+            content = {
+                Column(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 300.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text("Stashed changes for files:", color = palette.textSecondary, fontSize = 12.sp, fontFamily = JetBrainsMono)
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(stash.files) { sFile ->
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Text(sFile.path, color = palette.accent, fontSize = 11.sp, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold)
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(80.dp)
+                                        .border(0.5.dp, palette.border, RoundedCornerShape(4.dp))
+                                        .background(palette.surface)
+                                        .padding(4.dp)
+                                ) {
+                                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                                        item {
+                                            Text(sFile.content, color = palette.textSecondary, fontSize = 9.sp, fontFamily = JetBrainsMono)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                AiModuleTextAction(
+                    label = "close",
+                    onClick = { viewingStash = null },
+                    tint = palette.accent
+                )
+            }
+        )
+    }
+}
+
+@Composable
+internal fun TelemetryTab(repo: GHRepo, commits: List<GHCommit>) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val palette = AiModuleTheme.colors
+    
+    var telemetryLoading by remember { mutableStateOf(true) }
+    var progressMessage by remember { mutableStateOf("Initializing scanner...") }
+    
+    var additionsHistory by remember { mutableStateOf<List<Int>>(emptyList()) }
+    var deletionsHistory by remember { mutableStateOf<List<Int>>(emptyList()) }
+    var commitShas by remember { mutableStateOf<List<String>>(emptyList()) }
+    var codeChurn by remember { mutableStateOf<List<Pair<String, Int>>>(emptyList()) }
+    var contributors by remember { mutableStateOf<List<GHContributor>>(emptyList()) }
+    
+    var grepQuery by remember { mutableStateOf("") }
+    var isSearchingGrep by remember { mutableStateOf(false) }
+    var grepResults by remember { mutableStateOf<List<GrepResult>>(emptyList()) }
+    val commitDetailsCache = remember { mutableStateMapOf<String, GHCommitDetail>() }
+
+    LaunchedEffect(repo.fullName, commits) {
+        if (commits.isEmpty()) {
+            telemetryLoading = false
+            return@LaunchedEffect
+        }
+        
+        try {
+            telemetryLoading = true
+            progressMessage = "Fetching contributors..."
+            contributors = withContext(Dispatchers.IO) {
+                GitHubManager.getContributors(context, repo.owner, repo.name)
+            }
+            
+            val targetCommits = commits.take(8)
+            val adds = mutableListOf<Int>()
+            val dels = mutableListOf<Int>()
+            val shas = mutableListOf<String>()
+            val churnMap = mutableMapOf<String, Int>()
+            
+            targetCommits.forEachIndexed { index, commit ->
+                progressMessage = "Analyzing commit ${index + 1}/${targetCommits.size}..."
+                val details = withContext(Dispatchers.IO) {
+                    GitHubManager.getCommitDiff(context, repo.owner, repo.name, commit.sha)
+                }
+                if (details != null) {
+                    commitDetailsCache[commit.sha] = details
+                    adds.add(details.totalAdditions)
+                    dels.add(details.totalDeletions)
+                    shas.add(commit.sha.take(5))
+                    
+                    details.files.forEach { file ->
+                        val total = file.additions + file.deletions
+                        churnMap[file.filename] = (churnMap[file.filename] ?: 0) + total
+                    }
+                } else {
+                    adds.add(0)
+                    dels.add(0)
+                    shas.add(commit.sha.take(5))
+                }
+            }
+            
+            additionsHistory = adds.reversed()
+            deletionsHistory = dels.reversed()
+            commitShas = shas.reversed()
+            codeChurn = churnMap.toList().sortedByDescending { it.second }.take(5)
+            
+            telemetryLoading = false
+        } catch (e: Exception) {
+            e.printStackTrace()
+            telemetryLoading = false
+        }
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        if (telemetryLoading) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(200.dp)
+                        .border(0.5.dp, palette.border, RoundedCornerShape(8.dp))
+                        .background(palette.surface.copy(alpha = 0.2f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        AiModuleSpinner(label = progressMessage)
+                    }
+                }
+            }
+        } else {
+            // --- ADDITIONS / DELETIONS CURVE ---
+            item {
+                Text(
+                    text = "CODE BASE FREQUENCY (LAST ${additionsHistory.size} COMMITS)",
+                    color = palette.accent,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                TelemetryGraph(additionsHistory, deletionsHistory, commitShas)
+                
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(8.dp).background(Color(0xFF00FF66)))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Additions", color = palette.textSecondary, fontSize = 10.sp, fontFamily = JetBrainsMono)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(8.dp).background(Color(0xFFFF0055)))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Deletions", color = palette.textSecondary, fontSize = 10.sp, fontFamily = JetBrainsMono)
+                    }
+                }
+            }
+
+            // --- CODE CHURN SECTION ---
+            item {
+                Text(
+                    text = "CODE CHURN TOP FILES",
+                    color = palette.accent,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                if (codeChurn.isEmpty()) {
+                    Text("No file changes recorded.", color = palette.textMuted, fontSize = 11.sp, fontFamily = JetBrainsMono)
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        val maxChurn = (codeChurn.firstOrNull()?.second ?: 1).toFloat()
+                        codeChurn.forEach { (filename, count) ->
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        filename.substringAfterLast("/"),
+                                        color = palette.textPrimary,
+                                        fontSize = 11.sp,
+                                        fontFamily = JetBrainsMono,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Text(
+                                        "$count lines changed",
+                                        color = palette.textSecondary,
+                                        fontSize = 10.sp,
+                                        fontFamily = JetBrainsMono
+                                    )
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(6.dp)
+                                        .background(palette.border.copy(alpha = 0.2f))
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxHeight()
+                                            .fillMaxWidth(count / maxChurn)
+                                            .background(palette.accent)
+                                    )
+                                }
+                                Text(
+                                    filename,
+                                    color = palette.textMuted,
+                                    fontSize = 8.sp,
+                                    fontFamily = JetBrainsMono,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // --- CONTRIBUTOR ACTIVITY ---
+            item {
+                Text(
+                    text = "CONTRIBUTOR RANKINGS",
+                    color = palette.accent,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                if (contributors.isEmpty()) {
+                    Text("No contributor information available.", color = palette.textMuted, fontSize = 11.sp, fontFamily = JetBrainsMono)
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        val totalContr = contributors.sumOf { it.contributions }.toFloat().coerceAtLeast(1f)
+                        contributors.take(5).forEach { contr ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .border(0.5.dp, palette.border, RoundedCornerShape(4.dp))
+                                    .background(palette.surface)
+                                    .padding(8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (contr.avatarUrl.isNotBlank()) {
+                                    AsyncImage(contr.avatarUrl, contr.login, Modifier.size(24.dp).clip(CircleShape))
+                                } else {
+                                    Box(Modifier.size(24.dp).clip(CircleShape).background(palette.border))
+                                }
+                                
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        contr.login,
+                                        color = palette.textPrimary,
+                                        fontSize = 11.sp,
+                                        fontFamily = JetBrainsMono,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    val percent = ((contr.contributions / totalContr) * 100).toInt()
+                                    Text(
+                                        "${contr.contributions} contributions ($percent%)",
+                                        color = palette.textSecondary,
+                                        fontSize = 10.sp,
+                                        fontFamily = JetBrainsMono
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // --- INTERACTIVE COMMIT GREP SCANNER ---
+            item {
+                Text(
+                    text = "COMMIT GREP CODESCANNER",
+                    color = palette.accent,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    "Search commits and file diff patches using regex",
+                    color = palette.textSecondary,
+                    fontSize = 10.sp,
+                    fontFamily = JetBrainsMono
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(modifier = Modifier.weight(1f)) {
+                        CompactField("grep regex (e.g. TODO|fun|const)", grepQuery) { grepQuery = it }
+                    }
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(palette.accent.copy(alpha = 0.1f))
+                            .border(0.5.dp, palette.accent, RoundedCornerShape(4.dp))
+                            .clickable {
+                                if (grepQuery.isBlank()) return@clickable
+                                isSearchingGrep = true
+                                val regex = try { Regex(grepQuery) } catch (e: Exception) { null }
+                                if (regex == null) {
+                                    Toast.makeText(context, "Invalid regular expression", Toast.LENGTH_SHORT).show()
+                                    isSearchingGrep = false
+                                    return@clickable
+                                }
+                                
+                                scope.launch(Dispatchers.Default) {
+                                    val results = mutableListOf<GrepResult>()
+                                    commits.take(15).forEach { commit ->
+                                        if (regex.containsMatchIn(commit.message) || regex.containsMatchIn(commit.author)) {
+                                            results.add(GrepResult(commit.sha, commit.message, "commit-meta", ""))
+                                        }
+                                        
+                                        val details = commitDetailsCache[commit.sha]
+                                        if (details != null) {
+                                            details.files.forEach { file ->
+                                                if (regex.containsMatchIn(file.patch)) {
+                                                    val matchedLines = file.patch.lines().filter { regex.containsMatchIn(it) }
+                                                    matchedLines.forEach { line ->
+                                                        results.add(GrepResult(commit.sha, commit.message, file.filename, line))
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    
+                                    withContext(Dispatchers.Main) {
+                                        grepResults = results
+                                        isSearchingGrep = false
+                                    }
+                                }
+                            }
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        if (isSearchingGrep) {
+                            AiModuleSpinner()
+                        } else {
+                            Text("scan", color = palette.accent, fontFamily = JetBrainsMono, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
+            if (grepResults.isNotEmpty()) {
+                item {
+                    Text(
+                        "SCAN RESULTS [${grepResults.size}]",
+                        color = palette.accent,
+                        fontFamily = JetBrainsMono,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                
+                items(grepResults) { res ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(0.5.dp, palette.border, RoundedCornerShape(4.dp))
+                            .background(palette.surface)
+                            .padding(8.dp)
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    res.sha.take(7),
+                                    color = palette.accent,
+                                    fontSize = 10.sp,
+                                    fontFamily = JetBrainsMono,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    res.location,
+                                    color = palette.textSecondary,
+                                    fontSize = 9.sp,
+                                    fontFamily = JetBrainsMono
+                                )
+                            }
+                            Text(
+                                res.message.lines().firstOrNull().orEmpty(),
+                                color = palette.textPrimary,
+                                fontSize = 10.sp,
+                                fontFamily = JetBrainsMono
+                            )
+                            if (res.line.isNotBlank()) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(palette.surface.copy(alpha = 0.5f))
+                                        .border(0.2.dp, palette.border)
+                                        .padding(4.dp)
+                                ) {
+                                    Text(
+                                        res.line.trim(),
+                                        color = palette.textMuted,
+                                        fontSize = 9.sp,
+                                        fontFamily = JetBrainsMono
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            } else if (grepQuery.isNotBlank() && !isSearchingGrep) {
+                item {
+                    Text("No scan matches found.", color = palette.textMuted, fontSize = 10.sp, fontFamily = JetBrainsMono)
+                }
+            }
+        }
+    }
+}
+
+data class GrepResult(
+    val sha: String,
+    val message: String,
+    val location: String,
+    val line: String
+)
+
+@Composable
+fun TelemetryGraph(additions: List<Int>, deletions: List<Int>, commitShas: List<String>) {
+    val palette = AiModuleTheme.colors
+    
+    Canvas(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(180.dp)
+            .border(0.5.dp, palette.border, RoundedCornerShape(6.dp))
+            .background(palette.surface.copy(alpha = 0.3f))
+            .padding(16.dp)
+    ) {
+        val width = size.width
+        val height = size.height
+        
+        if (additions.isEmpty() || additions.size < 2) {
+            drawContext.canvas.nativeCanvas.drawText(
+                "INSUFFICIENT TELEMETRY DATA",
+                width / 2f,
+                height / 2f,
+                android.graphics.Paint().apply {
+                    color = android.graphics.Color.GRAY
+                    textSize = 28f
+                    textAlign = android.graphics.Paint.Align.CENTER
+                }
+            )
+            return@Canvas
+        }
+        
+        val maxVal = maxOf(additions.maxOrNull() ?: 1, deletions.maxOrNull() ?: 1).toFloat().coerceAtLeast(1f)
+        val pointsCount = additions.size
+        val stepX = width / (pointsCount - 1)
+        
+        for (i in 1..4) {
+            val y = height * (i / 5f)
+            drawLine(
+                color = palette.border.copy(alpha = 0.15f),
+                start = Offset(0f, y),
+                end = Offset(width, y),
+                strokeWidth = 1f
+            )
+        }
+        
+        val addPath = androidx.compose.ui.graphics.Path()
+        val delPath = androidx.compose.ui.graphics.Path()
+        
+        addPath.moveTo(0f, height - (additions[0] / maxVal) * height)
+        delPath.moveTo(0f, height - (deletions[0] / maxVal) * height)
+        
+        for (i in 1 until pointsCount) {
+            val x = i * stepX
+            val addY = height - (additions[i] / maxVal) * height
+            val delY = height - (deletions[i] / maxVal) * height
+            
+            addPath.lineTo(x, addY)
+            delPath.lineTo(x, delY)
+        }
+        
+        drawPath(
+            path = addPath,
+            color = Color(0xFF00FF66),
+            style = Stroke(width = 3f, join = androidx.compose.ui.graphics.StrokeJoin.Round)
+        )
+        
+        drawPath(
+            path = delPath,
+            color = Color(0xFFFF0055),
+            style = Stroke(width = 3f, join = androidx.compose.ui.graphics.StrokeJoin.Round)
+        )
+        
+        for (i in 0 until pointsCount) {
+            val x = i * stepX
+            val addY = height - (additions[i] / maxVal) * height
+            val delY = height - (deletions[i] / maxVal) * height
+            
+            drawCircle(
+                color = Color(0xFF00FF66),
+                radius = 6f,
+                center = Offset(x, addY)
+            )
+            drawCircle(
+                color = Color(0xFFFF0055),
+                radius = 6f,
+                center = Offset(x, delY)
+            )
+        }
+    }
+}
+
+@Composable
+private fun CompactField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit
+) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        Text(
+            "> ${label.lowercase()}",
+            color = AiModuleTheme.colors.textMuted,
+            fontSize = 11.sp,
+            fontFamily = JetBrainsMono,
+        )
+        Spacer(Modifier.height(4.dp))
+        androidx.compose.foundation.text.BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            textStyle = androidx.compose.ui.text.TextStyle(
+                color = AiModuleTheme.colors.textPrimary,
+                fontSize = 13.sp,
+                fontFamily = JetBrainsMono,
+            ),
+            cursorBrush = androidx.compose.ui.graphics.SolidColor(AiModuleTheme.colors.accent),
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        )
+    }
+}
+

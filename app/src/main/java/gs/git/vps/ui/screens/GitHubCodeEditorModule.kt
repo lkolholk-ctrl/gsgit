@@ -159,6 +159,7 @@ fun CodeEditorScreen(
     val tabs = remember { mutableStateListOf<EditorTab>() }
     var activeTabIndex by remember { mutableStateOf(0) }
     var showFilePicker by remember { mutableStateOf(false) }
+    var showStashDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(file.path, branch, initialContent) {
         if (tabs.isEmpty()) {
@@ -643,6 +644,69 @@ fun CodeEditorScreen(
         )
     }
 
+    if (showStashDialog) {
+        var msgInput by remember { mutableStateOf("On $branch: wip stashed changes") }
+        AiModuleAlertDialog(
+            onDismissRequest = { showStashDialog = false },
+            title = "stash changes",
+            content = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Enter a message for this stash entry:", color = TextSecondary, fontSize = 13.sp, fontFamily = JetBrainsMono)
+                    CompactField("stash message", msgInput) { msgInput = it }
+                }
+            },
+            confirmButton = {
+                AiModuleTextAction(
+                    label = "stash",
+                    onClick = {
+                        showStashDialog = false
+                        if (tabs.indices.contains(activeTabIndex)) {
+                            tabs[activeTabIndex] = tabs[activeTabIndex].copy(
+                                textState = textState,
+                                savedContent = savedContent,
+                                savedSha = savedSha,
+                                mode = mode,
+                                undoStack = undoStack.toList(),
+                                redoStack = redoStack.toList()
+                            )
+                        }
+                        
+                        val modified = tabs.filter { it.textState.text != it.savedContent }
+                        if (modified.isEmpty()) {
+                            Toast.makeText(context, "No changes to stash", Toast.LENGTH_SHORT).show()
+                            return@AiModuleTextAction
+                        }
+                        
+                        val stashFiles = modified.map { gs.git.vps.data.github.StashFile(it.file.path, it.textState.text) }
+                        gs.git.vps.data.github.LocalTimeTravelManager.addStash(context, "$repoOwner/$repoName", msgInput, stashFiles)
+                        
+                        modified.forEach { mTab ->
+                            val idx = tabs.indexOfFirst { it.file.path == mTab.file.path }
+                            if (idx != -1) {
+                                tabs[idx] = tabs[idx].copy(savedContent = tabs[idx].textState.text)
+                            }
+                        }
+                        
+                        val activeTab = tabs.getOrNull(activeTabIndex)
+                        if (activeTab != null && modified.any { it.file.path == activeTab.file.path }) {
+                            savedContent = activeTab.textState.text
+                        }
+                        
+                        Toast.makeText(context, "Stashed ${stashFiles.size} file(s)", Toast.LENGTH_SHORT).show()
+                    },
+                    tint = palette.accent
+                )
+            },
+            dismissButton = {
+                AiModuleTextAction(
+                    label = "cancel",
+                    onClick = { showStashDialog = false },
+                    tint = palette.textSecondary
+                )
+            }
+        )
+    }
+
     if (showFilePicker) {
         FilePickerDialog(
             repoOwner = repoOwner,
@@ -919,6 +983,7 @@ fun CodeEditorScreen(
                     showMoreMenu = false
                 },
                 onFormat = { formatCodeDocument(); showMoreMenu = false },
+                onStash = { showStashDialog = true; showMoreMenu = false },
                 onDismiss = { showMoreMenu = false }
             )
         }
@@ -1706,6 +1771,7 @@ private fun EditorMoreMenu(
     onOutline: () -> Unit,
     onCopy: () -> Unit,
     onFormat: () -> Unit,
+    onStash: () -> Unit,
     onDismiss: () -> Unit
 ) {
     Box(
@@ -2014,6 +2080,26 @@ private fun EditorMoreMenu(
                         fontWeight = FontWeight.Medium
                     )
                 }
+            }
+            Box(Modifier.fillMaxWidth().height(1.dp).background(palette.border))
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(GitHubControlRadius))
+                    .background(palette.surface)
+                    .border(0.5.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
+                    .clickable { onStash() }
+                    .padding(vertical = 8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "[ stash unsaved changes ]",
+                    color = palette.accent,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
     }

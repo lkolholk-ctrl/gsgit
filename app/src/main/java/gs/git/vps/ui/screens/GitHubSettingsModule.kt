@@ -178,6 +178,20 @@ internal fun GitHubSettingsScreen(
     var keyTitle by remember { mutableStateOf("") }
     var keyValue by remember { mutableStateOf("") }
 
+    var localPgpUser by remember { mutableStateOf("") }
+    var localPgpPass by remember { mutableStateOf("") }
+    var localPgpPublicKey by remember { mutableStateOf(gs.git.vps.security.PgpKeyManager.getPublicKey(context)) }
+    var localPgpUserId by remember { mutableStateOf(gs.git.vps.security.PgpKeyManager.getUserId(context)) }
+    var pgpSigningEnabled by remember { mutableStateOf(gs.git.vps.security.PgpKeyManager.isPgpEnabled(context)) }
+
+    LaunchedEffect(user) {
+        if (localPgpUser.isBlank() && user != null) {
+            val email = user?.email.orEmpty()
+            val name = user?.name?.ifBlank { user?.login }.orEmpty().ifBlank { user?.login.orEmpty() }
+            localPgpUser = if (email.isNotBlank()) "$name <$email>" else name
+        }
+    }
+
     var socialAccounts by remember { mutableStateOf<List<GHSocialAccountEntry>>(emptyList()) }
     var newSocialUrl by remember { mutableStateOf("") }
 
@@ -451,6 +465,200 @@ internal fun GitHubSettingsScreen(
                         }
                         SettingsSection.KEYS -> SectionCard("Keys") {
                             KeyModeRow(keyMode) { keyMode = it }
+                            if (keyMode == KeyMode.GPG) {
+                                val palette = AiModuleTheme.colors
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 8.dp)
+                                        .border(0.5.dp, palette.border, RoundedCornerShape(8.dp))
+                                        .background(palette.surface.copy(alpha = 0.5f))
+                                        .padding(12.dp)
+                                ) {
+                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text(
+                                            "[ LOCAL PGP KEYRING ]",
+                                            color = palette.accent,
+                                            fontFamily = JetBrainsMono,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text(
+                                                "Sign commits via PGP",
+                                                color = palette.textPrimary,
+                                                fontFamily = JetBrainsMono,
+                                                fontSize = 12.sp
+                                            )
+                                            androidx.compose.material3.Switch(
+                                                checked = pgpSigningEnabled,
+                                                onCheckedChange = {
+                                                    pgpSigningEnabled = it
+                                                    gs.git.vps.security.PgpKeyManager.setPgpEnabled(context, it)
+                                                    addLog("PGP Signing ${if (it) "enabled" else "disabled"}")
+                                                },
+                                                colors = androidx.compose.material3.SwitchDefaults.colors(
+                                                    checkedThumbColor = palette.accent,
+                                                    checkedTrackColor = palette.accent.copy(alpha = 0.3f),
+                                                    uncheckedThumbColor = palette.textSecondary,
+                                                    uncheckedTrackColor = palette.border
+                                                )
+                                            )
+                                        }
+
+                                        if (localPgpPublicKey.isNullOrBlank()) {
+                                            Text(
+                                                "No local PGP keypair found. Generate one to sign commits on push.",
+                                                color = palette.textSecondary,
+                                                fontFamily = JetBrainsMono,
+                                                fontSize = 11.sp
+                                            )
+                                            CompactField("User ID (Name <email>)", localPgpUser) { localPgpUser = it }
+                                            CompactField("Passphrase", localPgpPass) { localPgpPass = it }
+
+                                            ActionRow(Icons.Rounded.Key, "Generate PGP Keypair") {
+                                                if (localPgpUser.isBlank()) {
+                                                    Toast.makeText(context, "User ID is required", Toast.LENGTH_SHORT).show()
+                                                    return@ActionRow
+                                                }
+                                                scope.launch {
+                                                    loading = true
+                                                    val success = withContext(kotlinx.coroutines.Dispatchers.Default) {
+                                                        gs.git.vps.security.PgpKeyManager.generateKeyPair(
+                                                            context,
+                                                            localPgpUser,
+                                                            localPgpPass
+                                                        )
+                                                    }
+                                                    loading = false
+                                                    if (success) {
+                                                        localPgpPublicKey = gs.git.vps.security.PgpKeyManager.getPublicKey(context)
+                                                        localPgpUserId = gs.git.vps.security.PgpKeyManager.getUserId(context)
+                                                        pgpSigningEnabled = true
+                                                        gs.git.vps.security.PgpKeyManager.setPgpEnabled(context, true)
+                                                        Toast.makeText(context, "Keypair generated successfully!", Toast.LENGTH_SHORT).show()
+                                                        addLog("Generated PGP Keypair: $localPgpUserId")
+                                                    } else {
+                                                        Toast.makeText(context, "Failed to generate keypair", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                }
+                                            }
+                                        } else {
+                                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                Text(
+                                                    "User ID: $localPgpUserId",
+                                                    color = palette.textPrimary,
+                                                    fontFamily = JetBrainsMono,
+                                                    fontSize = 11.sp
+                                                )
+
+                                                Box(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .height(100.dp)
+                                                        .border(0.5.dp, palette.border, RoundedCornerShape(4.dp))
+                                                        .background(palette.surface)
+                                                        .padding(6.dp)
+                                                ) {
+                                                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                                                        item {
+                                                            Text(
+                                                                localPgpPublicKey.orEmpty(),
+                                                                color = palette.textSecondary,
+                                                                fontFamily = JetBrainsMono,
+                                                                fontSize = 9.sp,
+                                                                lineHeight = 12.sp
+                                                            )
+                                                        }
+                                                    }
+                                                }
+
+                                                Row(
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                                                ) {
+                                                    // Copy button
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .weight(1f)
+                                                            .clip(RoundedCornerShape(4.dp))
+                                                            .background(palette.surface)
+                                                            .border(0.5.dp, palette.border, RoundedCornerShape(4.dp))
+                                                            .clickable {
+                                                                val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                                                cm.setPrimaryClip(android.content.ClipData.newPlainText("pgp_pubkey", localPgpPublicKey))
+                                                                Toast.makeText(context, "Copied public key", Toast.LENGTH_SHORT).show()
+                                                            }
+                                                            .padding(vertical = 6.dp),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Text("copy", color = palette.accent, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                                                    }
+
+                                                    // Upload to GitHub
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .weight(1.5f)
+                                                            .clip(RoundedCornerShape(4.dp))
+                                                            .background(palette.accent.copy(alpha = 0.1f))
+                                                            .border(0.5.dp, palette.accent, RoundedCornerShape(4.dp))
+                                                            .clickable {
+                                                                scope.launch {
+                                                                    loading = true
+                                                                    val ok = GitHubManager.addGpgKeyNative(context, localPgpPublicKey.orEmpty())
+                                                                    loading = false
+                                                                    Toast.makeText(context, if (ok) "Uploaded to GitHub!" else "Upload failed", Toast.LENGTH_SHORT).show()
+                                                                    if (ok) {
+                                                                        refreshSection(SettingsSection.KEYS)
+                                                                    }
+                                                                }
+                                                            }
+                                                            .padding(vertical = 6.dp),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Text("upload to github", color = palette.accent, fontFamily = JetBrainsMono, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                                    }
+
+                                                    // Delete button
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .weight(1f)
+                                                            .clip(RoundedCornerShape(4.dp))
+                                                            .background(palette.surface)
+                                                            .border(0.5.dp, palette.error, RoundedCornerShape(4.dp))
+                                                            .clickable {
+                                                                confirmAction(
+                                                                    title = "delete local PGP",
+                                                                    body = "Delete local PGP keys? You will no longer be able to sign commits with this key.",
+                                                                    confirmLabel = "delete",
+                                                                    danger = true
+                                                                ) {
+                                                                    gs.git.vps.security.PgpKeyManager.deleteKeys(context)
+                                                                    gs.git.vps.security.PgpKeyManager.setPgpEnabled(context, false)
+                                                                    localPgpPublicKey = null
+                                                                    localPgpUserId = null
+                                                                    pgpSigningEnabled = false
+                                                                    localPgpPass = ""
+                                                                    addLog("Deleted local PGP keypair")
+                                                                    Toast.makeText(context, "Deleted local PGP keys", Toast.LENGTH_SHORT).show()
+                                                                }
+                                                            }
+                                                            .padding(vertical = 6.dp),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Text("delete", color = palette.error, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                             CompactField("Filter keys", keyQuery) { keyQuery = it }
                             SettingsCountLine("showing ${visibleKeys.size} / ${currentKeys.size}")
                             CompactField(if (keyMode == KeyMode.GPG) "Name" else "Title", keyTitle) { keyTitle = it }
