@@ -40,6 +40,7 @@ import gs.git.vps.data.github.GHWorkflow
 import gs.git.vps.data.github.GHWorkflowPermissions
 import gs.git.vps.data.github.GHWorkflowRun
 import gs.git.vps.data.github.GitHubManager
+import gs.git.vps.data.github.KernelErrorPatterns
 import gs.git.vps.data.github.canWrite
 import gs.git.vps.ui.components.AiModuleSpinner
 import gs.git.vps.ui.components.AiModuleText as Text

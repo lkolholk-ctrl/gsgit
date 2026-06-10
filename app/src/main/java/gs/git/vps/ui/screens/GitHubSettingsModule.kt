@@ -68,11 +68,11 @@ import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Fingerprint
 import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material.icons.rounded.Security
+import android.content.Context
 import gs.git.vps.security.BackupManager
 import gs.git.vps.security.BiometricHelper
 import java.io.File
 import gs.git.vps.ui.screens.ToggleRow
-import gs.git.vps.ui.screens.TerminalToggleIndicator
 
 import gs.git.vps.ui.theme.AiModuleTheme
 import gs.git.vps.ui.theme.JetBrainsMono
@@ -1821,11 +1821,21 @@ private fun clearCache(context: Context) {
     } catch (_: Exception) {}
 }
 
-private fun ghFmtSize(bytes: Long): String = when {
-    bytes <= 0L -> "0 B"
-    bytes < 1024L -> "$bytes B"
-    bytes < 1024L * 1024L -> "${bytes / 1024L} KB"
-    bytes < 1024L * 1024L * 1024L -> String.format(java.util.Locale.US, "%.2f MB", bytes.toDouble() / (1024L * 1024L))
-    else -> String.format(java.util.Locale.US, "%.2f GB", bytes.toDouble() / (1024L * 1024L * 1024L))
+@Composable
+private fun TerminalToggleIndicator(
+    checked: Boolean,
+    tint: Color = AiModuleTheme.colors.accent,
+) {
+    val color = if (checked) tint else AiModuleTheme.colors.textMuted
+    Text(
+        text = if (checked) "[on]" else "[off]",
+        color = color,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Medium,
+        modifier = Modifier
+            .clip(RoundedCornerShape(4.dp))
+            .background(color.copy(alpha = 0.10f))
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+    )
 }
 

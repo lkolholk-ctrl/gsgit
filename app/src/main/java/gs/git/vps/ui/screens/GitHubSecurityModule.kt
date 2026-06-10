@@ -1055,6 +1055,7 @@ internal fun SecurityScreen(
                     advisories = GitHubManager.getRepositorySecurityAdvisories(context, repoOwner, repoName)
                 }
             }
+        )
     }
     if (showAddSecretDialog) {
         AiModuleAlertDialog(

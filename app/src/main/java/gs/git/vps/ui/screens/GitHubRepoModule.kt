@@ -188,6 +188,33 @@ internal fun RepoDetailScreen(
     val canWrite = repo.canWrite()
     val canAdmin = repo.canAdmin()
 
+    val navigateToCode: (String, Int) -> Unit = { path, line ->
+        scope.launch {
+            try {
+                val content = GitHubManager.getFileContent(context, repo.owner, repo.name, path, selectedBranch)
+                val name = path.substringAfterLast("/")
+                val dir = path.substringBeforeLast("/", "").ifEmpty { "/" }
+                val contentsList = GitHubManager.getRepoContents(context, repo.owner, repo.name, dir, selectedBranch)
+                val targetFile = contentsList.find { it.path == path || it.name == name } ?: GHContent(
+                    name = name,
+                    path = path,
+                    type = "file",
+                    size = 0L,
+                    downloadUrl = "https://raw.githubusercontent.com/${repo.owner}/${repo.name}/${selectedBranch}/$path",
+                    sha = ""
+                )
+                openedFile = null
+                fileContent = content
+                editingFile = targetFile
+                editorInitialLine = line
+                selectedPullNumber = null
+                selectedPRNumber = null
+            } catch (e: Exception) {
+                Toast.makeText(context, "Failed to open file: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     LaunchedEffect(initialTarget) {
         val target = initialTarget ?: return@LaunchedEffect
         when (target.subjectType) {
@@ -471,7 +498,8 @@ internal fun RepoDetailScreen(
             repo = repo,
             pullNumber = selectedPullNumber!!,
             onBack = { selectedPullNumber = null },
-            onOpenFiles = { selectedPRNumber = it }
+            onOpenFiles = { selectedPRNumber = it },
+            onNavigateToCode = navigateToCode
         )
         return
     }
@@ -1113,7 +1141,15 @@ internal fun RepoDetailScreen(
             )
             RepoTab.COMMITS -> CommitsTab(filteredCommits, commitsHasMore, { scope.launch { commitsPage++; val r = GitHubManager.getCommits(context, repo.owner, repo.name, commitsPage); if (r.size < 30) commitsHasMore = false; commits = commits + r } }, listState = commitsListState) { selectedCommitSha = it.sha }
             RepoTab.ISSUES -> IssuesTab(filteredIssues, issuesHasMore, { scope.launch { issuesPage++; val r = GitHubManager.getIssues(context, repo.owner, repo.name, page = issuesPage); if (r.size < 30) issuesHasMore = false; issues = issues + r } }, listState = issuesListState) { selectedIssue = it }
-            RepoTab.PULLS -> PullsTab(filteredPulls, repo, { scope.launch { pulls = GitHubManager.getPullRequests(context, repo.owner, repo.name) } }, listState = pullsListState, onOpenDetail = { selectedPullNumber = it.number }) { prNumber -> selectedPRNumber = prNumber }
+            RepoTab.PULLS -> PullsTab(
+                pulls = filteredPulls,
+                repo = repo,
+                onRefresh = { scope.launch { pulls = GitHubManager.getPullRequests(context, repo.owner, repo.name) } },
+                listState = pullsListState,
+                onOpenDetail = { selectedPullNumber = it.number },
+                onFilesClick = { prNumber -> selectedPRNumber = prNumber },
+                onNavigateToCode = navigateToCode
+            )
             RepoTab.RELEASES -> ReleasesTab(releases, repo)
             RepoTab.ACTIONS -> ActionsTab(workflowRuns, repo, { selectedRunId = it.id }, onShowBuilds = { showBuilds = true })
             RepoTab.HISTORY -> ActionsHistoryTab(workflowRuns, repo) { selectedRunId = it.id }
@@ -2861,7 +2897,8 @@ internal fun PullsTab(
     onRefresh: () -> Unit,
     listState: LazyListState,
     onOpenDetail: (GHPullRequest) -> Unit = {},
-    onFilesClick: (Int) -> Unit = {}
+    onFilesClick: (Int) -> Unit = {},
+    onNavigateToCode: ((path: String, line: Int) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -2947,30 +2984,10 @@ internal fun PullsTab(
             repoName = repo.name,
             ref = checkRunTarget!!.headSha.ifBlank { checkRunTarget!!.head },
             onBack = { checkRunTarget = null },
-            onNavigateToCode = { path, line ->
-                scope.launch {
-                    try {
-                        val content = GitHubManager.getFileContent(context, repo.owner, repo.name, path, selectedBranch)
-                        val name = path.substringAfterLast("/")
-                        val dir = path.substringBeforeLast("/", "").ifEmpty { "/" }
-                        val contentsList = GitHubManager.getRepoContents(context, repo.owner, repo.name, dir, selectedBranch)
-                        val targetFile = contentsList.find { it.path == path || it.name == name } ?: GHContent(
-                            name = name,
-                            path = path,
-                            type = "file",
-                            size = 0L,
-                            downloadUrl = "https://raw.githubusercontent.com/${repo.owner}/${repo.name}/${selectedBranch}/$path",
-                            sha = ""
-                        )
-                        openedFile = null
-                        fileContent = content
-                        editingFile = targetFile
-                        editorInitialLine = line
-                        checkRunTarget = null
-                        showChecks = false
-                    } catch (e: Exception) {
-                        Toast.makeText(context, "Failed to open file: ${e.message}", Toast.LENGTH_SHORT).show()
-                    }
+            onNavigateToCode = onNavigateToCode?.let { nav ->
+                { path, line ->
+                    checkRunTarget = null
+                    nav(path, line)
                 }
             }
         )
@@ -2982,7 +2999,8 @@ private fun PullRequestDetailScreen(
     repo: GHRepo,
     pullNumber: Int,
     onBack: () -> Unit,
-    onOpenFiles: (Int) -> Unit
+    onOpenFiles: (Int) -> Unit,
+    onNavigateToCode: ((path: String, line: Int) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -3045,29 +3063,10 @@ private fun PullRequestDetailScreen(
             repoName = repo.name,
             ref = current.headSha.ifBlank { current.head },
             onBack = ::handlePullDetailBack,
-            onNavigateToCode = { path, line ->
-                scope.launch {
-                    try {
-                        val content = GitHubManager.getFileContent(context, repo.owner, repo.name, path, selectedBranch)
-                        val name = path.substringAfterLast("/")
-                        val dir = path.substringBeforeLast("/", "").ifEmpty { "/" }
-                        val contentsList = GitHubManager.getRepoContents(context, repo.owner, repo.name, dir, selectedBranch)
-                        val targetFile = contentsList.find { it.path == path || it.name == name } ?: GHContent(
-                            name = name,
-                            path = path,
-                            type = "file",
-                            size = 0L,
-                            downloadUrl = "https://raw.githubusercontent.com/${repo.owner}/${repo.name}/${selectedBranch}/$path",
-                            sha = ""
-                        )
-                        openedFile = null
-                        fileContent = content
-                        editingFile = targetFile
-                        editorInitialLine = line
-                        showChecks = false
-                    } catch (e: Exception) {
-                        Toast.makeText(context, "Failed to open file: ${e.message}", Toast.LENGTH_SHORT).show()
-                    }
+            onNavigateToCode = onNavigateToCode?.let { nav ->
+                { path, line ->
+                    showChecks = false
+                    nav(path, line)
                 }
             }
         )
