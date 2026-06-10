@@ -548,7 +548,7 @@ private fun AheadBehindDonutChart(ahead: Int, behind: Int) {
             }
         }
         
-        Column(horizontalAlignment = Alignment.CenterVertically) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 text = "+$ahead",
                 fontSize = 11.sp,
