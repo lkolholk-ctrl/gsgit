@@ -7543,7 +7543,10 @@ internal fun TelemetryTab(repo: GHRepo, commits: List<GHCommit>) {
                             .background(palette.accent.copy(alpha = 0.1f))
                             .border(0.5.dp, palette.accent, RoundedCornerShape(4.dp))
                             .clickable {
-                                if (grepQuery.isBlank()) return@clickable
+                                if (grepQuery.isBlank()) {
+                                    Toast.makeText(context, "Please enter a search regex", Toast.LENGTH_SHORT).show()
+                                    return@clickable
+                                }
                                 isSearchingGrep = true
                                 val regex = try { Regex(grepQuery) } catch (e: Exception) { null }
                                 if (regex == null) {
@@ -7553,28 +7556,56 @@ internal fun TelemetryTab(repo: GHRepo, commits: List<GHCommit>) {
                                 }
                                 
                                 scope.launch(Dispatchers.Default) {
-                                    val results = mutableListOf<GrepResult>()
-                                    activeCommitsState.take(15).forEach { commit ->
-                                        if (regex.containsMatchIn(commit.message) || regex.containsMatchIn(commit.author)) {
-                                            results.add(GrepResult(commit.sha, commit.message, "commit-meta", ""))
-                                        }
-                                        
-                                        val details = commitDetailsCache[commit.sha]
-                                        if (details != null) {
-                                            details.files.forEach { file ->
-                                                if (regex.containsMatchIn(file.patch)) {
-                                                    val matchedLines = file.patch.lines().filter { regex.containsMatchIn(it) }
-                                                    matchedLines.forEach { line ->
-                                                        results.add(GrepResult(commit.sha, commit.message, file.filename, line))
+                                    try {
+                                        val results = mutableListOf<GrepResult>()
+                                        activeCommitsState.take(15).forEach { commit ->
+                                            if (regex.containsMatchIn(commit.message) || regex.containsMatchIn(commit.author)) {
+                                                results.add(GrepResult(commit.sha, commit.message, "commit-meta", ""))
+                                            }
+                                            
+                                            var details = commitDetailsCache[commit.sha]
+                                            if (details == null) {
+                                                val fetchedDetails = withContext(Dispatchers.IO) {
+                                                    try {
+                                                        GitHubManager.getCommitDiff(context, repo.owner, repo.name, commit.sha)
+                                                    } catch (e: Exception) {
+                                                        e.printStackTrace()
+                                                        null
+                                                    }
+                                                }
+                                                if (fetchedDetails != null) {
+                                                    withContext(Dispatchers.Main) {
+                                                        commitDetailsCache[commit.sha] = fetchedDetails
+                                                    }
+                                                    details = fetchedDetails
+                                                }
+                                            }
+                                            
+                                            if (details != null) {
+                                                details.files.forEach { file ->
+                                                    val patch = file.patch ?: ""
+                                                    if (regex.containsMatchIn(patch)) {
+                                                        val matchedLines = patch.lines().filter { regex.containsMatchIn(it) }
+                                                        matchedLines.forEach { line ->
+                                                            results.add(GrepResult(commit.sha, commit.message, file.filename, line))
+                                                        }
                                                     }
                                                 }
                                             }
                                         }
-                                    }
-                                    
-                                    withContext(Dispatchers.Main) {
-                                        grepResults = results
-                                        isSearchingGrep = false
+                                        
+                                        withContext(Dispatchers.Main) {
+                                            grepResults = results
+                                        }
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                        withContext(Dispatchers.Main) {
+                                            Toast.makeText(context, "Scan error: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+                                        }
+                                    } finally {
+                                        withContext(Dispatchers.Main) {
+                                            isSearchingGrep = false
+                                        }
                                     }
                                 }
                             }
