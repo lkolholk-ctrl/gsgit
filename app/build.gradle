@@ -92,6 +92,7 @@ android {
             excludes += 'META-INF/DEPENDENCIES'
             excludes += 'META-INF/INDEX.LIST'
             excludes += 'META-INF/MANIFEST.MF'
+            excludes += 'META-INF/versions/9/OSGI-INF/MANIFEST.MF'
         }
     }
 }
