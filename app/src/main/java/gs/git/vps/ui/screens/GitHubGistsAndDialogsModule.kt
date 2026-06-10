@@ -101,6 +101,21 @@ internal fun GistsScreen(
                     onBack = ::handleGistsBack,
                     trailing = {
                         GitHubTopBarAction(
+                            glyph = GhGlyphs.COPY,
+                            onClick = {
+                                try {
+                                    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                    val clip = android.content.ClipData.newPlainText("Gist Link", current.htmlUrl)
+                                    clipboard.setPrimaryClip(clip)
+                                    Toast.makeText(context, "Copied gist link to clipboard", Toast.LENGTH_SHORT).show()
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Failed to copy link", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            tint = palette.accent,
+                            contentDescription = "copy link",
+                        )
+                        GitHubTopBarAction(
                             glyph = if (isStarred) GhGlyphs.STAR_ON else GhGlyphs.STAR_OFF,
                             onClick = {
                                 scope.launch {
@@ -436,11 +451,14 @@ internal fun DeleteFileDialog(repo: GHRepo, file: GHContent, branch: String, onD
     }
 }
 
+private data class GistFileItem(val id: Int, val name: String, val content: String)
+
 @Composable
 private fun CreateGistDialog(onDismiss: () -> Unit, onCreated: () -> Unit) {
     var desc by remember { mutableStateOf("") }
-    var fname by remember { mutableStateOf("") }
-    var content by remember { mutableStateOf("") }
+    var filesList by remember { mutableStateOf(listOf(GistFileItem(0, "", ""))) }
+    var activeIndex by remember { mutableStateOf(0) }
+    var nextId by remember { mutableStateOf(1) }
     var isPublic by remember { mutableStateOf(false) }
     var creating by remember { mutableStateOf(false) }
     val ctx = LocalContext.current
@@ -454,10 +472,13 @@ private fun CreateGistDialog(onDismiss: () -> Unit, onCreated: () -> Unit) {
                 label = Strings.create,
                 enabled = !creating,
                 onClick = {
-                    if (fname.isBlank() || content.isBlank() || creating) return@AiModuleTextAction
+                    val filesMap = filesList
+                        .filter { it.name.isNotBlank() && it.content.isNotBlank() }
+                        .associate { it.name to it.content }
+                    if (filesMap.isEmpty() || creating) return@AiModuleTextAction
                     creating = true
                     s.launch {
-                        val ok = GitHubManager.createGist(ctx, desc, isPublic, mapOf(fname to content))
+                        val ok = GitHubManager.createGist(ctx, desc, isPublic, filesMap)
                         Toast.makeText(ctx, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
                         if (ok) onCreated() else creating = false
                     }
@@ -471,8 +492,104 @@ private fun CreateGistDialog(onDismiss: () -> Unit, onCreated: () -> Unit) {
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             AiModuleTextField(desc, { desc = it }, label = Strings.ghRepoDesc)
-            AiModuleTextField(fname, { fname = it }, label = Strings.ghFilePath)
-            AiModuleTextField(content, { content = it }, label = Strings.ghFileContent, minLines = 4, maxLines = 10)
+            
+            // Horizontal list of files
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                filesList.forEachIndexed { index, file ->
+                    val isSelected = index == activeIndex
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(GitHubControlRadius))
+                            .background(if (isSelected) palette.accent.copy(alpha = 0.15f) else palette.surface)
+                            .border(1.dp, if (isSelected) palette.accent else palette.border, RoundedCornerShape(GitHubControlRadius))
+                            .clickable { activeIndex = index }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = file.name.ifBlank { "file ${index + 1}" },
+                            fontSize = 11.sp,
+                            fontFamily = JetBrainsMono,
+                            color = if (isSelected) palette.accent else palette.textSecondary
+                        )
+                    }
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(GitHubControlRadius))
+                        .background(palette.surface)
+                        .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
+                        .clickable {
+                            filesList = filesList + GistFileItem(id = nextId, name = "", content = "")
+                            nextId++
+                            activeIndex = filesList.lastIndex
+                        }
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = "+ add file",
+                        fontSize = 11.sp,
+                        fontFamily = JetBrainsMono,
+                        color = palette.accent
+                    )
+                }
+            }
+
+            val activeFile = filesList.getOrNull(activeIndex) ?: GistFileItem(0, "", "")
+
+            if (filesList.size > 1) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(GitHubControlRadius))
+                            .background(palette.error.copy(alpha = 0.15f))
+                            .border(1.dp, palette.error.copy(alpha = 0.3f), RoundedCornerShape(GitHubControlRadius))
+                            .clickable {
+                                val list = filesList.toMutableList()
+                                list.removeAt(activeIndex)
+                                filesList = list
+                                activeIndex = (activeIndex - 1).coerceAtLeast(0)
+                            }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "delete file",
+                            fontSize = 10.sp,
+                            fontFamily = JetBrainsMono,
+                            color = palette.error
+                        )
+                    }
+                }
+            }
+
+            AiModuleTextField(
+                value = activeFile.name,
+                onValueChange = { nameVal ->
+                    filesList = filesList.mapIndexed { idx, item ->
+                        if (idx == activeIndex) item.copy(name = nameVal) else item
+                    }
+                },
+                label = Strings.ghFilePath
+            )
+            AiModuleTextField(
+                value = activeFile.content,
+                onValueChange = { contentVal ->
+                    filesList = filesList.mapIndexed { idx, item ->
+                        if (idx == activeIndex) item.copy(content = contentVal) else item
+                    }
+                },
+                label = Strings.ghFileContent,
+                minLines = 4,
+                maxLines = 6
+            )
+
             AiModuleCheckRow(
                 label = if (isPublic) Strings.ghPublic else Strings.ghPrivate,
                 checked = isPublic,

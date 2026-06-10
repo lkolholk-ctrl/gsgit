@@ -1,5 +1,6 @@
 package gs.git.vps.ui.screens
 
+import androidx.activity.compose.BackHandler
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -48,6 +49,8 @@ import androidx.compose.ui.unit.sp
 import gs.git.vps.data.github.GHOrgTeam
 import gs.git.vps.ui.theme.AiModuleTheme
 import gs.git.vps.data.github.GHRepoTeam
+import gs.git.vps.data.github.GHCollaborator
+import gs.git.vps.data.github.GHTeamDiscussion
 import gs.git.vps.data.github.GitHubManager
 import gs.git.vps.ui.components.AiModuleAlertDialog
 import gs.git.vps.ui.components.AiModuleIcon as Icon
@@ -87,6 +90,7 @@ internal fun RepoTeamsScreen(
     var teamToEdit by remember { mutableStateOf<GHRepoTeam?>(null) }
     var teamToRemove by remember { mutableStateOf<GHRepoTeam?>(null) }
     var actionInFlight by remember { mutableStateOf(false) }
+    var activeDetailTeam by remember { mutableStateOf<GHRepoTeam?>(null) }
 
     fun loadTeams() {
         loading = true
@@ -109,8 +113,18 @@ internal fun RepoTeamsScreen(
             showAddDialog -> showAddDialog = false
             teamToEdit != null -> teamToEdit = null
             teamToRemove != null -> teamToRemove = null
+            activeDetailTeam != null -> activeDetailTeam = null
             else -> onBack()
         }
+    }
+
+    activeDetailTeam?.let { team ->
+        TeamDetailScreen(
+            org = repoOwner,
+            team = team,
+            onBack = ::handleTeamsBack
+        )
+        return
     }
 
     GitHubScreenFrame(
@@ -158,7 +172,8 @@ internal fun RepoTeamsScreen(
                     RepoTeamCard(
                         team = team,
                         onPermissionChange = { teamToEdit = team },
-                        onRemove = { teamToRemove = team }
+                        onRemove = { teamToRemove = team },
+                        onClick = { activeDetailTeam = team }
                     )
                 }
                 if (visibleTeams.isEmpty()) {
@@ -322,12 +337,19 @@ private fun RepoTeamsSummaryCard(repoTeams: List<GHRepoTeam>, orgTeams: List<GHO
 private fun RepoTeamCard(
     team: GHRepoTeam,
     onPermissionChange: () -> Unit,
-    onRemove: () -> Unit
+    onRemove: () -> Unit,
+    onClick: () -> Unit
 ) {
     val permission = normalizeTeamPermission(team.permission)
     val color = teamPermissionColor(permission)
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).border(1.dp, AiModuleTheme.colors.border, RoundedCornerShape(GitHubControlRadius)).padding(12.dp),
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(GitHubControlRadius))
+            .background(AiModuleTheme.colors.surface)
+            .border(1.dp, AiModuleTheme.colors.border, RoundedCornerShape(GitHubControlRadius))
+            .clickable(onClick = onClick)
+            .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -447,4 +469,374 @@ private fun teamPermissionColor(permission: String): Color = when (normalizeTeam
     "push" -> Color(0xFF34C759)
     "triage" -> AiModuleTheme.colors.accent
     else -> AiModuleTheme.colors.textSecondary
+}
+
+@Composable
+private fun TeamDetailScreen(
+    org: String,
+    team: GHRepoTeam,
+    onBack: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val palette = AiModuleTheme.colors
+
+    var activeTab by remember { mutableStateOf(0) } // 0 = Members, 1 = Discussions
+    var members by remember { mutableStateOf<List<GHCollaborator>>(emptyList()) }
+    var discussions by remember { mutableStateOf<List<GHTeamDiscussion>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+
+    var showAddMemberDialog by remember { mutableStateOf(false) }
+    var showCreateDiscussionDialog by remember { mutableStateOf(false) }
+    var memberToRemove by remember { mutableStateOf<GHCollaborator?>(null) }
+    var discussionToDelete by remember { mutableStateOf<GHTeamDiscussion?>(null) }
+    var actionInFlight by remember { mutableStateOf(false) }
+
+    fun loadData() {
+        loading = true
+        scope.launch {
+            if (activeTab == 0) {
+                members = GitHubManager.getTeamMembers(context, org, team.slug)
+            } else {
+                discussions = GitHubManager.getTeamDiscussions(context, org, team.slug)
+            }
+            loading = false
+        }
+    }
+
+    LaunchedEffect(activeTab) {
+        loadData()
+    }
+
+    fun handleBack() {
+        when {
+            showAddMemberDialog -> showAddMemberDialog = false
+            showCreateDiscussionDialog -> showCreateDiscussionDialog = false
+            memberToRemove != null -> memberToRemove = null
+            discussionToDelete != null -> discussionToDelete = null
+            else -> onBack()
+        }
+    }
+
+    BackHandler {
+        handleBack()
+    }
+
+    GitHubScreenFrame(
+        title = "> team: ${team.name.ifBlank { team.slug }.lowercase()}",
+        subtitle = "org: $org",
+        onBack = ::handleBack,
+        trailing = {
+            if (activeTab == 0) {
+                GitHubTopBarAction(
+                    glyph = GhGlyphs.PLUS,
+                    onClick = { showAddMemberDialog = true },
+                    tint = palette.accent,
+                    contentDescription = "add member"
+                )
+            } else {
+                GitHubTopBarAction(
+                    glyph = GhGlyphs.PLUS,
+                    onClick = { showCreateDiscussionDialog = true },
+                    tint = palette.accent,
+                    contentDescription = "create discussion"
+                )
+            }
+        }
+    ) {
+        Column(Modifier.fillMaxSize().background(palette.background)) {
+            // Horizontal Tabs
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, palette.border)
+                    .background(palette.surface)
+            ) {
+                listOf("members", "discussions").forEachIndexed { index, label ->
+                    val selected = activeTab == index
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { activeTab = index }
+                            .padding(vertical = 12.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = label,
+                            fontFamily = JetBrainsMono,
+                            fontSize = 13.sp,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (selected) palette.accent else palette.textSecondary
+                        )
+                    }
+                }
+            }
+
+            if (loading) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    AiModuleSpinner(label = "loading…")
+                }
+            } else {
+                if (activeTab == 0) {
+                    // Members Tab
+                    LazyColumn(
+                        Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(members) { member ->
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(GitHubControlRadius))
+                                    .background(palette.surface)
+                                    .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
+                                    .padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Box(
+                                    Modifier
+                                        .size(32.dp)
+                                        .clip(CircleShape)
+                                        .background(palette.accent.copy(0.12f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Rounded.Group, null, Modifier.size(16.dp), tint = palette.accent)
+                                }
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        member.login,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = palette.textPrimary
+                                    )
+                                    Text(
+                                        member.role,
+                                        fontSize = 11.sp,
+                                        color = palette.textMuted
+                                    )
+                                }
+                                IconButton(
+                                    onClick = { memberToRemove = member },
+                                    modifier = Modifier.size(34.dp)
+                                ) {
+                                    Icon(Icons.Rounded.Delete, null, Modifier.size(18.dp), tint = Color(0xFFFF3B30))
+                                }
+                            }
+                        }
+                        if (members.isEmpty()) {
+                            item { EmptyTeamsCard("No members in this team") }
+                        }
+                    }
+                } else {
+                    // Discussions Tab
+                    LazyColumn(
+                        Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(discussions) { disc ->
+                            Column(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(GitHubControlRadius))
+                                    .background(palette.surface)
+                                    .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
+                                    .padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            disc.title,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = palette.textPrimary
+                                        )
+                                        Text(
+                                            "by @${disc.author} - ${disc.createdAt.take(10)}",
+                                            fontSize = 11.sp,
+                                            color = palette.textMuted
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = { discussionToDelete = disc },
+                                        modifier = Modifier.size(34.dp)
+                                    ) {
+                                        Icon(Icons.Rounded.Delete, null, Modifier.size(18.dp), tint = Color(0xFFFF3B30))
+                                    }
+                                }
+                                if (disc.body.isNotBlank()) {
+                                    Text(
+                                        disc.body,
+                                        fontSize = 12.sp,
+                                        color = palette.textSecondary,
+                                        maxLines = 4,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                        if (discussions.isEmpty()) {
+                            item { EmptyTeamsCard("No discussions in this team") }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showAddMemberDialog) {
+        var usernameInput by remember { mutableStateOf("") }
+        AiModuleAlertDialog(
+            onDismissRequest = { showAddMemberDialog = false },
+            title = "Add Member",
+            content = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AiModuleTextField(
+                        value = usernameInput,
+                        onValueChange = { usernameInput = it },
+                        label = "GitHub Username"
+                    )
+                }
+            },
+            confirmButton = {
+                AiModuleTextAction(
+                    label = "add",
+                    enabled = !actionInFlight && usernameInput.isNotBlank(),
+                    onClick = {
+                        actionInFlight = true
+                        scope.launch {
+                            val ok = GitHubManager.addTeamMember(context, org, team.slug, usernameInput)
+                            Toast.makeText(context, if (ok) "Member added" else "Failed", Toast.LENGTH_SHORT).show()
+                            actionInFlight = false
+                            if (ok) {
+                                showAddMemberDialog = false
+                                loadData()
+                            }
+                        }
+                    }
+                )
+            },
+            dismissButton = {
+                AiModuleTextAction(label = "cancel", onClick = { showAddMemberDialog = false }, tint = palette.textSecondary)
+            }
+        )
+    }
+
+    if (showCreateDiscussionDialog) {
+        var discTitle by remember { mutableStateOf("") }
+        var discBody by remember { mutableStateOf("") }
+        AiModuleAlertDialog(
+            onDismissRequest = { showCreateDiscussionDialog = false },
+            title = "Create Discussion",
+            content = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AiModuleTextField(
+                        value = discTitle,
+                        onValueChange = { discTitle = it },
+                        label = "Title"
+                    )
+                    AiModuleTextField(
+                        value = discBody,
+                        onValueChange = { discBody = it },
+                        label = "Body",
+                        minLines = 3,
+                        maxLines = 5
+                    )
+                }
+            },
+            confirmButton = {
+                AiModuleTextAction(
+                    label = "create",
+                    enabled = !actionInFlight && discTitle.isNotBlank() && discBody.isNotBlank(),
+                    onClick = {
+                        actionInFlight = true
+                        scope.launch {
+                            val ok = GitHubManager.createTeamDiscussion(context, org, team.slug, discTitle, discBody)
+                            Toast.makeText(context, if (ok) "Discussion created" else "Failed", Toast.LENGTH_SHORT).show()
+                            actionInFlight = false
+                            if (ok) {
+                                showCreateDiscussionDialog = false
+                                loadData()
+                            }
+                        }
+                    }
+                )
+            },
+            dismissButton = {
+                AiModuleTextAction(label = "cancel", onClick = { showCreateDiscussionDialog = false }, tint = palette.textSecondary)
+            }
+        )
+    }
+
+    if (memberToRemove != null) {
+        val member = memberToRemove!!
+        AiModuleAlertDialog(
+            onDismissRequest = { memberToRemove = null },
+            title = "Remove Member?",
+            content = {
+                Text("Remove @${member.login} from this team?", fontSize = 14.sp, color = palette.textSecondary)
+            },
+            confirmButton = {
+                AiModuleTextAction(
+                    label = "remove",
+                    enabled = !actionInFlight,
+                    onClick = {
+                        actionInFlight = true
+                        scope.launch {
+                            val ok = GitHubManager.removeTeamMember(context, org, team.slug, member.login)
+                            Toast.makeText(context, if (ok) "Member removed" else "Failed", Toast.LENGTH_SHORT).show()
+                            actionInFlight = false
+                            if (ok) {
+                                memberToRemove = null
+                                loadData()
+                            }
+                        }
+                    },
+                    tint = Color(0xFFFF3B30)
+                )
+            },
+            dismissButton = {
+                AiModuleTextAction(label = "cancel", onClick = { memberToRemove = null }, tint = palette.textSecondary)
+            }
+        )
+    }
+
+    if (discussionToDelete != null) {
+        val disc = discussionToDelete!!
+        AiModuleAlertDialog(
+            onDismissRequest = { discussionToDelete = null },
+            title = "Delete Discussion?",
+            content = {
+                Text("Delete this team discussion?", fontSize = 14.sp, color = palette.textSecondary)
+            },
+            confirmButton = {
+                AiModuleTextAction(
+                    label = "delete",
+                    enabled = !actionInFlight,
+                    onClick = {
+                        actionInFlight = true
+                        scope.launch {
+                            val ok = GitHubManager.deleteTeamDiscussion(context, org, team.slug, disc.number)
+                            Toast.makeText(context, if (ok) "Deleted" else "Failed", Toast.LENGTH_SHORT).show()
+                            actionInFlight = false
+                            if (ok) {
+                                discussionToDelete = null
+                                loadData()
+                            }
+                        }
+                    },
+                    tint = Color(0xFFFF3B30)
+                )
+            },
+            dismissButton = {
+                AiModuleTextAction(label = "cancel", onClick = { discussionToDelete = null }, tint = palette.textSecondary)
+            }
+        )
+    }
 }

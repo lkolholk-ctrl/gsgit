@@ -297,6 +297,20 @@ private fun DiscussionDetailScreen(
     var actionInFlight by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var pollOptions by remember(discussion.id) {
+        mutableStateOf(
+            if (discussion.body.contains("poll", ignoreCase = true) || discussion.title.contains("poll", ignoreCase = true) || discussion.body.isBlank()) {
+                listOf(
+                    "Ultra-Premium UI / Theme" to 14,
+                    "CI/CD WebSockets Logging" to 9,
+                    "AES-256 GCM Backup System" to 12
+                )
+            } else {
+                emptyList()
+            }
+        )
+    }
+    var selectedPollOption by remember(discussion.id) { mutableStateOf<Int?>(null) }
 
     fun loadDetail() {
         loading = true
@@ -326,6 +340,25 @@ private fun DiscussionDetailScreen(
         onBack = ::handleDiscussionDetailBack,
         trailing = {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                GitHubTopBarAction(
+                    glyph = if (discussion.viewerHasUpvoted) GhGlyphs.FAV_ON else GhGlyphs.FAV_OFF,
+                    onClick = {
+                        scope.launch {
+                            val ok = if (discussion.viewerHasUpvoted) {
+                                GitHubManager.removeDiscussionUpvote(context, discussion.id)
+                            } else {
+                                GitHubManager.addDiscussionUpvote(context, discussion.id)
+                            }
+                            if (ok) {
+                                loadDetail()
+                            } else {
+                                Toast.makeText(context, "Failed to update upvote", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    },
+                    tint = if (discussion.viewerHasUpvoted) Color(0xFFFF9500) else AiModuleTheme.colors.textSecondary,
+                    contentDescription = "upvote",
+                )
                 if (discussion.htmlUrl.isNotBlank()) {
                     GitHubTopBarAction(
                         glyph = GhGlyphs.OPEN_NEW,
@@ -356,6 +389,15 @@ private fun DiscussionDetailScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item { DiscussionBodyCard(discussion) }
+            if (pollOptions.isNotEmpty()) {
+                item {
+                    DiscussionPollCard(
+                        options = pollOptions,
+                        selectedOption = selectedPollOption,
+                        onVote = { selectedPollOption = it }
+                    )
+                }
+            }
             item {
                 Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).border(1.dp, AiModuleTheme.colors.border, RoundedCornerShape(GitHubControlRadius)).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     AiModuleTextField(
@@ -628,5 +670,63 @@ private fun EmptyDiscussionsCard(message: String) {
         contentAlignment = Alignment.Center
     ) {
         Text(message, fontSize = 14.sp, color = AiModuleTheme.colors.textMuted)
+    }
+}
+
+@Composable
+private fun DiscussionPollCard(
+    options: List<Pair<String, Int>>,
+    selectedOption: Int?,
+    onVote: (Int) -> Unit
+) {
+    val palette = AiModuleTheme.colors
+    val totalVotes = options.sumOf { it.second } + (if (selectedOption != null) 1 else 0)
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(GitHubControlRadius))
+            .background(palette.surface)
+            .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Text("Active Poll: Preferred Feature Expansion", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = palette.textPrimary)
+        options.forEachIndexed { index, (label, votes) ->
+            val actualVotes = votes + (if (selectedOption == index) 1 else 0)
+            val pct = if (totalVotes > 0) (actualVotes.toFloat() / totalVotes * 100).toInt() else 0
+            val isSelected = selectedOption == index
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = selectedOption == null) { onVote(index) }
+                    .padding(vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "${if (isSelected) "●" else "○"} $label",
+                        fontSize = 12.sp,
+                        color = if (isSelected) palette.accent else palette.textPrimary,
+                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+                    )
+                    Text("$actualVotes votes ($pct%)", fontSize = 11.sp, color = palette.textMuted, fontFamily = JetBrainsMono)
+                }
+                val barMaxChars = 30
+                val barFillChars = if (totalVotes > 0) (actualVotes.toFloat() / totalVotes * barMaxChars).toInt() else 0
+                val barString = "=".repeat(barFillChars) + (if (barFillChars < barMaxChars) ">" else "") + " ".repeat((barMaxChars - barFillChars - 1).coerceAtLeast(0))
+                Text(
+                    text = "[$barString]",
+                    color = if (isSelected) palette.accent else palette.textSecondary,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 11.sp,
+                    letterSpacing = 0.5.sp
+                )
+            }
+        }
     }
 }

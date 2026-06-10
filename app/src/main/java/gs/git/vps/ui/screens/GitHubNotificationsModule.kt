@@ -20,6 +20,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Commit
 import androidx.compose.material.icons.rounded.Delete
@@ -71,6 +76,7 @@ fun NotificationsScreen(onBack: () -> Unit) {
     var showAll by remember { mutableStateOf(false) }
     var typeFilter by remember { mutableStateOf("") }
     var selectedSubscription by remember { mutableStateOf<GHNotification?>(null) }
+    var repoToMarkRead by remember { mutableStateOf<String?>(null) }
 
     fun handleNotificationsBack() {
         if (selectedSubscription != null) selectedSubscription = null else onBack()
@@ -126,7 +132,13 @@ fun NotificationsScreen(onBack: () -> Unit) {
                     .padding(horizontal = 12.dp, vertical = 2.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                val typeFilters = listOf("" to "all", "Issue" to "issues", "PullRequest" to "PRs", "Release" to "releases", "Commit" to "commits")
+                val typeFilters = listOf(
+                    "" to "all",
+                    "mentions" to "mentions",
+                    "my_issues_pr" to "my issues/pr",
+                    "releases" to "releases",
+                    "system" to "system"
+                )
                 typeFilters.forEach { (value, label) ->
                     val sel = typeFilter == value
                     Box(
@@ -152,54 +164,90 @@ fun NotificationsScreen(onBack: () -> Unit) {
                     subtitle = if (showAll) "you're all caught up" else "switch to all to see read items",
                 )
                 else -> {
-                    val filtered = if (typeFilter.isBlank()) notifications else notifications.filter { it.type == typeFilter }
+                    val filtered = when (typeFilter) {
+                        "mentions" -> notifications.filter { it.reason == "mention" || it.reason == "team_mention" }
+                        "my_issues_pr" -> notifications.filter { (it.type == "Issue" || it.type == "PullRequest") && (it.reason == "author" || it.reason == "assign" || it.reason == "review_requested" || it.reason == "comment") }
+                        "releases" -> notifications.filter { it.type == "Release" }
+                        "system" -> notifications.filter { it.reason != "mention" && it.reason != "team_mention" && it.reason != "author" && it.reason != "assign" && it.reason != "review_requested" && it.reason != "comment" && it.type != "Release" }
+                        else -> notifications
+                    }
                     LazyColumn(
-                    Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(top = 4.dp, bottom = 24.dp),
-                ) {
-                    items(filtered, key = { it.id }) { notification ->
-                        NotificationRow(
-                            notification = notification,
-                            onMarkRead = {
-                                scope.launch {
-                                    GitHubManager.markNotificationRead(context, notification.id)
-                                    notifications = GitHubManager.getNotifications(context, showAll)
-                                }
-                            },
-                            onMarkDone = {
-                                scope.launch {
-                                    GitHubManager.markThreadDone(context, notification.id)
-                                    notifications = GitHubManager.getNotifications(context, showAll)
-                                }
-                            },
-                            onDetail = {
-                                scope.launch {
-                                    val detail = GitHubManager.getNotification(context, notification.id)
-                                    if (detail != null) selectedSubscription = detail
-                                }
-                            },
-                            onSubscription = { selectedSubscription = notification },
-                            onOpen = {
-                                val url = notification.htmlUrl.ifBlank { notification.subjectUrl }
-                                if (url.isNotBlank()) {
-                                    try {
-                                        context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)).apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) })
-                                    } catch (_: Exception) {}
-                                }
-                                scope.launch {
-                                    if (notification.unread) {
+                        Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(top = 4.dp, bottom = 24.dp),
+                    ) {
+                        items(filtered, key = { it.id }) { notification ->
+                            SwipeableNotificationRow(
+                                notification = notification,
+                                onMarkRead = {
+                                    scope.launch {
                                         GitHubManager.markNotificationRead(context, notification.id)
                                         notifications = GitHubManager.getNotifications(context, showAll)
                                     }
+                                },
+                                onMarkDone = {
+                                    scope.launch {
+                                        GitHubManager.markThreadDone(context, notification.id)
+                                        notifications = GitHubManager.getNotifications(context, showAll)
+                                    }
+                                },
+                                onDetail = {
+                                    scope.launch {
+                                        val detail = GitHubManager.getNotification(context, notification.id)
+                                        if (detail != null) selectedSubscription = detail
+                                    }
+                                },
+                                onSubscription = { selectedSubscription = notification },
+                                onOpen = {
+                                    val url = notification.htmlUrl.ifBlank { notification.subjectUrl }
+                                    if (url.isNotBlank()) {
+                                        try {
+                                            context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)).apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) })
+                                        } catch (_: Exception) {}
+                                    }
+                                    scope.launch {
+                                        if (notification.unread) {
+                                            GitHubManager.markNotificationRead(context, notification.id)
+                                            notifications = GitHubManager.getNotifications(context, showAll)
+                                        }
+                                    }
+                                },
+                                onLongClick = {
+                                    repoToMarkRead = notification.repoName
                                 }
-                            },
-                        )
-                        AiModuleHairline()
+                            )
+                            AiModuleHairline()
+                        }
                     }
-                }
                 }
             }
         }
+    }
+
+    repoToMarkRead?.let { repoFullName ->
+        AiModuleAlertDialog(
+            onDismissRequest = { repoToMarkRead = null },
+            title = "bulk mark read",
+            content = { Text("Mark all notifications from $repoFullName as read?", fontSize = 13.sp, color = palette.textSecondary) },
+            confirmButton = {
+                AiModuleTextAction(
+                    label = "mark read",
+                    onClick = {
+                        val parts = repoFullName.split("/")
+                        if (parts.size == 2) {
+                            scope.launch {
+                                GitHubManager.markRepoNotificationsRead(context, parts[0], parts[1])
+                                notifications = GitHubManager.getNotifications(context, showAll)
+                                repoToMarkRead = null
+                            }
+                        }
+                    },
+                    tint = palette.accent
+                )
+            },
+            dismissButton = {
+                AiModuleTextAction(label = "cancel", onClick = { repoToMarkRead = null }, tint = palette.textSecondary)
+            }
+        )
     }
 
     selectedSubscription?.let { notification ->
@@ -210,6 +258,82 @@ fun NotificationsScreen(onBack: () -> Unit) {
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun SwipeableNotificationRow(
+    notification: GHNotification,
+    onMarkRead: () -> Unit,
+    onMarkDone: () -> Unit,
+    onDetail: () -> Unit,
+    onSubscription: () -> Unit,
+    onOpen: () -> Unit = {},
+    onLongClick: () -> Unit = {}
+) {
+    val palette = AiModuleTheme.colors
+    var swipeOffset by remember { mutableStateOf(0f) }
+    val scope = rememberCoroutineScope()
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val thresholdPx = with(density) { 70.dp.toPx() }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .pointerInput(notification.id) {
+                detectHorizontalDragGestures(
+                    onDragStart = {},
+                    onDragEnd = {
+                        if (swipeOffset > thresholdPx) {
+                            onMarkRead()
+                        } else if (swipeOffset < -thresholdPx) {
+                            onMarkDone()
+                        }
+                        swipeOffset = 0f
+                    },
+                    onDragCancel = {
+                        swipeOffset = 0f
+                    },
+                    onHorizontalDrag = { _, dragAmount ->
+                        swipeOffset = (swipeOffset + dragAmount).coerceIn(-thresholdPx * 1.5f, thresholdPx * 1.5f)
+                    }
+                )
+            }
+    ) {
+        if (swipeOffset != 0f) {
+            val isRight = swipeOffset > 0
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(if (isRight) Color(0xFF2EA043).copy(alpha = 0.2f) else palette.error.copy(alpha = 0.2f))
+                    .padding(horizontal = 16.dp),
+                contentAlignment = if (isRight) Alignment.CenterStart else Alignment.CenterEnd
+            ) {
+                if (isRight) {
+                    Text("[mark read]", color = Color(0xFF2EA043), fontFamily = JetBrainsMono, fontSize = 11.sp)
+                } else {
+                    Text("[archive]", color = palette.error, fontFamily = JetBrainsMono, fontSize = 11.sp)
+                }
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .offset { IntOffset(swipeOffset.roundToInt(), 0) }
+                .background(palette.background)
+        ) {
+            NotificationRow(
+                notification = notification,
+                onMarkRead = onMarkRead,
+                onMarkDone = onMarkDone,
+                onDetail = onDetail,
+                onSubscription = onSubscription,
+                onOpen = onOpen,
+                onLongClick = onLongClick
+            )
+        }
+    }
+}
+
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun NotificationRow(
     notification: GHNotification,
@@ -218,6 +342,7 @@ private fun NotificationRow(
     onDetail: () -> Unit,
     onSubscription: () -> Unit,
     onOpen: () -> Unit = {},
+    onLongClick: () -> Unit = {}
 ) {
     val palette = AiModuleTheme.colors
     val icon: ImageVector = when (notification.type) {
@@ -244,7 +369,7 @@ private fun NotificationRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .clickable { onOpen() }
+            .combinedClickable(onLongClick = onLongClick, onClick = onOpen)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

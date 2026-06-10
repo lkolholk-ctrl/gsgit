@@ -3285,6 +3285,9 @@ object GitHubManager {
     suspend fun markAllNotificationsRead(context: Context): Boolean =
         request(context, "/notifications", "PUT", "{\"read\":true}").let { it.code == 205 || it.success }
 
+    suspend fun markRepoNotificationsRead(context: Context, owner: String, repo: String): Boolean =
+        request(context, "/repos/$owner/$repo/notifications", "PUT", "{\"read\":true}").let { it.code == 205 || it.success }
+
     suspend fun getThreadSubscription(context: Context, threadId: String): GHThreadSubscription {
         val r = request(context, "/notifications/threads/$threadId/subscription", extraHeaders = mapOf("Accept" to "application/vnd.github+json"))
         if (!r.success) return GHThreadSubscription(subscribed = false, ignored = false, reason = "", createdAt = "", url = "")
@@ -5405,6 +5408,7 @@ object GitHubManager {
                     locked
                     url
                     upvoteCount
+                    viewerHasUpvoted
                     answer { id }
                     category { id name emoji isAnswerable }
                     author { login avatarUrl }
@@ -5475,6 +5479,7 @@ object GitHubManager {
                   locked
                   url
                   upvoteCount
+                  viewerHasUpvoted
                   answer { id }
                   category { id name emoji isAnswerable }
                   author { login avatarUrl }
@@ -5621,6 +5626,113 @@ object GitHubManager {
         return data?.optJSONObject("unmarkDiscussionCommentAsAnswer")?.optJSONObject("discussion") != null
     }
 
+    suspend fun addDiscussionUpvote(context: Context, subjectId: String): Boolean {
+        val data = graphql(context, """
+            mutation(${'$'}subjectId: ID!) {
+              addUpvote(input: {subjectId: ${'$'}subjectId}) {
+                subject {
+                  id
+                }
+              }
+            }
+        """.trimIndent(), JSONObject().apply {
+            put("subjectId", subjectId)
+        })
+        return data?.optJSONObject("addUpvote")?.optJSONObject("subject") != null
+    }
+
+    suspend fun removeDiscussionUpvote(context: Context, subjectId: String): Boolean {
+        val data = graphql(context, """
+            mutation(${'$'}subjectId: ID!) {
+              removeUpvote(input: {subjectId: ${'$'}subjectId}) {
+                subject {
+                  id
+                }
+              }
+            }
+        """.trimIndent(), JSONObject().apply {
+            put("subjectId", subjectId)
+        })
+        return data?.optJSONObject("removeUpvote")?.optJSONObject("subject") != null
+    }
+
+    suspend fun getTeamMembers(context: Context, org: String, teamSlug: String): List<GHCollaborator> {
+        val encodedOrg = java.net.URLEncoder.encode(org, "UTF-8")
+        val encodedTeam = java.net.URLEncoder.encode(teamSlug, "UTF-8")
+        val r = request(context, "/orgs/${'$'}encodedOrg/teams/${'$'}encodedTeam/members?per_page=100")
+        if (!r.success) return emptyList()
+        return try {
+            val arr = JSONArray(r.body)
+            (0 until arr.length()).map { i ->
+                val j = arr.getJSONObject(i)
+                GHCollaborator(
+                    login = j.optString("login"),
+                    id = j.optLong("id"),
+                    avatarUrl = j.optString("avatar_url", ""),
+                    htmlUrl = j.optString("html_url", ""),
+                    role = "member",
+                    permissions = mapOf("pull" to true)
+                )
+            }
+        } catch (e: Exception) { emptyList() }
+    }
+
+    suspend fun addTeamMember(context: Context, org: String, teamSlug: String, username: String, role: String = "member"): Boolean {
+        val encodedOrg = java.net.URLEncoder.encode(org, "UTF-8")
+        val encodedTeam = java.net.URLEncoder.encode(teamSlug, "UTF-8")
+        val encodedUser = java.net.URLEncoder.encode(username, "UTF-8")
+        val body = JSONObject().apply { put("role", role) }.toString()
+        return request(context, "/orgs/${'$'}encodedOrg/teams/${'$'}encodedTeam/memberships/${'$'}encodedUser", "PUT", body).success
+    }
+
+    suspend fun removeTeamMember(context: Context, org: String, teamSlug: String, username: String): Boolean {
+        val encodedOrg = java.net.URLEncoder.encode(org, "UTF-8")
+        val encodedTeam = java.net.URLEncoder.encode(teamSlug, "UTF-8")
+        val encodedUser = java.net.URLEncoder.encode(username, "UTF-8")
+        return request(context, "/orgs/${'$'}encodedOrg/teams/${'$'}encodedTeam/memberships/${'$'}encodedUser", "DELETE").success
+    }
+
+    suspend fun getTeamDiscussions(context: Context, org: String, teamSlug: String): List<GHTeamDiscussion> {
+        val encodedOrg = java.net.URLEncoder.encode(org, "UTF-8")
+        val encodedTeam = java.net.URLEncoder.encode(teamSlug, "UTF-8")
+        val r = request(context, "/orgs/${'$'}encodedOrg/teams/${'$'}encodedTeam/discussions?per_page=100")
+        if (!r.success) return emptyList()
+        return try {
+            val arr = JSONArray(r.body)
+            (0 until arr.length()).map { i ->
+                val j = arr.getJSONObject(i)
+                val author = j.optJSONObject("author")
+                GHTeamDiscussion(
+                    id = j.optLong("id"),
+                    number = j.optInt("number"),
+                    title = j.optString("title"),
+                    body = j.optString("body", ""),
+                    author = author?.optString("login") ?: j.optString("author_login"),
+                    avatarUrl = author?.optString("avatar_url") ?: "",
+                    createdAt = j.optString("created_at", ""),
+                    commentsCount = j.optInt("comments_count", 0),
+                    htmlUrl = j.optString("html_url", "")
+                )
+            }
+        } catch (e: Exception) { emptyList() }
+    }
+
+    suspend fun createTeamDiscussion(context: Context, org: String, teamSlug: String, title: String, body: String): Boolean {
+        val encodedOrg = java.net.URLEncoder.encode(org, "UTF-8")
+        val encodedTeam = java.net.URLEncoder.encode(teamSlug, "UTF-8")
+        val reqBody = JSONObject().apply {
+            put("title", title)
+            put("body", body)
+        }.toString()
+        return request(context, "/orgs/${'$'}encodedOrg/teams/${'$'}encodedTeam/discussions", "POST", reqBody).success
+    }
+
+    suspend fun deleteTeamDiscussion(context: Context, org: String, teamSlug: String, number: Int): Boolean {
+        val encodedOrg = java.net.URLEncoder.encode(org, "UTF-8")
+        val encodedTeam = java.net.URLEncoder.encode(teamSlug, "UTF-8")
+        return request(context, "/orgs/${'$'}encodedOrg/teams/${'$'}encodedTeam/discussions/$number", "DELETE").success
+    }
+
     private suspend fun getRepositoryNodeId(context: Context, owner: String, repo: String): String? {
         val data = graphql(context, """
             query(${'$'}owner: String!, ${'$'}repo: String!) {
@@ -5659,6 +5771,7 @@ object GitHubManager {
             isAnswered = j.optJSONObject("answer") != null,
             locked = j.optBoolean("locked", false),
             upvotes = j.optInt("upvoteCount", 0),
+            viewerHasUpvoted = j.optBoolean("viewerHasUpvoted", false),
             htmlUrl = j.optString("url", "")
         )
     }
@@ -8008,6 +8121,7 @@ data class GHDiscussion(
     val isAnswered: Boolean = false,
     val locked: Boolean = false,
     val upvotes: Int = 0,
+    val viewerHasUpvoted: Boolean = false,
     val htmlUrl: String = ""
 )
 
@@ -8424,4 +8538,16 @@ data class GHRepoCreateParams(
     val autoInit: Boolean = false, val gitignoreTemplate: String = "",
     val licenseTemplate: String = "", val hasIssues: Boolean = true,
     val hasProjects: Boolean = true, val hasWiki: Boolean = true
+)
+
+data class GHTeamDiscussion(
+    val id: Long,
+    val number: Int,
+    val title: String,
+    val body: String,
+    val author: String,
+    val avatarUrl: String,
+    val createdAt: String,
+    val commentsCount: Int,
+    val htmlUrl: String
 )

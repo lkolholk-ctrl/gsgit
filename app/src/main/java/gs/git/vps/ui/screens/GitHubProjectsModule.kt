@@ -12,11 +12,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -1042,6 +1044,7 @@ private fun ClassicProjectDetail(
     var cardTargetColumn by remember { mutableStateOf<GHProjectColumn?>(null) }
     var moveTarget by remember { mutableStateOf<Pair<GHProjectCard, GHProjectColumn>?>(null) }
     var actionInFlight by remember { mutableStateOf(false) }
+    var cardFilterQuery by remember { mutableStateOf("") }
 
     fun loadProject() {
         loading = true
@@ -1107,34 +1110,75 @@ private fun ClassicProjectDetail(
                 AiModuleSpinner(label = "loading project")
             }
         } else {
-            LazyColumn(
-                Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                item { ProjectDetailSummary(currentProject, columns, cardsByColumn.values.sumOf { it.size }) }
-                item {
-                    GitHubTerminalButton("add column", onClick = { showColumnDialog = true }, color = AiModuleTheme.colors.accent, modifier = Modifier.fillMaxWidth())
+            Column(Modifier.fillMaxSize()) {
+                Box(Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp)) {
+                    ProjectDetailSummary(currentProject, columns, cardsByColumn.values.sumOf { it.size })
                 }
-                items(columns) { column ->
-                    ProjectColumnCard(
-                        column = column,
-                        cards = cardsByColumn[column.id].orEmpty(),
-                        allColumns = columns,
-                        onAddCard = { cardTargetColumn = column },
-                        onMoveCard = { card -> moveTarget = card to column },
-                        onDeleteCard = { card ->
-                            actionInFlight = true
-                            scope.launch {
-                                val ok = GitHubManager.deleteProjectCard(context, card.id)
-                                Toast.makeText(context, if (ok) "Card deleted" else "Failed", Toast.LENGTH_SHORT).show()
-                                actionInFlight = false
-                                if (ok) loadProject()
-                            }
-                        }
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(modifier = Modifier.weight(1f)) {
+                        AiModuleTextField(
+                            value = cardFilterQuery,
+                            onValueChange = { cardFilterQuery = it },
+                            label = "Filter cards...",
+                            singleLine = true
+                        )
+                    }
+                    GitHubTerminalButton(
+                        "add column",
+                        onClick = { showColumnDialog = true },
+                        color = AiModuleTheme.colors.accent,
+                        modifier = Modifier.width(110.dp)
                     )
                 }
-                if (columns.isEmpty()) item { EmptyProjectsCard("No columns yet") }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    columns.forEach { column ->
+                        val cards = cardsByColumn[column.id].orEmpty()
+                        val filteredCards = if (cardFilterQuery.isBlank()) {
+                            cards
+                        } else {
+                            cards.filter {
+                                it.note.contains(cardFilterQuery, ignoreCase = true) ||
+                                it.contentUrl.contains(cardFilterQuery, ignoreCase = true)
+                            }
+                        }
+                        ProjectColumnCard(
+                            modifier = Modifier
+                                .width(280.dp)
+                                .fillMaxHeight(),
+                            column = column,
+                            cards = filteredCards,
+                            allColumns = columns,
+                            onAddCard = { cardTargetColumn = column },
+                            onMoveCard = { card -> moveTarget = card to column },
+                            onDeleteCard = { card ->
+                                actionInFlight = true
+                                scope.launch {
+                                    val ok = GitHubManager.deleteProjectCard(context, card.id)
+                                    Toast.makeText(context, if (ok) "Card deleted" else "Failed", Toast.LENGTH_SHORT).show()
+                                    actionInFlight = false
+                                    if (ok) loadProject()
+                                }
+                            }
+                        )
+                    }
+                    if (columns.isEmpty()) {
+                        Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                            EmptyProjectsCard("No columns yet")
+                        }
+                    }
+                }
             }
         }
     }
@@ -1281,6 +1325,7 @@ private fun ProjectDetailSummary(project: GHProject, columns: List<GHProjectColu
 
 @Composable
 private fun ProjectColumnCard(
+    modifier: Modifier = Modifier,
     column: GHProjectColumn,
     cards: List<GHProjectCard>,
     allColumns: List<GHProjectColumn>,
@@ -1288,20 +1333,28 @@ private fun ProjectColumnCard(
     onMoveCard: (GHProjectCard) -> Unit,
     onDeleteCard: (GHProjectCard) -> Unit
 ) {
-    Column(Modifier.fillMaxWidth().ghGlassCard(14.dp).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(modifier.ghGlassCard(14.dp).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(Icons.Rounded.ViewColumn, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.accent)
-            Text(column.name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = AiModuleTheme.colors.textPrimary, modifier = Modifier.weight(1f))
+            Text(column.name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = AiModuleTheme.colors.textPrimary, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             CountPill("Cards", cards.size, AiModuleTheme.colors.textSecondary)
             IconButton(onClick = onAddCard) { Icon(Icons.Rounded.Add, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.accent) }
         }
         if (cards.isEmpty()) {
-            Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.background).padding(16.dp), contentAlignment = Alignment.Center) {
+            Box(Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.background).padding(16.dp), contentAlignment = Alignment.Center) {
                 Text("No cards", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted)
             }
         } else {
-            cards.forEach { card ->
-                ProjectCardRow(card, canMove = allColumns.size > 1, onMove = { onMoveCard(card) }, onDelete = { onDeleteCard(card) })
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                cards.forEach { card ->
+                    ProjectCardRow(card, canMove = allColumns.size > 1, onMove = { onMoveCard(card) }, onDelete = { onDeleteCard(card) })
+                }
             }
         }
     }
