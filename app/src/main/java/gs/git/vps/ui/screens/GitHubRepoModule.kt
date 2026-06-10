@@ -58,6 +58,10 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.unit.em
+
 
 import coil.ImageLoader
 import coil.compose.AsyncImage
@@ -1748,10 +1752,10 @@ internal fun InteractiveGitGraphView(
     val density = LocalDensity.current
     val context = LocalContext.current
     
-    var scale by remember { mutableStateOf(1f) }
-    var offset by remember { mutableStateOf(Offset.Zero) }
+    var scale by remember { mutableStateOf<Float>(1f) }
+    var offset by remember { mutableStateOf<Offset>(Offset.Zero) }
     
-    val graphLayout = remember(commits) { GitGraphLayout(commits) }
+    val graphLayout = remember<GitGraphLayout>(commits) { GitGraphLayout(commits) }
     var selectedNode by remember { mutableStateOf<GitGraphLayout.CommitNode?>(null) }
     
     val verticalSpacing = 70.dp
@@ -1816,21 +1820,21 @@ internal fun InteractiveGitGraphView(
                 canvas.scale(scale, scale)
                 
                 val gridColor = palette.border.copy(alpha = 0.05f)
-                val spacing = 40.dp.toPx()
+                val gridSpacing = 40.dp.toPx()
                 val startX = -offset.x / scale
                 val endX = (size.width - offset.x) / scale
                 val startY = -offset.y / scale
                 val endY = (size.height - offset.y) / scale
                 
-                var xGrid = (startX - (startX % spacing)) - spacing
-                while (xGrid < endX + spacing) {
+                var xGrid = (startX - (startX % gridSpacing)) - gridSpacing
+                while (xGrid < endX + gridSpacing) {
                     drawLine(gridColor, Offset(xGrid, startY), Offset(xGrid, endY), 1f)
-                    xGrid += spacing
+                    xGrid += gridSpacing
                 }
-                var yGrid = (startY - (startY % spacing)) - spacing
-                while (yGrid < endY + spacing) {
+                var yGrid = (startY - (startY % gridSpacing)) - gridSpacing
+                while (yGrid < endY + gridSpacing) {
                     drawLine(gridColor, Offset(startX, yGrid), Offset(endX, yGrid), 1f)
-                    yGrid += spacing
+                    yGrid += gridSpacing
                 }
 
                 graphLayout.nodes.forEachIndexed { index, node ->
@@ -2016,7 +2020,7 @@ internal fun InteractiveGitGraphView(
                                     fontSize = 10.sp
                                 )
                                 Text(
-                                    text = c.createdAt.take(16).replace("T", " "),
+                                    text = c.date.take(16).replace("T", " "),
                                     color = palette.textMuted,
                                     fontFamily = JetBrainsMono,
                                     fontSize = 8.sp
