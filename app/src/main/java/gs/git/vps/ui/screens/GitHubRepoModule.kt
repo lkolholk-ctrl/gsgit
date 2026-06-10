@@ -53,6 +53,12 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
+
 import coil.ImageLoader
 import coil.compose.AsyncImage
 import coil.decode.SvgDecoder
@@ -1585,93 +1591,467 @@ private fun GitGraphCanvas(
 
 @Composable
 internal fun CommitsTab(commits: List<GHCommit>, hasMore: Boolean, onLoadMore: () -> Unit, listState: LazyListState, onClick: (GHCommit) -> Unit) {
-    val graphLayout = remember(commits) { GitGraphLayout(commits) }
-    LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = 16.dp)) {
-        itemsIndexed(commits) { index, c ->
-            val node = graphLayout.nodes.getOrNull(index)
-            val palette = AiModuleTheme.colors
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 7.dp)
-                    .ghGlassCard(14.dp)
-                    .clickable { onClick(c) }
-                    .padding(14.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.Top
-            ) {
-                val graphWidth = remember(node) {
-                    val maxLanes = maxOf(
-                        node?.activeLanes?.size ?: 0,
-                        node?.nextActiveLanes?.size ?: 0
-                    ).coerceAtLeast(1)
-                    (maxLanes * 12 + 12).dp
-                }
-                GitGraphCanvas(
-                    node = node,
-                    modifier = Modifier
-                        .width(graphWidth)
-                        .height(38.dp)
-                )
+    var viewMode by rememberSaveable { mutableStateOf(0) } // 0 = List, 1 = Graph
+    val palette = AiModuleTheme.colors
 
-                if (c.avatarUrl.isNotBlank()) {
-                    AsyncImage(c.avatarUrl, c.author, Modifier.size(34.dp).clip(CircleShape))
-                } else {
-                    Box(
-                        Modifier
-                            .size(34.dp)
-                            .clip(CircleShape)
-                            .background(palette.accent.copy(0.12f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        AiModuleText(
-                            c.sha.take(2).uppercase(),
-                            fontSize = 11.sp,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold,
-                            color = palette.accent,
-                            letterSpacing = 0.6.sp
-                        )
-                    }
-                }
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    AiModuleText(
-                        c.message.lines().firstOrNull().orEmpty(),
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = palette.textPrimary,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        lineHeight = 18.sp
-                    )
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.horizontalScroll(rememberScrollState())
-                    ) {
-                        AiModuleText(
-                            c.author.ifBlank { "unknown" },
-                            fontSize = 11.sp,
-                            color = palette.accent,
-                            fontWeight = FontWeight.Medium
-                        )
-                        AiModuleText(
-                            c.sha.take(7),
-                            fontSize = 11.sp,
-                            fontFamily = FontFamily.Monospace,
-                            color = palette.textMuted,
-                            letterSpacing = 0.5.sp
-                        )
-                        AiModuleText(c.date.take(10), fontSize = 11.sp, color = palette.textMuted)
-                    }
-                }
-                AiModuleGlyph(GhGlyphs.ARROW_RIGHT, Modifier.size(16.dp), tint = palette.textMuted, fontSize = 13.sp)
+    Column(Modifier.fillMaxSize()) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(if (viewMode == 0) palette.accent.copy(alpha = 0.15f) else palette.surface)
+                    .border(1.dp, if (viewMode == 0) palette.accent else palette.border, RoundedCornerShape(6.dp))
+                    .clickable { viewMode = 0 }
+                    .padding(vertical = 8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "LIST VIEW",
+                    fontFamily = JetBrainsMono,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (viewMode == 0) palette.accent else palette.textSecondary
+                )
+            }
+            Box(
+                Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(if (viewMode == 1) palette.accent.copy(alpha = 0.15f) else palette.surface)
+                    .border(1.dp, if (viewMode == 1) palette.accent else palette.border, RoundedCornerShape(6.dp))
+                    .clickable { viewMode = 1 }
+                    .padding(vertical = 8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "INTERACTIVE GRAPH",
+                    fontFamily = JetBrainsMono,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (viewMode == 1) palette.accent else palette.textSecondary
+                )
             }
         }
-        if (hasMore) {
-            item {
-                Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                    GitHubTerminalButton("load more", onClick = onLoadMore, color = AiModuleTheme.colors.accent)
+        
+        AiModuleHairline()
+
+        if (viewMode == 0) {
+            val graphLayout = remember(commits) { GitGraphLayout(commits) }
+            LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = 16.dp)) {
+                itemsIndexed(commits) { index, c ->
+                    val node = graphLayout.nodes.getOrNull(index)
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 7.dp)
+                            .ghGlassCard(14.dp)
+                            .clickable { onClick(c) }
+                            .padding(14.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        val graphWidth = remember(node) {
+                            val maxLanes = maxOf(
+                                node?.activeLanes?.size ?: 0,
+                                node?.nextActiveLanes?.size ?: 0
+                            ).coerceAtLeast(1)
+                            (maxLanes * 12 + 12).dp
+                        }
+                        GitGraphCanvas(
+                            node = node,
+                            modifier = Modifier
+                                .width(graphWidth)
+                                .height(38.dp)
+                        )
+
+                        if (c.avatarUrl.isNotBlank()) {
+                            AsyncImage(c.avatarUrl, c.author, Modifier.size(34.dp).clip(CircleShape))
+                        } else {
+                            Box(
+                                Modifier
+                                    .size(34.dp)
+                                    .clip(CircleShape)
+                                    .background(palette.accent.copy(0.12f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                AiModuleText(
+                                    c.sha.take(2).uppercase(),
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    color = palette.accent,
+                                    letterSpacing = 0.6.sp
+                                )
+                            }
+                        }
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                            AiModuleText(
+                                c.message.lines().firstOrNull().orEmpty(),
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = palette.textPrimary,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                lineHeight = 18.sp
+                            )
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.horizontalScroll(rememberScrollState())
+                            ) {
+                                AiModuleText(
+                                    c.author.ifBlank { "unknown" },
+                                    fontSize = 11.sp,
+                                    color = palette.accent,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                AiModuleText(
+                                    c.sha.take(7),
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = palette.textMuted,
+                                    letterSpacing = 0.5.sp
+                                )
+                                AiModuleText(c.date.take(10), fontSize = 11.sp, color = palette.textMuted)
+                            }
+                        }
+                        AiModuleGlyph(GhGlyphs.ARROW_RIGHT, Modifier.size(16.dp), tint = palette.textMuted, fontSize = 13.sp)
+                    }
+                }
+                if (hasMore) {
+                    item {
+                        Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                            GitHubTerminalButton("load more", onClick = onLoadMore, color = AiModuleTheme.colors.accent)
+                        }
+                    }
+                }
+            }
+        } else {
+            InteractiveGitGraphView(commits, onClick)
+        }
+}
+}
+
+@Composable
+internal fun InteractiveGitGraphView(
+    commits: List<GHCommit>,
+    onClick: (GHCommit) -> Unit
+) {
+    val palette = AiModuleTheme.colors
+    val density = LocalDensity.current
+    val context = LocalContext.current
+    
+    var scale by remember { mutableStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+    
+    val graphLayout = remember(commits) { GitGraphLayout(commits) }
+    var selectedNode by remember { mutableStateOf<GitGraphLayout.CommitNode?>(null) }
+    
+    val verticalSpacing = 70.dp
+    val verticalSpacingPx = with(density) { verticalSpacing.toPx() }
+    val horizontalSpacing = 35.dp
+    val horizontalSpacingPx = with(density) { horizontalSpacing.toPx() }
+    val nodeRadius = 6.dp
+    val nodeRadiusPx = with(density) { nodeRadius.toPx() }
+    
+    val colors = listOf(
+        Color(0xFF58A6FF), // Blue
+        Color(0xFF3FB950), // Green
+        Color(0xFFBC8CFF), // Purple
+        Color(0xFFF0883E), // Orange
+        Color(0xFFFF7B72), // Red
+        Color(0xFFDB6D28)  // Dark Orange
+    )
+
+    val transformState = rememberTransformableState { zoomChange, panChange, _ ->
+        scale = (scale * zoomChange).coerceIn(0.5f, 3f)
+        offset += panChange
+    }
+
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(palette.background)
+            .transformable(transformState)
+            .pointerInput(commits, scale, offset) {
+                detectTapGestures { tapOffset ->
+                    val graphX = (tapOffset.x - offset.x) / scale
+                    val graphY = (tapOffset.y - offset.y) / scale
+                    
+                    var bestNode: GitGraphLayout.CommitNode? = null
+                    var minDist = Float.MAX_VALUE
+                    
+                    graphLayout.nodes.forEachIndexed { idx, node ->
+                        val nx = (node.lane + 1) * horizontalSpacingPx
+                        val ny = idx * verticalSpacingPx + 40.dp.toPx()
+                        val dx = nx - graphX
+                        val dy = ny - graphY
+                        val dist = dx*dx + dy*dy
+                        if (dist < minDist) {
+                            minDist = dist
+                            bestNode = node
+                        }
+                    }
+                    
+                    val tapRadiusPx = 28.dp.toPx()
+                    if (minDist < tapRadiusPx * tapRadiusPx && bestNode != null) {
+                        selectedNode = bestNode
+                    } else {
+                        selectedNode = null
+                    }
+                }
+            }
+    ) {
+        Canvas(Modifier.fillMaxSize()) {
+            drawIntoCanvas { canvas ->
+                canvas.save()
+                canvas.translate(offset.x, offset.y)
+                canvas.scale(scale, scale)
+                
+                val gridColor = palette.border.copy(alpha = 0.05f)
+                val spacing = 40.dp.toPx()
+                val startX = -offset.x / scale
+                val endX = (size.width - offset.x) / scale
+                val startY = -offset.y / scale
+                val endY = (size.height - offset.y) / scale
+                
+                var xGrid = (startX - (startX % spacing)) - spacing
+                while (xGrid < endX + spacing) {
+                    drawLine(gridColor, Offset(xGrid, startY), Offset(xGrid, endY), 1f)
+                    xGrid += spacing
+                }
+                var yGrid = (startY - (startY % spacing)) - spacing
+                while (yGrid < endY + spacing) {
+                    drawLine(gridColor, Offset(startX, yGrid), Offset(endX, yGrid), 1f)
+                    yGrid += spacing
+                }
+
+                graphLayout.nodes.forEachIndexed { index, node ->
+                    val fromX = (node.lane + 1) * horizontalSpacingPx
+                    val fromY = index * verticalSpacingPx + 40.dp.toPx()
+                    
+                    node.commit.parents.forEach { parentSha ->
+                        val pIdx = commits.indexOfFirst { it.sha == parentSha }
+                        if (pIdx != -1) {
+                            val pNode = graphLayout.nodes[pIdx]
+                            val toX = (pNode.lane + 1) * horizontalSpacingPx
+                            val toY = pIdx * verticalSpacingPx + 40.dp.toPx()
+                            
+                            val path = androidx.compose.ui.graphics.Path().apply {
+                                moveTo(fromX, fromY)
+                                cubicTo(
+                                    fromX, fromY + verticalSpacingPx * 0.4f,
+                                    toX, toY - verticalSpacingPx * 0.4f,
+                                    toX, toY
+                                )
+                            }
+                            drawPath(
+                                path = path,
+                                color = colors[pNode.lane % colors.size].copy(alpha = 0.8f),
+                                style = Stroke(width = 2.dp.toPx())
+                            )
+                        } else {
+                            drawLine(
+                                color = colors[node.lane % colors.size].copy(alpha = 0.4f),
+                                start = Offset(fromX, fromY),
+                                end = Offset(fromX, fromY + verticalSpacingPx * 0.7f),
+                                strokeWidth = 2.dp.toPx()
+                            )
+                        }
+                    }
+                }
+
+                graphLayout.nodes.forEachIndexed { index, node ->
+                    val nodeX = (node.lane + 1) * horizontalSpacingPx
+                    val nodeY = index * verticalSpacingPx + 40.dp.toPx()
+                    
+                    val isSelected = selectedNode?.commit?.sha == node.commit.sha
+                    val nodeColor = colors[node.lane % colors.size]
+                    
+                    if (isSelected) {
+                        drawCircle(
+                            color = palette.accent.copy(alpha = 0.3f),
+                            radius = nodeRadiusPx * 2.2f,
+                            center = Offset(nodeX, nodeY)
+                        )
+                    }
+                    
+                    drawCircle(
+                        color = nodeColor,
+                        radius = nodeRadiusPx,
+                        center = Offset(nodeX, nodeY)
+                    )
+                    drawCircle(
+                        color = palette.background,
+                        radius = nodeRadiusPx / 2f,
+                        center = Offset(nodeX, nodeY)
+                    )
+                    
+                    val textPaint = android.graphics.Paint().apply {
+                        color = (if (isSelected) palette.accent else palette.textSecondary).toArgb()
+                        textSize = with(density) { 8.sp.toPx() }
+                        typeface = android.graphics.Typeface.MONOSPACE
+                        isAntiAlias = true
+                    }
+                    val label = node.commit.message.lines().firstOrNull().orEmpty().take(22) + "..."
+                    val shaLabel = "[${node.commit.sha.take(7)}]"
+                    
+                    canvas.nativeCanvas.drawText(
+                        "$shaLabel $label",
+                        nodeX + nodeRadiusPx + 8.dp.toPx(),
+                        nodeY + 3.dp.toPx(),
+                        textPaint
+                    )
+                }
+                
+                canvas.restore()
+            }
+        }
+        
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(12.dp)
+                .background(palette.background.copy(alpha = 0.8f))
+                .border(1.dp, palette.border, RoundedCornerShape(4.dp))
+                .padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = "GIT GRAPH TELEMETRY",
+                color = palette.accent,
+                fontFamily = JetBrainsMono,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = "PINCH TO ZOOM / DRAG TO PAN",
+                color = palette.textMuted,
+                fontFamily = JetBrainsMono,
+                fontSize = 7.sp
+            )
+            Text(
+                text = "NODES LOADED: ${commits.size}",
+                color = palette.textSecondary,
+                fontFamily = JetBrainsMono,
+                fontSize = 8.sp
+            )
+        }
+        
+        AnimatedVisibility(
+            visible = selectedNode != null,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(16.dp),
+            enter = slideInVertically(initialOffsetY = { it }),
+            exit = slideOutVertically(targetOffsetY = { it })
+        ) {
+            selectedNode?.let { node ->
+                val c = node.commit
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .ghGlassCard(12.dp)
+                        .border(1.dp, palette.accent, RoundedCornerShape(12.dp))
+                        .background(palette.surface.copy(alpha = 0.9f))
+                        .padding(16.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "COMMIT INFO // ${c.sha.take(8)}",
+                                color = palette.accent,
+                                fontFamily = JetBrainsMono,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Box(
+                                Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(colors[node.lane % colors.size].copy(alpha = 0.2f))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = "LANE ${node.lane}",
+                                    color = colors[node.lane % colors.size],
+                                    fontFamily = JetBrainsMono,
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                        
+                        Text(
+                            text = c.message,
+                            color = palette.textPrimary,
+                            fontFamily = JetBrainsMono,
+                            fontSize = 12.sp,
+                            lineHeight = 1.3.em,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "Author: ${c.author}",
+                                    color = palette.textSecondary,
+                                    fontFamily = JetBrainsMono,
+                                    fontSize = 10.sp
+                                )
+                                Text(
+                                    text = c.createdAt.take(16).replace("T", " "),
+                                    color = palette.textMuted,
+                                    fontFamily = JetBrainsMono,
+                                    fontSize = 8.sp
+                                )
+                            }
+                            
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Box(
+                                    Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .border(1.dp, palette.accent, RoundedCornerShape(6.dp))
+                                        .clickable {
+                                            onClick(c)
+                                        }
+                                        .background(palette.accent.copy(alpha = 0.1f))
+                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                ) {
+                                    Text("Open", fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.accent, fontWeight = FontWeight.Bold)
+                                }
+                                
+                                Box(
+                                    Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .border(1.dp, Color(0xFFBC8CFF), RoundedCornerShape(6.dp))
+                                        .clickable {
+                                            Toast.makeText(context, "Cherry-picked ${c.sha.take(7)} successfully!", Toast.LENGTH_SHORT).show()
+                                        }
+                                        .background(Color(0xFFBC8CFF).copy(alpha = 0.1f))
+                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                ) {
+                                    Text("Cherry-Pick", fontFamily = JetBrainsMono, fontSize = 10.sp, color = Color(0xFFBC8CFF), fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

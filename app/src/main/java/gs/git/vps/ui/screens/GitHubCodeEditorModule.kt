@@ -297,7 +297,7 @@ fun CodeEditorScreen(
     }
 
     val autocompleteSuggestions = remember(currentWord, ext, symbols) {
-        if (currentWord.isBlank() || currentWord.length < 2) emptyList()
+        if (currentWord.isBlank() || currentWord.length < 2) emptyList<Pair<String, String>>()
         else {
             val words = when (ext) {
                 "kt", "kotlin" -> gs.git.vps.ui.components.KOTLIN_KEYWORDS
@@ -310,8 +310,9 @@ fun CodeEditorScreen(
                 else -> emptyList()
             }
             val symbolNames = symbols.map { it.name }
-            val combined = (words + symbolNames).distinct()
-            combined.filter { it.startsWith(currentWord, ignoreCase = true) && it != currentWord }.take(8)
+            val combined = (words.map { it to "keyword" } + symbolNames.map { it to "symbol" })
+                .distinctBy { it.first }
+            combined.filter { it.first.startsWith(currentWord, ignoreCase = true) && it.first != currentWord }.take(8)
         }
     }
 
@@ -1114,22 +1115,38 @@ fun CodeEditorScreen(
                     fontWeight = FontWeight.ExtraBold
                 )
                 autocompleteSuggestions.forEach { suggestion ->
+                    val isKeyword = suggestion.second == "keyword"
+                    val itemColor = if (isKeyword) Color(0xFFBC8CFF) else palette.accent
+                    val itemBg = itemColor.copy(alpha = 0.10f)
+                    val prefix = if (isKeyword) "K" else "S"
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(GitHubControlRadius))
-                            .background(palette.accent.copy(alpha = 0.12f))
-                            .border(0.5.dp, palette.accent, RoundedCornerShape(GitHubControlRadius))
-                            .clickable { insertSuggestion(suggestion) }
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                            .background(itemBg)
+                            .border(0.5.dp, itemColor.copy(alpha = 0.8f), RoundedCornerShape(GitHubControlRadius))
+                            .clickable { insertSuggestion(suggestion.first) }
+                            .padding(horizontal = 6.dp, vertical = 3.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = suggestion,
-                            color = palette.accent,
-                            fontFamily = JetBrainsMono,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "[$prefix]",
+                                color = itemColor.copy(alpha = 0.6f),
+                                fontFamily = JetBrainsMono,
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = suggestion.first,
+                                color = itemColor,
+                                fontFamily = JetBrainsMono,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
             }
