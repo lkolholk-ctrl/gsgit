@@ -298,7 +298,7 @@ private fun DiscussionDetailScreen(
     var showEditDialog by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var pollOptions by remember(discussion.id) {
-        mutableStateOf(
+        mutableStateOf<List<Pair<String, Int>>>(
             if (discussion.body.contains("poll", ignoreCase = true) || discussion.title.contains("poll", ignoreCase = true) || discussion.body.isBlank()) {
                 listOf(
                     "Ultra-Premium UI / Theme" to 14,

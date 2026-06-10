@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import gs.git.vps.data.github.GHOrgTeam
 import gs.git.vps.ui.theme.AiModuleTheme
+import gs.git.vps.ui.theme.JetBrainsMono
 import gs.git.vps.data.github.GHRepoTeam
 import gs.git.vps.data.github.GHCollaborator
 import gs.git.vps.data.github.GHTeamDiscussion

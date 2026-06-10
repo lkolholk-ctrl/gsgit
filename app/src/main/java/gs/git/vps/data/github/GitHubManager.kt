@@ -5667,11 +5667,8 @@ object GitHubManager {
                 val j = arr.getJSONObject(i)
                 GHCollaborator(
                     login = j.optString("login"),
-                    id = j.optLong("id"),
                     avatarUrl = j.optString("avatar_url", ""),
-                    htmlUrl = j.optString("html_url", ""),
-                    role = "member",
-                    permissions = mapOf("pull" to true)
+                    role = "member"
                 )
             }
         } catch (e: Exception) { emptyList() }
