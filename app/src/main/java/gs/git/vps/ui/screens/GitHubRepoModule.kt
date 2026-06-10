@@ -1627,619 +1627,111 @@ internal fun CommitsTab(
     onClick: (GHCommit) -> Unit,
     onExploreFiles: (String) -> Unit
 ) {
-    var viewMode by rememberSaveable { mutableStateOf(0) } // 0 = List, 1 = Graph
     val palette = AiModuleTheme.colors
 
     Column(Modifier.fillMaxSize()) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(if (viewMode == 0) palette.accent.copy(alpha = 0.15f) else palette.surface)
-                    .border(1.dp, if (viewMode == 0) palette.accent else palette.border, RoundedCornerShape(6.dp))
-                    .clickable { viewMode = 0 }
-                    .padding(vertical = 8.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "LIST VIEW",
-                    fontFamily = JetBrainsMono,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (viewMode == 0) palette.accent else palette.textSecondary
-                )
-            }
-            Box(
-                Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(if (viewMode == 1) palette.accent.copy(alpha = 0.15f) else palette.surface)
-                    .border(1.dp, if (viewMode == 1) palette.accent else palette.border, RoundedCornerShape(6.dp))
-                    .clickable { viewMode = 1 }
-                    .padding(vertical = 8.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "INTERACTIVE GRAPH",
-                    fontFamily = JetBrainsMono,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (viewMode == 1) palette.accent else palette.textSecondary
-                )
-            }
-        }
-        
-        AiModuleHairline()
-
-        if (viewMode == 0) {
-            val graphLayout = remember(commits) { GitGraphLayout(commits) }
-            LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = 16.dp)) {
-                itemsIndexed(commits) { index, c ->
-                    val node = graphLayout.nodes.getOrNull(index)
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 7.dp)
-                            .ghGlassCard(14.dp)
-                            .clickable { onClick(c) }
-                            .padding(14.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.Top
-                    ) {
-                        val graphWidth = remember(node) {
-                            val maxLanes = maxOf(
-                                node?.activeLanes?.size ?: 0,
-                                node?.nextActiveLanes?.size ?: 0
-                            ).coerceAtLeast(1)
-                            (maxLanes * 12 + 12).dp
-                        }
-                        GitGraphCanvas(
-                            node = node,
-                            modifier = Modifier
-                                .width(graphWidth)
-                                .height(38.dp)
-                        )
-
-                        if (c.avatarUrl.isNotBlank()) {
-                            AsyncImage(c.avatarUrl, c.author, Modifier.size(34.dp).clip(CircleShape))
-                        } else {
-                            Box(
-                                Modifier
-                                    .size(34.dp)
-                                    .clip(CircleShape)
-                                    .background(palette.accent.copy(0.12f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                AiModuleText(
-                                    c.sha.take(2).uppercase(),
-                                    fontSize = 11.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontWeight = FontWeight.Bold,
-                                    color = palette.accent,
-                                    letterSpacing = 0.6.sp
-                                )
-                            }
-                        }
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                            AiModuleText(
-                                c.message.lines().firstOrNull().orEmpty(),
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = palette.textPrimary,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                                lineHeight = 18.sp
-                            )
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.horizontalScroll(rememberScrollState())
-                            ) {
-                                AiModuleText(
-                                    c.author.ifBlank { "unknown" },
-                                    fontSize = 11.sp,
-                                    color = palette.accent,
-                                    fontWeight = FontWeight.Medium
-                                )
-                                if (c.verified) {
-                                    Box(
-                                        modifier = Modifier
-                                            .border(0.5.dp, Color(0xFF00FF66), RoundedCornerShape(3.dp))
-                                            .background(Color(0xFF00FF66).copy(alpha = 0.15f))
-                                            .padding(horizontal = 4.dp, vertical = 1.dp)
-                                    ) {
-                                        Text(
-                                            text = "VERIFIED",
-                                            color = Color(0xFF00FF66),
-                                            fontFamily = JetBrainsMono,
-                                            fontSize = 8.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
-                                }
-                                AiModuleText(
-                                    c.sha.take(7),
-                                    fontSize = 11.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    color = palette.textMuted,
-                                    letterSpacing = 0.5.sp
-                                )
-                                AiModuleText(c.date.take(10), fontSize = 11.sp, color = palette.textMuted)
-                            }
-                        }
-                        AiModuleGlyph(GhGlyphs.ARROW_RIGHT, Modifier.size(16.dp), tint = palette.textMuted, fontSize = 13.sp)
-                    }
-                }
-                if (hasMore) {
-                    item {
-                        Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                            GitHubTerminalButton("load more", onClick = onLoadMore, color = AiModuleTheme.colors.accent)
-                        }
-                    }
-                }
-            }
-        } else {
-            InteractiveGitGraphView(commits, onClick, onExploreFiles)
-        }
-    }
-}
-
-@Composable
-internal fun InteractiveGitGraphView(
-    commits: List<GHCommit>,
-    onClick: (GHCommit) -> Unit,
-    onExploreFiles: (String) -> Unit
-) {
-    val palette = AiModuleTheme.colors
-    val density = LocalDensity.current
-    val context = LocalContext.current
-    
-    var scale by remember { mutableStateOf<Float>(1f) }
-    var offset by remember { mutableStateOf<Offset>(Offset.Zero) }
-    var searchQuery by remember { mutableStateOf("") }
-    
-    val graphLayout = remember<GitGraphLayout>(commits) { GitGraphLayout(commits) }
-    var selectedNode by remember { mutableStateOf<GitGraphLayout.CommitNode?>(null) }
-    
-    val verticalSpacing = 70.dp
-    val verticalSpacingPx = with(density) { verticalSpacing.toPx() }
-    val horizontalSpacing = 35.dp
-    val horizontalSpacingPx = with(density) { horizontalSpacing.toPx() }
-    val nodeRadius = 6.dp
-    val nodeRadiusPx = with(density) { nodeRadius.toPx() }
-    
-    val colors = listOf(
-        Color(0xFF58A6FF), // Blue
-        Color(0xFF3FB950), // Green
-        Color(0xFFBC8CFF), // Purple
-        Color(0xFFF0883E), // Orange
-        Color(0xFFFF7B72), // Red
-        Color(0xFFDB6D28)  // Dark Orange
-    )
-
-    val transformState = rememberTransformableState { zoomChange, panChange, _ ->
-        scale = (scale * zoomChange).coerceIn(0.5f, 3f)
-        offset += panChange
-    }
-
-    Box(
-        Modifier
-            .fillMaxSize()
-            .clipToBounds()
-            .background(palette.background)
-            .transformable(transformState)
-            .pointerInput(commits, scale, offset) {
-                detectTapGestures { tapOffset ->
-                    val graphX = (tapOffset.x - offset.x) / scale
-                    val graphY = (tapOffset.y - offset.y) / scale
-                    
-                    var bestNode: GitGraphLayout.CommitNode? = null
-                    var minDist = Float.MAX_VALUE
-                    
-                    graphLayout.nodes.forEachIndexed { idx, node ->
-                        val nx = (node.lane + 1) * horizontalSpacingPx
-                        val ny = idx * verticalSpacingPx + 60.dp.toPx()
-                        val dx = nx - graphX
-                        val dy = ny - graphY
-                        val dist = dx*dx + dy*dy
-                        if (dist < minDist) {
-                            minDist = dist
-                            bestNode = node
-                        }
-                    }
-                    
-                    val tapRadiusPx = 28.dp.toPx()
-                    if (minDist < tapRadiusPx * tapRadiusPx && bestNode != null) {
-                        selectedNode = bestNode
-                    } else {
-                        selectedNode = null
-                    }
-                }
-            }
-    ) {
-        Canvas(Modifier.fillMaxSize().clipToBounds()) {
-            drawIntoCanvas { canvas ->
-                canvas.save()
-                canvas.translate(offset.x, offset.y)
-                canvas.scale(scale, scale)
-                
-                // Draw fine crosshairs on grid intersections
-                val gridColor = palette.border.copy(alpha = 0.08f)
-                val gridSpacing = 50.dp.toPx()
-                val startX = -offset.x / scale
-                val endX = (size.width - offset.x) / scale
-                val startY = -offset.y / scale
-                val endY = (size.height - offset.y) / scale
-                
-                var xGrid = (startX - (startX % gridSpacing)) - gridSpacing
-                while (xGrid < endX + gridSpacing) {
-                    var yGrid = (startY - (startY % gridSpacing)) - gridSpacing
-                    while (yGrid < endY + gridSpacing) {
-                        drawLine(gridColor, Offset(xGrid - 4f, yGrid), Offset(xGrid + 4f, yGrid), 1f)
-                        drawLine(gridColor, Offset(xGrid, yGrid - 4f), Offset(xGrid, yGrid + 4f), 1f)
-                        yGrid += gridSpacing
-                    }
-                    xGrid += gridSpacing
-                }
-
-                // Draw branch lanes references
-                val laneCount = 6
-                for (lane in 0 until laneCount) {
-                    val lx = (lane + 1) * horizontalSpacingPx
-                    val lanePaint = android.graphics.Paint().apply {
-                        color = colors[lane % colors.size].copy(alpha = 0.4f).toArgb()
-                        textSize = with(density) { 7.sp.toPx() }
-                        typeface = android.graphics.Typeface.MONOSPACE
-                        isAntiAlias = true
-                    }
-                    canvas.nativeCanvas.drawText("LANE $lane", lx - 12.dp.toPx(), 28.dp.toPx(), lanePaint)
-                    
-                    drawLine(
-                        color = colors[lane % colors.size].copy(alpha = 0.06f),
-                        start = Offset(lx, 34.dp.toPx()),
-                        end = Offset(lx, endY + gridSpacing),
-                        strokeWidth = 1f
-                    )
-                }
-
-                // Draw connection curves with neon glow
-                graphLayout.nodes.forEachIndexed { index, node ->
-                    val fromX = (node.lane + 1) * horizontalSpacingPx
-                    val fromY = index * verticalSpacingPx + 60.dp.toPx()
-                    
-                    node.commit.parents.forEach { parentSha ->
-                        val pIdx = commits.indexOfFirst { it.sha == parentSha }
-                        if (pIdx != -1) {
-                            val pNode = graphLayout.nodes[pIdx]
-                            val toX = (pNode.lane + 1) * horizontalSpacingPx
-                            val toY = pIdx * verticalSpacingPx + 60.dp.toPx()
-                            
-                            val path = androidx.compose.ui.graphics.Path().apply {
-                                moveTo(fromX, fromY)
-                                cubicTo(
-                                    fromX, fromY + verticalSpacingPx * 0.4f,
-                                    toX, toY - verticalSpacingPx * 0.4f,
-                                    toX, toY
-                                )
-                            }
-                            // Glow path
-                            drawPath(
-                                path = path,
-                                color = colors[pNode.lane % colors.size].copy(alpha = 0.15f),
-                                style = Stroke(width = 5.dp.toPx())
-                            )
-                            // Core path
-                            drawPath(
-                                path = path,
-                                color = colors[pNode.lane % colors.size].copy(alpha = 0.85f),
-                                style = Stroke(width = 1.5.dp.toPx())
-                            )
-                        } else {
-                            drawLine(
-                                color = colors[node.lane % colors.size].copy(alpha = 0.4f),
-                                start = Offset(fromX, fromY),
-                                end = Offset(fromX, fromY + verticalSpacingPx * 0.7f),
-                                strokeWidth = 2.dp.toPx()
-                            )
-                        }
-                    }
-                }
-
-                // Draw commit nodes as structured boxes
-                graphLayout.nodes.forEachIndexed { index, node ->
-                    val nodeX = (node.lane + 1) * horizontalSpacingPx
-                    val nodeY = index * verticalSpacingPx + 60.dp.toPx()
-                    
-                    val isSelected = selectedNode?.commit?.sha == node.commit.sha
-                    val isMatch = searchQuery.isNotBlank() && (
-                        node.commit.message.contains(searchQuery, ignoreCase = true) ||
-                        node.commit.sha.startsWith(searchQuery, ignoreCase = true) ||
-                        node.commit.author.contains(searchQuery, ignoreCase = true)
-                    )
-                    
-                    val nodeColor = if (isMatch) Color(0xFFD29922) else colors[node.lane % colors.size]
-                    
-                    if (isMatch) {
-                        drawCircle(
-                            color = Color(0xFFD29922).copy(alpha = 0.35f),
-                            radius = nodeRadiusPx * 3.5f,
-                            center = Offset(nodeX, nodeY)
-                        )
-                    }
-                    
-                    if (isSelected) {
-                        drawCircle(
-                            color = palette.accent.copy(alpha = 0.25f),
-                            radius = nodeRadiusPx * 2.2f,
-                            center = Offset(nodeX, nodeY)
-                        )
-                    }
-                    
-                    drawCircle(
-                        color = nodeColor,
-                        radius = nodeRadiusPx,
-                        center = Offset(nodeX, nodeY)
-                    )
-                    drawCircle(
-                        color = palette.background,
-                        radius = nodeRadiusPx / 2f,
-                        center = Offset(nodeX, nodeY)
-                    )
-                    
-                    // Card background for text label (prevents text clipping)
-                    val cardWidth = 140.dp.toPx()
-                    val cardHeight = 22.dp.toPx()
-                    val cardLeft = nodeX + nodeRadiusPx + 8.dp.toPx()
-                    val cardTop = nodeY - cardHeight / 2f
-                    
-                    drawRoundRect(
-                        color = palette.surface.copy(alpha = 0.85f),
-                        topLeft = Offset(cardLeft, cardTop),
-                        size = Size(cardWidth, cardHeight),
-                        cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
-                    )
-                    drawRoundRect(
-                        color = nodeColor.copy(alpha = 0.4f),
-                        topLeft = Offset(cardLeft, cardTop),
-                        size = Size(cardWidth, cardHeight),
-                        cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx()),
-                        style = Stroke(width = 0.8f.dp.toPx())
-                    )
-                    
-                    val textPaint = android.graphics.Paint().apply {
-                        color = (if (isSelected) palette.accent else palette.textPrimary).toArgb()
-                        textSize = with(density) { 7.5.sp.toPx() }
-                        typeface = android.graphics.Typeface.MONOSPACE
-                        isAntiAlias = true
-                    }
-                    val msg = node.commit.message.lines().firstOrNull().orEmpty()
-                    val truncatedMsg = if (msg.length > 15) msg.take(15) + ".." else msg
-                    val shaStr = node.commit.sha.take(5).uppercase()
-                    
-                    canvas.nativeCanvas.drawText(
-                        "[$shaStr] $truncatedMsg",
-                        cardLeft + 6.dp.toPx(),
-                        nodeY + 3.dp.toPx(),
-                        textPaint
-                    )
-                }
-                
-                canvas.restore()
-            }
-        }
-        
-        // HUD Overlay
-        Row(
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .fillMaxWidth()
-                .padding(12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(
-                modifier = Modifier
-                    .background(palette.background.copy(alpha = 0.8f))
-                    .border(1.dp, palette.border, RoundedCornerShape(4.dp))
-                    .padding(8.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(
-                    text = "GIT GRAPH TELEMETRY",
-                    color = palette.accent,
-                    fontFamily = JetBrainsMono,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "PINCH TO ZOOM / DRAG TO PAN",
-                    color = palette.textMuted,
-                    fontFamily = JetBrainsMono,
-                    fontSize = 7.sp
-                )
-                Text(
-                    text = "NODES: ${commits.size}",
-                    color = palette.textSecondary,
-                    fontFamily = JetBrainsMono,
-                    fontSize = 8.sp
-                )
-            }
-            
-            // Search field & reset
-            Row(
-                modifier = Modifier
-                    .background(palette.background.copy(alpha = 0.85f))
-                    .border(1.dp, palette.border, RoundedCornerShape(4.dp))
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Text(
-                    text = "FIND:",
-                    color = palette.accent,
-                    fontFamily = JetBrainsMono,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                BasicTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    textStyle = TextStyle(
-                        color = palette.textPrimary,
-                        fontFamily = JetBrainsMono,
-                        fontSize = 11.sp
-                    ),
-                    cursorBrush = SolidColor(palette.accent),
-                    modifier = Modifier
-                        .width(100.dp)
-                        .background(palette.surface)
-                        .border(0.5.dp, palette.border, RoundedCornerShape(2.dp))
-                        .padding(horizontal = 4.dp, vertical = 2.dp)
-                )
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(3.dp))
-                        .background(palette.accent.copy(alpha = 0.1f))
-                        .border(0.5.dp, palette.accent, RoundedCornerShape(3.dp))
-                        .clickable {
-                            scale = 1f
-                            offset = Offset.Zero
-                        }
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                ) {
-                    Text("RESET", color = palette.accent, fontSize = 8.sp, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-        
-        // Selected Commit Details Bottom Card
-        AnimatedVisibility(
-            visible = selectedNode != null,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .padding(16.dp),
-            enter = slideInVertically(initialOffsetY = { it }),
-            exit = slideOutVertically(targetOffsetY = { it })
-        ) {
-            selectedNode?.let { node ->
-                val c = node.commit
-                Box(
-                    modifier = Modifier
+        val graphLayout = remember(commits) { GitGraphLayout(commits) }
+        LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = 16.dp)) {
+            itemsIndexed(commits) { index, c ->
+                val node = graphLayout.nodes.getOrNull(index)
+                Row(
+                    Modifier
                         .fillMaxWidth()
-                        .ghGlassCard(12.dp)
-                        .border(1.dp, palette.accent, RoundedCornerShape(12.dp))
-                        .background(palette.surface.copy(alpha = 0.9f))
-                        .padding(16.dp)
+                        .padding(horizontal = 16.dp, vertical = 7.dp)
+                        .ghGlassCard(14.dp)
+                        .clickable { onClick(c) }
+                        .padding(14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.Top
                 ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                    val graphWidth = remember(node) {
+                        val maxLanes = maxOf(
+                            node?.activeLanes?.size ?: 0,
+                            node?.nextActiveLanes?.size ?: 0
+                        ).coerceAtLeast(1)
+                        (maxLanes * 12 + 12).dp
+                    }
+                    GitGraphCanvas(
+                        node = node,
+                        modifier = Modifier
+                            .width(graphWidth)
+                            .height(38.dp)
+                    )
+
+                    if (c.avatarUrl.isNotBlank()) {
+                        AsyncImage(c.avatarUrl, c.author, Modifier.size(34.dp).clip(CircleShape))
+                    } else {
+                        Box(
+                            Modifier
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .background(palette.accent.copy(0.12f)),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                text = "COMMIT INFO // ${c.sha.take(8)}",
+                            AiModuleText(
+                                c.sha.take(2).uppercase(),
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
                                 color = palette.accent,
-                                fontFamily = JetBrainsMono,
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold
+                                letterSpacing = 0.6.sp
                             )
-                            Box(
-                                Modifier
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(colors[node.lane % colors.size].copy(alpha = 0.2f))
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                            ) {
-                                Text(
-                                    text = "LANE ${node.lane}",
-                                    color = colors[node.lane % colors.size],
-                                    fontFamily = JetBrainsMono,
-                                    fontSize = 8.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
                         }
-                        
-                        Text(
-                            text = c.message,
+                    }
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                        AiModuleText(
+                            c.message.lines().firstOrNull().orEmpty(),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
                             color = palette.textPrimary,
-                            fontFamily = JetBrainsMono,
-                            fontSize = 12.sp,
-                            lineHeight = 1.3.em,
-                            maxLines = 3,
-                            overflow = TextOverflow.Ellipsis
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            lineHeight = 18.sp
                         )
-                        
                         Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.horizontalScroll(rememberScrollState())
                         ) {
-                            Column {
-                                Text(
-                                    text = "Author: ${c.author}",
-                                    color = palette.textSecondary,
-                                    fontFamily = JetBrainsMono,
-                                    fontSize = 10.sp
-                                )
-                                Text(
-                                    text = c.date.take(16).replace("T", " "),
-                                    color = palette.textMuted,
-                                    fontFamily = JetBrainsMono,
-                                    fontSize = 8.sp
-                                )
-                            }
-                            
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            AiModuleText(
+                                c.author.ifBlank { "unknown" },
+                                fontSize = 11.sp,
+                                color = palette.accent,
+                                fontWeight = FontWeight.Medium
+                            )
+                            if (c.verified) {
                                 Box(
-                                    Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .border(1.dp, palette.accent, RoundedCornerShape(6.dp))
-                                        .clickable {
-                                            onClick(c)
-                                        }
-                                        .background(palette.accent.copy(alpha = 0.1f))
-                                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                                    modifier = Modifier
+                                        .border(0.5.dp, Color(0xFF00FF66), RoundedCornerShape(3.dp))
+                                        .background(Color(0xFF00FF66).copy(alpha = 0.15f))
+                                        .padding(horizontal = 4.dp, vertical = 1.dp)
                                 ) {
-                                    Text("Open", fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.accent, fontWeight = FontWeight.Bold)
-                                }
-                                
-                                Box(
-                                    Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .border(1.dp, Color(0xFF3FB950), RoundedCornerShape(6.dp))
-                                        .clickable {
-                                            onExploreFiles(c.sha)
-                                            Toast.makeText(context, "Switched file tree to commit ${c.sha.take(7)}", Toast.LENGTH_SHORT).show()
-                                        }
-                                        .background(Color(0xFF3FB950).copy(alpha = 0.1f))
-                                        .padding(horizontal = 8.dp, vertical = 6.dp)
-                                ) {
-                                    Text("Explore Files", fontFamily = JetBrainsMono, fontSize = 10.sp, color = Color(0xFF3FB950), fontWeight = FontWeight.Bold)
-                                }
-                                
-                                Box(
-                                    Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .border(1.dp, Color(0xFFBC8CFF), RoundedCornerShape(6.dp))
-                                        .clickable {
-                                            Toast.makeText(context, "Cherry-picked ${c.sha.take(7)} successfully!", Toast.LENGTH_SHORT).show()
-                                        }
-                                        .background(Color(0xFFBC8CFF).copy(alpha = 0.1f))
-                                        .padding(horizontal = 8.dp, vertical = 6.dp)
-                                ) {
-                                    Text("Cherry-Pick", fontFamily = JetBrainsMono, fontSize = 10.sp, color = Color(0xFFBC8CFF), fontWeight = FontWeight.Bold)
+                                    Text(
+                                        text = "VERIFIED",
+                                        color = Color(0xFF00FF66),
+                                        fontFamily = JetBrainsMono,
+                                        fontSize = 8.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
                                 }
                             }
+                            AiModuleText(
+                                c.sha.take(7),
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = palette.textMuted,
+                                letterSpacing = 0.5.sp
+                            )
+                            AiModuleText(c.date.take(10), fontSize = 11.sp, color = palette.textMuted)
                         }
+                    }
+                    AiModuleGlyph(GhGlyphs.ARROW_RIGHT, Modifier.size(16.dp), tint = palette.textMuted, fontSize = 13.sp)
+                }
+            }
+            if (hasMore) {
+                item {
+                    Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                        GitHubTerminalButton("load more", onClick = onLoadMore, color = AiModuleTheme.colors.accent)
                     }
                 }
             }
