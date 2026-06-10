@@ -464,7 +464,7 @@ private fun ContributionGridPanel(days: List<GHContributionDay>) {
             try {
                 if (days.isEmpty()) 0 else {
                     val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
-                    val firstDate = sdf.parse(days.first().date)
+                    val firstDate = sdf.parse(days.first().date) ?: return@remember 0
                     val cal = java.util.Calendar.getInstance().apply { time = firstDate }
                     cal.get(java.util.Calendar.DAY_OF_WEEK) - 1
                 }
