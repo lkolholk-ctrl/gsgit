@@ -1589,7 +1589,11 @@ private fun GitGraphCanvas(
             color = palette.background,
             radius = nodeRadiusPx / 2,
             center = androidx.compose.ui.geometry.Offset(nodeX, nodeY)
-       internal fun CommitsTab(
+        )
+    }
+}
+
+internal fun CommitsTab(
     commits: List<GHCommit>,
     hasMore: Boolean,
     onLoadMore: () -> Unit,

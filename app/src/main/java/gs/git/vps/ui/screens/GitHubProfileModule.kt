@@ -80,9 +80,16 @@ import androidx.compose.ui.unit.IntSize
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.absoluteValue
+import kotlin.math.sqrt
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.ui.text.TextStyle
 
 @Composable
 fun ProfileScreen(
@@ -1432,86 +1439,202 @@ private fun LanguageRadarChart(topLanguages: List<Pair<String, Int>>) {
     }
     
     val totalRepos = remember(languages) { languages.sumOf { it.second }.toFloat() }
+    var selectedLangIndex by remember { mutableStateOf<Int?>(null) }
     
     val textPaint = remember(palette.textMuted) {
         android.graphics.Paint().apply {
             color = palette.textMuted.toArgb()
-            textSize = with(density) { 7.sp.toPx() }
+            textSize = with(density) { 7.5.sp.toPx() }
             typeface = android.graphics.Typeface.MONOSPACE
             isAntiAlias = true
         }
     }
     
-    Canvas(
-        Modifier
-            .fillMaxWidth()
-            .height(110.dp)
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        val center = Offset(size.width / 2f, size.height / 2f)
-        val maxRadius = size.height * 0.4f
-        val N = languages.size
-        
-        val gridLevels = listOf(0.3f, 0.6f, 1.0f)
-        gridLevels.forEach { level ->
-            val path = Path()
+        Canvas(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(160.dp)
+                .clipToBounds()
+                .pointerInput(languages, totalRepos) {
+                    detectTapGestures { tapOffset ->
+                        val centerX = size.width / 2f
+                        val centerY = size.height / 2f
+                        val maxRadius = size.height * 0.38f
+                        val N = languages.size
+                        var clickedIdx: Int? = null
+                        for (i in 0 until N) {
+                            val angle = i * (2f * Math.PI.toFloat() / N) - (Math.PI.toFloat() / 2f)
+                            val fraction = if (totalRepos > 0) languages[i].second / totalRepos else 0.2f
+                            val score = (0.2f + 0.8f * fraction).coerceIn(0f, 1.0f)
+                            val r = maxRadius * score
+                            val px = centerX + r * cos(angle)
+                            val py = centerY + r * sin(angle)
+                            
+                            val dist = sqrt((px - tapOffset.x) * (px - tapOffset.x) + (py - tapOffset.y) * (py - tapOffset.y))
+                            if (dist < 24.dp.toPx()) {
+                                clickedIdx = i
+                                break
+                            }
+                        }
+                        selectedLangIndex = if (selectedLangIndex == clickedIdx) null else clickedIdx
+                    }
+                }
+        ) {
+            val center = Offset(size.width / 2f, size.height / 2f)
+            val maxRadius = size.height * 0.38f
+            val N = languages.size
+            
+            // Draw grid levels
+            val gridLevels = listOf(0.25f, 0.5f, 0.75f, 1.0f)
+            gridLevels.forEach { level ->
+                val path = Path()
+                for (i in 0 until N) {
+                    val angle = i * (2f * Math.PI.toFloat() / N) - (Math.PI.toFloat() / 2f)
+                    val r = maxRadius * level
+                    val px = center.x + r * cos(angle)
+                    val py = center.y + r * sin(angle)
+                    if (i == 0) path.moveTo(px, py) else path.lineTo(px, py)
+                }
+                path.close()
+                drawPath(
+                    path = path,
+                    color = palette.border.copy(alpha = if (level == 1.0f) 0.15f else 0.08f),
+                    style = Stroke(width = if (level == 1.0f) 1.5.dp.toPx() else 1.dp.toPx())
+                )
+            }
+            
+            // Draw axes and labels
             for (i in 0 until N) {
                 val angle = i * (2f * Math.PI.toFloat() / N) - (Math.PI.toFloat() / 2f)
-                val r = maxRadius * level
-                val px = center.x + r * cos(angle)
-                val py = center.y + r * sin(angle)
-                if (i == 0) path.moveTo(px, py) else path.lineTo(px, py)
+                val outerPoint = Offset(
+                    center.x + maxRadius * cos(angle),
+                    center.y + maxRadius * sin(angle)
+                )
+                
+                drawLine(
+                    color = palette.border.copy(alpha = 0.08f),
+                    start = center,
+                    end = outerPoint,
+                    strokeWidth = 1f
+                )
+                
+                val text = languages[i].first
+                val textRadius = maxRadius + 12.dp.toPx()
+                val tx = center.x + textRadius * cos(angle)
+                val ty = center.y + textRadius * sin(angle) + 3.dp.toPx()
+                
+                val align = when {
+                    cos(angle) > 0.2f -> android.graphics.Paint.Align.LEFT
+                    cos(angle) < -0.2f -> android.graphics.Paint.Align.RIGHT
+                    else -> android.graphics.Paint.Align.CENTER
+                }
+                
+                val isSelected = selectedLangIndex == i
+                val paint = android.graphics.Paint(textPaint).apply {
+                    color = (if (isSelected) palette.accent else palette.textSecondary).toArgb()
+                    textSize = with(density) { (if (isSelected) 8.5.sp else 7.5.sp).toPx() }
+                    typeface = if (isSelected) android.graphics.Typeface.create(android.graphics.Typeface.MONOSPACE, android.graphics.Typeface.BOLD) else android.graphics.Typeface.MONOSPACE
+                    textAlign = align
+                }
+                
+                drawIntoCanvas { canvas ->
+                    canvas.nativeCanvas.drawText(text, tx, ty, paint)
+                }
             }
-            path.close()
-            drawPath(path, color = palette.border.copy(alpha = 0.2f), style = Stroke(1f))
+            
+            // Draw score path
+            if (totalRepos > 0) {
+                val path = Path()
+                val points = mutableListOf<Offset>()
+                for (i in 0 until N) {
+                    val angle = i * (2f * Math.PI.toFloat() / N) - (Math.PI.toFloat() / 2f)
+                    val fraction = languages[i].second / totalRepos
+                    val score = (0.2f + 0.8f * fraction).coerceIn(0f, 1.0f)
+                    val r = maxRadius * score
+                    val px = center.x + r * cos(angle)
+                    val py = center.y + r * sin(angle)
+                    points.add(Offset(px, py))
+                    if (i == 0) path.moveTo(px, py) else path.lineTo(px, py)
+                }
+                path.close()
+                
+                drawPath(
+                    path = path,
+                    brush = Brush.radialGradient(
+                        colors = listOf(palette.accent.copy(alpha = 0.35f), palette.accent.copy(alpha = 0.05f)),
+                        center = center,
+                        radius = maxRadius
+                    ),
+                    style = Fill
+                )
+                drawPath(
+                    path = path,
+                    color = palette.accent,
+                    style = Stroke(width = 1.5.dp.toPx())
+                )
+                
+                // Draw nodes
+                points.forEachIndexed { i, pt ->
+                    val isSelected = selectedLangIndex == i
+                    drawCircle(
+                        color = if (isSelected) palette.accent else Color.White,
+                        radius = if (isSelected) 4.dp.toPx() else 2.5.dp.toPx(),
+                        center = pt
+                    )
+                    if (isSelected) {
+                        drawCircle(
+                            color = palette.accent.copy(alpha = 0.4f),
+                            radius = 9.dp.toPx(),
+                            center = pt,
+                            style = Stroke(width = 1.5.dp.toPx())
+                        )
+                    }
+                }
+            }
         }
         
-        for (i in 0 until N) {
-            val angle = i * (2f * Math.PI.toFloat() / N) - (Math.PI.toFloat() / 2f)
-            val outerPoint = Offset(
-                center.x + maxRadius * cos(angle),
-                center.y + maxRadius * sin(angle)
-            )
-            
-            drawLine(
-                color = palette.border.copy(alpha = 0.2f),
-                start = center,
-                end = outerPoint,
-                strokeWidth = 1f
-            )
-            
-            val text = languages[i].first
-            val textRadius = maxRadius + 10.dp.toPx()
-            val tx = center.x + textRadius * cos(angle) - (text.length * 2.5.dp.toPx())
-            val ty = center.y + textRadius * sin(angle) + 3.dp.toPx()
-            
-            drawIntoCanvas { canvas ->
-                canvas.nativeCanvas.drawText(text, tx, ty, textPaint)
+        AnimatedVisibility(
+            visible = selectedLangIndex != null,
+            enter = expandVertically(),
+            exit = shrinkVertically()
+        ) {
+            selectedLangIndex?.let { idx ->
+                val lang = languages[idx]
+                val pct = if (totalRepos > 0) (lang.second / totalRepos * 100).toInt() else 0
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, palette.accent.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
+                        .background(palette.accent.copy(alpha = 0.06f))
+                        .padding(8.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            text = "METRIC ANALYZER // ${lang.first}",
+                            fontFamily = JetBrainsMono,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = palette.accent
+                        )
+                        Text(
+                            text = "REPOSITORIES : ${lang.second} active projects",
+                            fontFamily = JetBrainsMono,
+                            fontSize = 10.sp,
+                            color = palette.textPrimary
+                        )
+                        Text(
+                            text = "VOLUME SHARE : $pct% of public stack",
+                            fontFamily = JetBrainsMono,
+                            fontSize = 10.sp,
+                            color = palette.textSecondary
+                        )
+                    }
+                }
             }
-        }
-        
-        if (totalRepos > 0) {
-            val path = Path()
-            for (i in 0 until N) {
-                val angle = i * (2f * Math.PI.toFloat() / N) - (Math.PI.toFloat() / 2f)
-                val fraction = languages[i].second / totalRepos
-                val score = (0.2f + 0.8f * fraction).coerceIn(0f, 1.0f)
-                val r = maxRadius * score
-                val px = center.x + r * cos(angle)
-                val py = center.y + r * sin(angle)
-                if (i == 0) path.moveTo(px, py) else path.lineTo(px, py)
-            }
-            path.close()
-            
-            drawPath(
-                path = path,
-                color = palette.accent.copy(alpha = 0.18f),
-                style = Fill
-            )
-            drawPath(
-                path = path,
-                color = palette.accent,
-                style = Stroke(1.5.dp.toPx())
-            )
         }
     }
 }
@@ -1522,77 +1645,233 @@ private fun ActivityDonutChart(slices: List<ActivitySlice>) {
     val density = LocalDensity.current
     
     val totalWeight = remember(slices) { slices.sumOf { it.percentage.toDouble() }.toFloat() }
+    var selectedSliceIndex by remember { mutableStateOf<Int?>(null) }
     
-    Canvas(
-        Modifier
-            .fillMaxWidth()
-            .height(110.dp)
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        val donutSize = size.height * 0.76f
-        val donutLeft = 16.dp.toPx()
-        val donutTop = (size.height - donutSize) / 2f
-        val strokeWidthPx = 14.dp.toPx()
-        
-        var startAngle = -90f
-        
-        slices.forEach { slice ->
-            if (totalWeight > 0) {
-                val sweepAngle = (slice.percentage / totalWeight) * 360f
-                drawArc(
-                    color = slice.color,
-                    startAngle = startAngle,
-                    sweepAngle = sweepAngle,
-                    useCenter = false,
-                    topLeft = Offset(donutLeft, donutTop),
-                    size = Size(donutSize, donutSize),
-                    style = Stroke(strokeWidthPx)
-                )
-                startAngle += sweepAngle
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(120.dp)
+                    .clipToBounds(),
+                contentAlignment = Alignment.Center
+            ) {
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(slices, totalWeight) {
+                            detectTapGestures { tapOffset ->
+                                val centerX = size.width / 2f
+                                val centerY = size.height / 2f
+                                val dx = tapOffset.x - centerX
+                                val dy = tapOffset.y - centerY
+                                val distance = sqrt(dx*dx + dy*dy)
+                                
+                                val donutSize = size.height * 0.9f
+                                val outerRadius = donutSize / 2f
+                                val strokeWidthPx = 16.dp.toPx()
+                                val innerRadius = outerRadius - strokeWidthPx
+                                
+                                if (distance in innerRadius..outerRadius) {
+                                    var angle = Math.toDegrees(Math.atan2(dy.toDouble(), dx.toDouble())).toFloat()
+                                    if (angle < 0) angle += 360f
+                                    val adjustedAngle = (angle - (-90f) + 360f) % 360f
+                                    
+                                    var currentAngle = 0f
+                                    var clickedIdx: Int? = null
+                                    for (i in slices.indices) {
+                                        val sweep = if (totalWeight > 0) (slices[i].percentage / totalWeight) * 360f else 0f
+                                        if (adjustedAngle >= currentAngle && adjustedAngle < currentAngle + sweep) {
+                                            clickedIdx = i
+                                            break
+                                        }
+                                        currentAngle += sweep
+                                    }
+                                    selectedSliceIndex = if (selectedSliceIndex == clickedIdx) null else clickedIdx
+                                }
+                            }
+                        }
+                ) {
+                    val donutSize = size.height * 0.9f
+                    val donutLeft = (size.width - donutSize) / 2f
+                    val donutTop = (size.height - donutSize) / 2f
+                    val strokeWidthPx = 14.dp.toPx()
+                    
+                    var startAngle = -90f
+                    
+                    slices.forEachIndexed { index, slice ->
+                        if (totalWeight > 0) {
+                            val sweepAngle = (slice.percentage / totalWeight) * 360f
+                            val isSelected = selectedSliceIndex == index
+                            val currentStrokeWidth = if (isSelected) strokeWidthPx + 4.dp.toPx() else strokeWidthPx
+                            
+                            if (isSelected) {
+                                drawArc(
+                                    color = slice.color.copy(alpha = 0.25f),
+                                    startAngle = startAngle,
+                                    sweepAngle = sweepAngle,
+                                    useCenter = false,
+                                    topLeft = Offset(donutLeft - 2.dp.toPx(), donutTop - 2.dp.toPx()),
+                                    size = Size(donutSize + 4.dp.toPx(), donutSize + 4.dp.toPx()),
+                                    style = Stroke(currentStrokeWidth + 4.dp.toPx())
+                                )
+                            }
+                            
+                            drawArc(
+                                color = slice.color,
+                                startAngle = startAngle,
+                                sweepAngle = sweepAngle,
+                                useCenter = false,
+                                topLeft = Offset(donutLeft, donutTop),
+                                size = Size(donutSize, donutSize),
+                                style = Stroke(currentStrokeWidth)
+                            )
+                            startAngle += sweepAngle
+                        }
+                    }
+                }
+                
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    if (selectedSliceIndex != null) {
+                        val slice = slices[selectedSliceIndex!!]
+                        val pct = if (totalWeight > 0) (slice.percentage / totalWeight * 100).toInt() else 0
+                        Text(
+                            text = "${pct}%",
+                            fontFamily = JetBrainsMono,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = slice.color
+                        )
+                        Text(
+                            text = slice.label.take(3).uppercase(),
+                            fontFamily = JetBrainsMono,
+                            fontSize = 8.sp,
+                            color = palette.textSecondary
+                        )
+                    } else {
+                        Text(
+                            text = "SYS",
+                            fontFamily = JetBrainsMono,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = palette.accent
+                        )
+                        Text(
+                            text = "ACT",
+                            fontFamily = JetBrainsMono,
+                            fontSize = 8.sp,
+                            color = palette.textMuted
+                        )
+                    }
+                }
+            }
+            
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                slices.forEachIndexed { index, slice ->
+                    val isSelected = selectedSliceIndex == index
+                    val pct = if (totalWeight > 0) (slice.percentage / totalWeight * 100).toInt() else 0
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(if (isSelected) slice.color.copy(alpha = 0.08f) else Color.Transparent)
+                            .border(
+                                1.dp,
+                                if (isSelected) slice.color.copy(alpha = 0.3f) else Color.Transparent,
+                                RoundedCornerShape(4.dp)
+                            )
+                            .clickable {
+                                selectedSliceIndex = if (selectedSliceIndex == index) null else index
+                            }
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(RoundedCornerShape(3.dp))
+                                    .background(slice.color)
+                            )
+                            Text(
+                                text = slice.label,
+                                fontFamily = JetBrainsMono,
+                                fontSize = 10.sp,
+                                color = if (isSelected) palette.textPrimary else palette.textSecondary,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
+                        Text(
+                            text = "$pct%",
+                            fontFamily = JetBrainsMono,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = slice.color
+                        )
+                    }
+                }
             }
         }
         
-        val startX = donutLeft + donutSize + 32.dp.toPx()
-        val startY = size.height * 0.18f
-        val lineSpacing = 16.dp.toPx()
-        
-        slices.forEachIndexed { index, slice ->
-            val y = startY + index * lineSpacing
-            
-            drawCircle(
-                color = slice.color,
-                radius = 3.dp.toPx(),
-                center = Offset(startX, y - 3.dp.toPx())
-            )
-            
-            drawIntoCanvas { canvas ->
-                val labelPaint = android.graphics.Paint().apply {
-                    color = palette.textSecondary.toArgb()
-                    textSize = with(density) { 8.sp.toPx() }
-                    typeface = android.graphics.Typeface.MONOSPACE
-                    isAntiAlias = true
+        AnimatedVisibility(
+            visible = selectedSliceIndex != null,
+            enter = expandVertically(),
+            exit = shrinkVertically()
+        ) {
+            selectedSliceIndex?.let { idx ->
+                val slice = slices[idx]
+                val descText = when (slice.label.lowercase()) {
+                    "commits" -> "Code modifications, direct contributions, and updates written to repository lanes."
+                    "prs" -> "Pull Requests submitted for team code reviews, repository merging, and project branches."
+                    "issues" -> "Bug reports, telemetry logs, tasks, and issues created or managed in this workspace."
+                    "reviews" -> "Quality control audits, approvals, changes requested, and feedback on active peer branches."
+                    else -> "General cybernetic repository activity and event interactions."
                 }
-                val pctPaint = android.graphics.Paint().apply {
-                    color = slice.color.toArgb()
-                    textSize = with(density) { 8.sp.toPx() }
-                    typeface = android.graphics.Typeface.create(android.graphics.Typeface.MONOSPACE, android.graphics.Typeface.BOLD)
-                    isAntiAlias = true
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, slice.color.copy(alpha = 0.3f), RoundedCornerShape(4.dp))
+                        .background(slice.color.copy(alpha = 0.06f))
+                        .padding(8.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            text = "INTELLIGENCE REPORT // ${slice.label.uppercase()}",
+                            fontFamily = JetBrainsMono,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = slice.color
+                        )
+                        Text(
+                            text = descText,
+                            fontFamily = JetBrainsMono,
+                            fontSize = 10.sp,
+                            color = palette.textPrimary,
+                            lineHeight = 1.3.em
+                        )
+                    }
                 }
-                canvas.nativeCanvas.drawText(
-                    slice.label,
-                    startX + 8.dp.toPx(),
-                    y,
-                    labelPaint
-                )
-                canvas.nativeCanvas.drawText(
-                    "${slice.percentage.toInt()}%",
-                    startX + 90.dp.toPx(),
-                    y,
-                    pctPaint
-                )
             }
         }
     }
-}
 
 private fun exportDevCardToPng(
     context: Context,
