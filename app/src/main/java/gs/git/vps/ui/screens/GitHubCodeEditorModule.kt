@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.size
@@ -130,6 +131,16 @@ private data class EditorSearchMatch(val start: Int, val end: Int, val line: Int
 
 private data class EditorSymbol(val name: String, val kind: String, val line: Int)
 
+private data class EditorTab(
+    val file: GHContent,
+    val textState: TextFieldValue,
+    val savedContent: String,
+    val savedSha: String,
+    val mode: GitHubEditorMode,
+    val undoStack: List<TextFieldValue>,
+    val redoStack: List<TextFieldValue>
+)
+
 @Composable
 fun CodeEditorScreen(
     repoOwner: String,
@@ -145,12 +156,30 @@ fun CodeEditorScreen(
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
 
-    var textState by rememberSaveable(file.path, branch, stateSaver = TextFieldValue.Saver) {
-        mutableStateOf(TextFieldValue(initialContent))
+    val tabs = remember { mutableStateListOf<EditorTab>() }
+    var activeTabIndex by remember { mutableStateOf(0) }
+    var showFilePicker by remember { mutableStateOf(false) }
+
+    LaunchedEffect(file.path, branch, initialContent) {
+        if (tabs.isEmpty()) {
+            tabs.add(
+                EditorTab(
+                    file = file,
+                    textState = TextFieldValue(initialContent),
+                    savedContent = initialContent,
+                    savedSha = file.sha,
+                    mode = GitHubEditorMode.EDIT,
+                    undoStack = emptyList(),
+                    redoStack = emptyList()
+                )
+            )
+        }
     }
-    var savedContent by rememberSaveable(file.path, branch) { mutableStateOf(initialContent) }
-    var savedSha by rememberSaveable(file.path, branch) { mutableStateOf(file.sha) }
-    var mode by rememberSaveable(file.path, branch) { mutableStateOf(GitHubEditorMode.EDIT) }
+
+    var textState by remember { mutableStateOf(TextFieldValue(initialContent)) }
+    var savedContent by remember { mutableStateOf(initialContent) }
+    var savedSha by remember { mutableStateOf(file.sha) }
+    var mode by remember { mutableStateOf(GitHubEditorMode.EDIT) }
     var lineNumbers by rememberSaveable(file.path, branch) { mutableStateOf(true) }
     var wrapLines by rememberSaveable(file.path, branch) { mutableStateOf(false) }
     var showSearch by rememberSaveable(file.path, branch) { mutableStateOf(false) }
@@ -187,10 +216,12 @@ fun CodeEditorScreen(
     var loadingCommits by remember { mutableStateOf(false) }
     var showBlame by rememberSaveable(file.path) { mutableStateOf(false) }
 
-    LaunchedEffect(currentBranch) {
+    val currentFile = tabs.getOrNull(activeTabIndex)?.file ?: file
+
+    LaunchedEffect(currentBranch, currentFile.path) {
         loadingCommits = true
         try {
-            fileCommits = GitHubManager.getFileCommits(context, repoOwner, repoName, file.path, currentBranch)
+            fileCommits = GitHubManager.getFileCommits(context, repoOwner, repoName, currentFile.path, currentBranch)
         } catch (_: java.lang.Exception) {}
         loadingCommits = false
     }
@@ -206,7 +237,7 @@ fun CodeEditorScreen(
     val verticalScrollState = rememberScrollState()
     val density = LocalDensity.current
 
-    val ext = remember(file.name) { file.name.substringAfterLast(".", "").lowercase() }
+    val ext = remember(currentFile.path) { currentFile.name.substringAfterLast(".", "").lowercase() }
     val isImage = ext in listOf("png", "jpg", "jpeg", "gif", "webp", "svg", "ico")
     val isMarkdown = ext in listOf("md", "markdown")
     val text = textState.text
@@ -607,12 +638,86 @@ fun CodeEditorScreen(
         )
     }
 
+    if (showFilePicker) {
+        FilePickerDialog(
+            repoOwner = repoOwner,
+            repoName = repoName,
+            branch = currentBranch,
+            onDismiss = { showFilePicker = false },
+            onFileSelected = { selectedFile ->
+                scope.launch {
+                    loadingFile = true
+                    showFilePicker = false
+                    try {
+                        val newContent = GitHubManager.getFileContent(context, repoOwner, repoName, selectedFile.path, currentBranch)
+                        val existingIndex = tabs.indexOfFirst { it.file.path == selectedFile.path }
+                        if (existingIndex >= 0) {
+                            if (tabs.indices.contains(activeTabIndex)) {
+                                tabs[activeTabIndex] = tabs[activeTabIndex].copy(
+                                    textState = textState,
+                                    savedContent = savedContent,
+                                    savedSha = savedSha,
+                                    mode = mode,
+                                    undoStack = undoStack.toList(),
+                                    redoStack = redoStack.toList()
+                                )
+                            }
+                            activeTabIndex = existingIndex
+                            val target = tabs[existingIndex]
+                            textState = target.textState
+                            savedContent = target.savedContent
+                            savedSha = target.savedSha
+                            mode = target.mode
+                            undoStack.clear()
+                            undoStack.addAll(target.undoStack)
+                            redoStack.clear()
+                            redoStack.addAll(target.redoStack)
+                        } else {
+                            if (tabs.indices.contains(activeTabIndex)) {
+                                tabs[activeTabIndex] = tabs[activeTabIndex].copy(
+                                    textState = textState,
+                                    savedContent = savedContent,
+                                    savedSha = savedSha,
+                                    mode = mode,
+                                    undoStack = undoStack.toList(),
+                                    redoStack = redoStack.toList()
+                                )
+                            }
+                            tabs.add(
+                                EditorTab(
+                                    file = selectedFile,
+                                    textState = TextFieldValue(newContent),
+                                    savedContent = newContent,
+                                    savedSha = selectedFile.sha,
+                                    mode = GitHubEditorMode.EDIT,
+                                    undoStack = emptyList(),
+                                    redoStack = emptyList()
+                                )
+                            )
+                            activeTabIndex = tabs.lastIndex
+                            textState = TextFieldValue(newContent)
+                            savedContent = newContent
+                            savedSha = selectedFile.sha
+                            mode = GitHubEditorMode.EDIT
+                            undoStack.clear()
+                            redoStack.clear()
+                        }
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Failed to load file: ${e.message}", Toast.LENGTH_SHORT).show()
+                    } finally {
+                        loadingFile = false
+                    }
+                }
+            }
+        )
+    }
+
     AiModuleSurface {
     val palette = AiModuleTheme.colors
     Column(Modifier.fillMaxSize().background(palette.background)) {
         if (!zenMode) {
             GitHubEditorTopBar(
-                fileName = file.name,
+                fileName = currentFile.name,
                 subtitle = buildEditorSubtitle(ext, lines.size, text.length, hasChanges),
                 isImage = isImage,
                 showMoreMenu = showMoreMenu,
@@ -622,6 +727,123 @@ fun CodeEditorScreen(
                 onBack = ::handleEditorBack,
                 onAskAi = onAskAi
             )
+            
+            // Tabs Bar
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp)
+                    .background(palette.surface)
+                    .drawBehind {
+                        drawLine(
+                            color = SeparatorColor,
+                            start = Offset(0f, size.height),
+                            end = Offset(size.width, size.height),
+                            strokeWidth = 1.dp.toPx()
+                        )
+                    }
+                    .horizontalScroll(rememberScrollState()),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                tabs.forEachIndexed { index, tab ->
+                    val isActive = index == activeTabIndex
+                    val tabHasChanges = tab.textState.text != tab.savedContent
+                    Row(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .clickable {
+                                if (tabs.indices.contains(activeTabIndex)) {
+                                    tabs[activeTabIndex] = tabs[activeTabIndex].copy(
+                                        textState = textState,
+                                        savedContent = savedContent,
+                                        savedSha = savedSha,
+                                        mode = mode,
+                                        undoStack = undoStack.toList(),
+                                        redoStack = redoStack.toList()
+                                    )
+                                }
+                                activeTabIndex = index
+                                val target = tabs[index]
+                                textState = target.textState
+                                savedContent = target.savedContent
+                                savedSha = target.savedSha
+                                mode = target.mode
+                                undoStack.clear()
+                                undoStack.addAll(target.undoStack)
+                                redoStack.clear()
+                                redoStack.addAll(target.redoStack)
+                            }
+                            .background(if (isActive) palette.background else Color.Transparent)
+                            .padding(horizontal = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = tab.file.name + (if (tabHasChanges) " *" else ""),
+                            fontSize = 11.sp,
+                            fontFamily = JetBrainsMono,
+                            color = if (isActive) palette.accent else palette.textSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Box(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .clickable {
+                                    if (activeTabIndex == index) {
+                                        if (tabs.size > 1) {
+                                            val nextActive = if (index == tabs.lastIndex) index - 1 else index + 1
+                                            val target = tabs[nextActive]
+                                            textState = target.textState
+                                            savedContent = target.savedContent
+                                            savedSha = target.savedSha
+                                            mode = target.mode
+                                            undoStack.clear()
+                                            undoStack.addAll(target.undoStack)
+                                            redoStack.clear()
+                                            redoStack.addAll(target.redoStack)
+                                            
+                                            tabs.removeAt(index)
+                                            activeTabIndex = tabs.indexOf(target)
+                                        } else {
+                                            onBack()
+                                        }
+                                    } else {
+                                        tabs.removeAt(index)
+                                        if (activeTabIndex > index) {
+                                            activeTabIndex--
+                                        }
+                                    }
+                                }
+                                .padding(2.dp)
+                        ) {
+                            Text(
+                                text = "×",
+                                fontSize = 11.sp,
+                                fontFamily = JetBrainsMono,
+                                color = palette.textSecondary
+                            )
+                        }
+                    }
+                    Box(modifier = Modifier.fillMaxHeight().width(1.dp).background(SeparatorColor))
+                }
+                
+                // Add tab button ("+")
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .width(36.dp)
+                        .clickable { showFilePicker = true },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "+",
+                        fontSize = 14.sp,
+                        fontFamily = JetBrainsMono,
+                        color = palette.accent
+                    )
+                }
+            }
         }
 
         AnimatedVisibility(showMoreMenu && !zenMode) {
@@ -2990,5 +3212,132 @@ private fun formatRelativeTime(dateStr: String): String {
         }
     } catch (_: Exception) {
         return dateStr
+    }
+}
+
+@Composable
+private fun FilePickerDialog(
+    repoOwner: String,
+    repoName: String,
+    branch: String,
+    onFileSelected: (GHContent) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val palette = AiModuleTheme.colors
+
+    var currentPath by remember { mutableStateOf("") }
+    var contents by remember { mutableStateOf<List<GHContent>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+
+    fun loadPath(path: String) {
+        loading = true
+        currentPath = path
+        scope.launch {
+            try {
+                contents = GitHubManager.getRepoContents(context, repoOwner, repoName, path, branch)
+            } catch (_: Exception) {
+                contents = emptyList()
+            }
+            loading = false
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        loadPath("")
+    }
+
+    AiModuleAlertDialog(
+        onDismissRequest = onDismiss,
+        title = "select file to open",
+        confirmButton = {},
+        dismissButton = {
+            AiModuleTextAction(label = Strings.cancel.lowercase(), onClick = onDismiss, tint = palette.textSecondary)
+        }
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().heightIn(max = 300.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = "Path: /${currentPath.ifBlank { "" }}",
+                fontSize = 11.sp,
+                fontFamily = JetBrainsMono,
+                color = palette.textSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            
+            Box(Modifier.fillMaxWidth().height(1.dp).background(palette.border))
+
+            if (loading) {
+                Box(Modifier.fillMaxWidth().height(150.dp), contentAlignment = Alignment.Center) {
+                    AiModuleSpinner("loading files...")
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    if (currentPath.isNotBlank()) {
+                        item {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        val parent = currentPath.substringBeforeLast("/", "")
+                                        loadPath(parent)
+                                    }
+                                    .padding(vertical = 6.dp, horizontal = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("../", fontSize = 12.sp, fontFamily = JetBrainsMono, color = palette.accent)
+                                Text("go up", fontSize = 12.sp, fontFamily = JetBrainsMono, color = palette.textSecondary)
+                            }
+                        }
+                    }
+                    itemsIndexed(contents) { _, item ->
+                        val isDir = item.type == "dir"
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    if (isDir) {
+                                        loadPath(item.path)
+                                    } else {
+                                        onFileSelected(item)
+                                    }
+                                }
+                                .padding(vertical = 6.dp, horizontal = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (isDir) "/" else " ",
+                                fontSize = 12.sp,
+                                fontFamily = JetBrainsMono,
+                                color = if (isDir) palette.accent else palette.textSecondary
+                            )
+                            Text(
+                                text = item.name,
+                                fontSize = 12.sp,
+                                fontFamily = JetBrainsMono,
+                                color = if (isDir) palette.accent else palette.textPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                    if (contents.isEmpty()) {
+                        item {
+                            Text("empty directory", fontSize = 11.sp, color = palette.textMuted, modifier = Modifier.padding(8.dp))
+                        }
+                    }
+                }
+            }
+        }
     }
 }
