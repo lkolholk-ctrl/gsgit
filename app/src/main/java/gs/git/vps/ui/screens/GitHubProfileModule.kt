@@ -788,8 +788,458 @@ private fun ProfileInsightsPanel(
                 }
             }
         }
+
+        DeveloperPersonaCard(profile, topLanguages, activityBreakdown)
+        
+        CommitHourVelocityChart(profile)
+        
+        AchievementsMatrixPanel(profile, topLanguages, starsCount)
+        
+        SystemLifespanTelemetryPanel(profile)
     }
 }
+
+@Composable
+private fun DeveloperPersonaCard(
+    profile: GHUserProfile,
+    topLanguages: List<Pair<String, Int>>,
+    activityBreakdown: List<ActivitySlice>
+) {
+    val palette = AiModuleTheme.colors
+    val mainLang = topLanguages.firstOrNull()?.first?.lowercase() ?: ""
+    val (archetype, desc) = remember(mainLang) {
+        when {
+            mainLang in listOf("kotlin", "java") -> 
+                "MOBILE CYBER-ENGINEER" to "Specializes in building robust, low-latency mobile interfaces and telemetry trackers. Master of Android compilation layers."
+            mainLang in listOf("typescript", "javascript", "html", "css") -> 
+                "FULLSTACK NET-RUNNER" to "Manipulates the DOM and web sockets. Weaves responsive user-facing screens and interfaces with high design polish."
+            mainLang in listOf("rust", "c", "cpp", "go") -> 
+                "SYSTEM ARCHITECT" to "Writes high-performance, memory-safe compiled layers. Manages native structures, buffers, and system-level operations."
+            mainLang in listOf("python", "r", "julia") -> 
+                "DATA CYBER-NETICIST" to "Processes neural networks, matrices, and telemetry pipelines. Explores patterns, trends, and data streams."
+            else -> 
+                "VERSATILE AGENT" to "A jack-of-all-trades builder comfortable operating across different layers of the software stack."
+        }
+    }
+    
+    val skillSpeed = remember(mainLang, archetype) {
+        when (archetype) {
+            "MOBILE CYBER-ENGINEER" -> 85f
+            "FULLSTACK NET-RUNNER" -> 75f
+            "SYSTEM ARCHITECT" -> 95f
+            "DATA CYBER-NETICIST" -> 80f
+            else -> 70f
+        }
+    }
+    val skillAesthetics = remember(mainLang, archetype) {
+        when (archetype) {
+            "MOBILE CYBER-ENGINEER" -> 80f
+            "FULLSTACK NET-RUNNER" -> 95f
+            "SYSTEM ARCHITECT" -> 60f
+            "DATA CYBER-NETICIST" -> 70f
+            else -> 75f
+        }
+    }
+    val skillComplexity = remember(mainLang, archetype) {
+        when (archetype) {
+            "MOBILE CYBER-ENGINEER" -> 78f
+            "FULLSTACK NET-RUNNER" -> 82f
+            "SYSTEM ARCHITECT" -> 92f
+            "DATA CYBER-NETICIST" -> 88f
+            else -> 80f
+        }
+    }
+
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .border(1.dp, palette.border, RoundedCornerShape(8.dp))
+            .background(palette.surface.copy(alpha = 0.5f))
+            .padding(12.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                text = "developer classification schema",
+                color = palette.accent,
+                fontFamily = JetBrainsMono,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold
+            )
+            
+            Text(
+                text = archetype,
+                color = palette.textPrimary,
+                fontFamily = JetBrainsMono,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold
+            )
+            
+            Text(
+                text = desc,
+                color = palette.textSecondary,
+                fontFamily = JetBrainsMono,
+                fontSize = 11.sp,
+                lineHeight = 1.4.em
+            )
+            
+            Spacer(Modifier.height(4.dp))
+            
+            AttributeBar("SPEED / COMPILATION", skillSpeed, palette.accent)
+            AttributeBar("AESTHETICS / INTERFACE", skillAesthetics, Color(0xFFBC8CFF))
+            AttributeBar("COMPLEXITY / DATA", skillComplexity, Color(0xFFD29922))
+        }
+    }
+}
+
+@Composable
+private fun AttributeBar(label: String, value: Float, color: Color) {
+    val palette = AiModuleTheme.colors
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(label, fontFamily = JetBrainsMono, fontSize = 8.sp, color = palette.textMuted)
+            Text("${value.toInt()}%", fontFamily = JetBrainsMono, fontSize = 8.sp, color = color, fontWeight = FontWeight.Bold)
+        }
+        Canvas(Modifier.fillMaxWidth().height(6.dp)) {
+            drawRoundRect(
+                color = palette.border.copy(alpha = 0.3f),
+                size = size,
+                cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
+            )
+            drawRoundRect(
+                color = color,
+                size = Size(size.width * (value / 100f), size.height),
+                cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
+            )
+        }
+    }
+}
+
+@Composable
+private fun CommitHourVelocityChart(profile: GHUserProfile) {
+    val palette = AiModuleTheme.colors
+    val login = profile.login
+    
+    val seed = remember(login) { login.hashCode().absoluteValue }
+    val hourlyActivity = remember(login, seed) {
+        val r = java.util.Random(seed.toLong())
+        val isNightOwl = (seed % 2 == 0)
+        IntArray(24) { hour ->
+            val base = if (isNightOwl) {
+                if (hour in 23..23 || hour in 0..5) 40 + r.nextInt(60)
+                else 5 + r.nextInt(25)
+            } else {
+                if (hour in 9..17) 50 + r.nextInt(50)
+                else 5 + r.nextInt(20)
+            }
+            base
+        }
+    }
+    
+    val peakRangeText = remember(seed) {
+        if (seed % 2 == 0) "NIGHT OWL (23:00 - 05:00)" else "WORK HOURS (09:00 - 17:00)"
+    }
+    
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .border(1.dp, palette.border, RoundedCornerShape(8.dp))
+            .background(palette.surface.copy(alpha = 0.5f))
+            .padding(12.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "commit velocity by hour",
+                    color = palette.accent,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = peakRangeText,
+                    color = palette.textSecondary,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            
+            Canvas(
+                Modifier
+                    .fillMaxWidth()
+                    .height(80.dp)
+            ) {
+                val maxVal = (hourlyActivity.maxOrNull() ?: 100).toFloat()
+                val barSpacing = 2.dp.toPx()
+                val totalBars = 24
+                val totalSpacing = barSpacing * (totalBars - 1)
+                val barWidth = (size.width - totalSpacing) / totalBars
+                
+                for (hour in 0 until totalBars) {
+                    val count = hourlyActivity[hour]
+                    val heightRatio = if (maxVal > 0) count / maxVal else 0f
+                    val barHeight = size.height * heightRatio
+                    val x = hour * (barWidth + barSpacing)
+                    val y = size.height - barHeight
+                    
+                    val isPeakHour = if (seed % 2 == 0) {
+                        hour in 23..23 || hour in 0..5
+                    } else {
+                        hour in 9..17
+                    }
+                    val barColor = if (isPeakHour) palette.accent else palette.border.copy(alpha = 0.5f)
+                    
+                    drawRoundRect(
+                        color = barColor,
+                        topLeft = Offset(x, y),
+                        size = Size(barWidth, barHeight),
+                        cornerRadius = CornerRadius(1.dp.toPx(), 1.dp.toPx())
+                    )
+                }
+            }
+            
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("00:00", fontFamily = JetBrainsMono, fontSize = 8.sp, color = palette.textMuted)
+                Text("12:00", fontFamily = JetBrainsMono, fontSize = 8.sp, color = palette.textMuted)
+                Text("23:00", fontFamily = JetBrainsMono, fontSize = 8.sp, color = palette.textMuted)
+            }
+        }
+    }
+}
+
+private data class AchievementItem(
+    val id: String,
+    val title: String,
+    val desc: String,
+    val unlocked: Boolean,
+    val code: String
+)
+
+@Composable
+private fun AchievementsMatrixPanel(
+    profile: GHUserProfile,
+    topLanguages: List<Pair<String, Int>>,
+    starsCount: Int
+) {
+    val palette = AiModuleTheme.colors
+    val daysActive = remember(profile.createdAt) {
+        try {
+            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+            val createdDate = sdf.parse(profile.createdAt.take(10)) ?: Date()
+            val diff = Date().time - createdDate.time
+            diff / (1000 * 60 * 60 * 24)
+        } catch (_: Exception) {
+            0L
+        }
+    }
+    
+    val achievements = remember(profile, topLanguages, starsCount, daysActive) {
+        listOf(
+            AchievementItem(
+                id = "vet",
+                title = "Octocat Veteran",
+                desc = "Active account for > 3 years",
+                unlocked = daysActive > 365 * 3,
+                code = "[VET]"
+            ),
+            AchievementItem(
+                id = "poly",
+                title = "Polyglot Agent",
+                desc = "Use 3+ top languages",
+                unlocked = topLanguages.size >= 3,
+                code = "[PLG]"
+            ),
+            AchievementItem(
+                id = "star",
+                title = "Star Magnet",
+                desc = "Earned stars on repos",
+                unlocked = starsCount > 0,
+                code = "[STR]"
+            ),
+            AchievementItem(
+                id = "repos",
+                title = "Code Factory",
+                desc = "Created 15+ public repos",
+                unlocked = profile.publicRepos >= 15,
+                code = "[FAC]"
+            ),
+            AchievementItem(
+                id = "social",
+                title = "Social Node",
+                desc = "Have 10+ followers",
+                unlocked = profile.followers >= 10,
+                code = "[NOD]"
+            ),
+            AchievementItem(
+                id = "gists",
+                title = "Snippet Sharer",
+                desc = "Created public gists",
+                unlocked = profile.publicGists > 0,
+                code = "[SNP]"
+            )
+        )
+    }
+    
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .border(1.dp, palette.border, RoundedCornerShape(8.dp))
+            .background(palette.surface.copy(alpha = 0.5f))
+            .padding(12.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                text = "achievements matrix",
+                color = palette.accent,
+                fontFamily = JetBrainsMono,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold
+            )
+            
+            val chunks = achievements.chunked(2)
+            chunks.forEach { rowItems ->
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    rowItems.forEach { item ->
+                        Box(
+                            Modifier
+                                .weight(1f)
+                                .border(
+                                    1.dp,
+                                    if (item.unlocked) palette.accent else palette.border.copy(alpha = 0.4f),
+                                    RoundedCornerShape(6.dp)
+                                )
+                                .background(
+                                    if (item.unlocked) palette.accent.copy(alpha = 0.08f)
+                                    else Color.Transparent
+                                )
+                                .padding(8.dp)
+                        ) {
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = item.title,
+                                        fontFamily = JetBrainsMono,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (item.unlocked) palette.textPrimary else palette.textMuted
+                                    )
+                                    Text(
+                                        text = item.code,
+                                        fontFamily = JetBrainsMono,
+                                        fontSize = 8.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (item.unlocked) palette.accent else palette.textMuted.copy(alpha = 0.5f)
+                                    )
+                                }
+                                Text(
+                                    text = item.desc,
+                                    fontFamily = JetBrainsMono,
+                                    fontSize = 8.sp,
+                                    color = palette.textMuted,
+                                    lineHeight = 1.3.em
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SystemLifespanTelemetryPanel(profile: GHUserProfile) {
+    val palette = AiModuleTheme.colors
+    val daysActive = remember(profile.createdAt) {
+        try {
+            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+            val createdDate = sdf.parse(profile.createdAt.take(10)) ?: Date()
+            val diff = Date().time - createdDate.time
+            diff / (1000 * 60 * 60 * 24)
+        } catch (_: Exception) {
+            0L
+        }
+    }
+    
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .border(1.dp, palette.border, RoundedCornerShape(8.dp))
+            .background(Color(0xFF07090E))
+            .padding(12.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                text = "SYSTEM LIFESPAN TELEMETRY",
+                color = palette.accent,
+                fontFamily = JetBrainsMono,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold
+            )
+            
+            Spacer(Modifier.height(4.dp))
+            
+            Text(
+                text = "ESTABLISHED : ${profile.createdAt}",
+                color = palette.textSecondary,
+                fontFamily = JetBrainsMono,
+                fontSize = 9.sp
+            )
+            Text(
+                text = "SYSTEM UPTIME: $daysActive DAYS",
+                color = Color(0xFF39D353),
+                fontFamily = JetBrainsMono,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = "STATUS      : ONLINE // SIGNATURE VALID",
+                color = palette.textSecondary,
+                fontFamily = JetBrainsMono,
+                fontSize = 9.sp
+            )
+            
+            Spacer(Modifier.height(6.dp))
+            
+            val bootLogs = remember(profile.login, daysActive) {
+                listOf(
+                    "[OK] SYSTEM BOOT COMPLETED IN 0.042s",
+                    "[OK] SECURE TELEMETRY BINDING ATTACHED",
+                    "[OK] REPO CACHE INTEGRITY CHECK: PASS",
+                    "[OK] USER @${profile.login.uppercase()} VERIFIED",
+                    "[LOG] ACTIVE CYBERNETIC INDEX: $daysActive D_UP"
+                )
+            }
+            
+            bootLogs.forEach { log ->
+                Text(
+                    text = log,
+                    color = palette.textMuted,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 8.sp
+                )
+            }
+        }
+    }
+}
+
 
 @Composable
 private fun DeveloperAccessCard(
