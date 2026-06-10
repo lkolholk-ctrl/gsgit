@@ -43,6 +43,9 @@ import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.geometry.Offset
+import gs.git.vps.ui.components.AiModuleIcon as Icon
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
 
 // Compact mode — propagates through all sub-screens automatically
 

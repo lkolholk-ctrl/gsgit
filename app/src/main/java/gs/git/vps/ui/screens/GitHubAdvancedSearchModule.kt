@@ -65,6 +65,7 @@ import gs.git.vps.ui.components.AiModuleSpinner
 import gs.git.vps.ui.components.AiModuleIcon as Icon
 import gs.git.vps.ui.components.AiModuleText as Text
 import gs.git.vps.ui.components.AiModuleTextField
+import gs.git.vps.ui.components.AiModuleTextAction
 import gs.git.vps.ui.theme.AiModuleTheme
 import gs.git.vps.ui.theme.JetBrainsMono
 import gs.git.vps.data.github.GHLabelSearchResult
