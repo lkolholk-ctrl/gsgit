@@ -38,6 +38,11 @@ import gs.git.vps.ui.theme.*
 import kotlinx.coroutines.launch
 import java.io.File
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.geometry.Offset
 
 // Compact mode — propagates through all sub-screens automatically
 
@@ -46,6 +51,8 @@ sealed class MarkdownBlock {
     data class Paragraph(val text: String) : MarkdownBlock()
     data class CodeBlock(val lang: String, val codeText: String) : MarkdownBlock()
     data class ListItem(val level: Int, val text: String) : MarkdownBlock()
+    data class TaskItem(val level: Int, val checked: Boolean, val text: String) : MarkdownBlock()
+    data class MathBlock(val latex: String, val inline: Boolean) : MarkdownBlock()
     data class BlockQuote(val text: String) : MarkdownBlock()
     object HorizontalRule : MarkdownBlock()
 }
@@ -71,6 +78,21 @@ fun parseMarkdown(text: String): List<MarkdownBlock> {
                 }
                 blocks.add(MarkdownBlock.CodeBlock(lang, codeBuilder.toString().trimEnd()))
                 i++
+            }
+            trimmed.startsWith("$$") -> {
+                if (trimmed.endsWith("$$") && trimmed.length > 2) {
+                    blocks.add(MarkdownBlock.MathBlock(trimmed.removeSurrounding("$$").trim(), false))
+                    i++
+                } else {
+                    val mathBuilder = StringBuilder()
+                    i++
+                    while (i < n && !lines[i].trim().startsWith("$$")) {
+                        mathBuilder.append(lines[i]).append("\n")
+                        i++
+                    }
+                    blocks.add(MarkdownBlock.MathBlock(mathBuilder.toString().trim(), false))
+                    i++
+                }
             }
             trimmed.startsWith("#") -> {
                 val level = trimmed.takeWhile { it == '#' }.length
@@ -100,7 +122,14 @@ fun parseMarkdown(text: String): List<MarkdownBlock> {
                 } else {
                     trimmed.substring(trimmed.indexOf(". ") + 2)
                 }
-                blocks.add(MarkdownBlock.ListItem(level, listText))
+                val isTask = listText.startsWith("[ ]") || listText.startsWith("[x]") || listText.startsWith("[X]")
+                if (isTask) {
+                    val checked = listText[1] == 'x' || listText[1] == 'X'
+                    val taskText = listText.substring(3).trim()
+                    blocks.add(MarkdownBlock.TaskItem(level, checked, taskText))
+                } else {
+                    blocks.add(MarkdownBlock.ListItem(level, listText))
+                }
                 i++
             }
             trimmed == "---" || trimmed == "***" || trimmed == "___" -> {
@@ -116,7 +145,7 @@ fun parseMarkdown(text: String): List<MarkdownBlock> {
                 while (i < n) {
                     val nextLine = lines[i]
                     val nextTrim = nextLine.trim()
-                    if (nextTrim.isEmpty() || nextTrim.startsWith("#") || nextTrim.startsWith("```") || nextTrim.startsWith(">") || nextTrim.startsWith("- ") || nextTrim.startsWith("* ") || nextTrim.startsWith("+ ") || nextTrim == "---") {
+                    if (nextTrim.isEmpty() || nextTrim.startsWith("#") || nextTrim.startsWith("```") || nextTrim.startsWith("$$") || nextTrim.startsWith(">") || nextTrim.startsWith("- ") || nextTrim.startsWith("* ") || nextTrim.startsWith("+ ") || nextTrim == "---") {
                         break
                     }
                     paraBuilder.append(" ").append(nextTrim)
@@ -223,14 +252,34 @@ private fun parseGithubHtml(html: String): List<MarkdownBlock> {
                 val end = html.indexOf("</ul>", i); val to = if (end > i) end else len
                 val inner = html.substring(i + 4, to)
                 val liRx = Regex("<li>(.*?)</li>", RegexOption.DOT_MATCHES_ALL)
-                liRx.findAll(inner).forEach { m -> blocks.add(MarkdownBlock.ListItem(0, stripTags(m.groupValues[1]))) }
+                liRx.findAll(inner).forEach { m ->
+                    val content = m.groupValues[1]
+                    val isCheckbox = content.contains("type=\"checkbox\"")
+                    val isChecked = content.contains("checked")
+                    if (isCheckbox) {
+                        val itemText = stripTags(content.replace(Regex("<input[^>]*>"), "")).trim()
+                        blocks.add(MarkdownBlock.TaskItem(0, isChecked, itemText))
+                    } else {
+                        blocks.add(MarkdownBlock.ListItem(0, stripTags(content)))
+                    }
+                }
                 i = if (end > i) end + 5 else len
             }
             i + 4 <= len && html.substring(i, i + 4) == "<ol>" -> {
                 val end = html.indexOf("</ol>", i); val to = if (end > i) end else len
                 val inner = html.substring(i + 4, to)
                 val liRx = Regex("<li>(.*?)</li>", RegexOption.DOT_MATCHES_ALL)
-                liRx.findAll(inner).forEach { m -> blocks.add(MarkdownBlock.ListItem(0, stripTags(m.groupValues[1]))) }
+                liRx.findAll(inner).forEach { m ->
+                    val content = m.groupValues[1]
+                    val isCheckbox = content.contains("type=\"checkbox\"")
+                    val isChecked = content.contains("checked")
+                    if (isCheckbox) {
+                        val itemText = stripTags(content.replace(Regex("<input[^>]*>"), "")).trim()
+                        blocks.add(MarkdownBlock.TaskItem(0, isChecked, itemText))
+                    } else {
+                        blocks.add(MarkdownBlock.ListItem(0, stripTags(content)))
+                    }
+                }
                 i = if (end > i) end + 5 else len
             }
             i + 8 <= len && html.substring(i, i + 8) == "<hr>" -> {
@@ -295,63 +344,67 @@ private fun RenderMarkdownBlock(block: MarkdownBlock) {
             )
         }
         is MarkdownBlock.CodeBlock -> {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(GitHubControlRadius))
-                    .background(palette.surfaceElevated)
-                    .border(0.5.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(palette.surface)
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = block.lang.ifBlank { "code" }.lowercase(),
-                        color = palette.textSecondary,
-                        fontFamily = JetBrainsMono,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Row(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(GitHubControlRadius))
-                            .clickable {
-                                clipboard.setText(androidx.compose.ui.text.AnnotatedString(block.codeText))
-                                Toast.makeText(context, Strings.copied, Toast.LENGTH_SHORT).show()
-                            }
-                            .padding(horizontal = 6.dp, vertical = 3.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "cp",
-                            color = palette.accent,
-                            fontFamily = JetBrainsMono,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-                
-                Box(Modifier.fillMaxWidth().height(0.5.dp).background(palette.border))
-                
+            if (block.lang.lowercase() == "mermaid") {
+                MermaidDiagram(block.codeText)
+            } else {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(12.dp)
+                        .clip(RoundedCornerShape(GitHubControlRadius))
+                        .background(palette.surfaceElevated)
+                        .border(0.5.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
                 ) {
-                    block.codeText.lines().forEach { line ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(palette.surface)
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Text(
-                            text = highlightLine(line, block.lang),
-                            fontSize = 14.sp,
+                            text = block.lang.ifBlank { "code" }.lowercase(),
+                            color = palette.textSecondary,
                             fontFamily = JetBrainsMono,
-                            lineHeight = 19.sp
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
                         )
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(GitHubControlRadius))
+                                .clickable {
+                                    clipboard.setText(androidx.compose.ui.text.AnnotatedString(block.codeText))
+                                    Toast.makeText(context, Strings.copied, Toast.LENGTH_SHORT).show()
+                                }
+                                .padding(horizontal = 6.dp, vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "cp",
+                                color = palette.accent,
+                                fontFamily = JetBrainsMono,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                    
+                    Box(Modifier.fillMaxWidth().height(0.5.dp).background(palette.border))
+                    
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(12.dp)
+                    ) {
+                        block.codeText.lines().forEach { line ->
+                            Text(
+                                text = highlightLine(line, block.lang),
+                                fontSize = 14.sp,
+                                fontFamily = JetBrainsMono,
+                                lineHeight = 19.sp
+                            )
+                        }
                     }
                 }
             }
@@ -377,6 +430,55 @@ private fun RenderMarkdownBlock(block: MarkdownBlock) {
                         lineHeight = 19.sp
                     ),
                     modifier = Modifier.weight(1f)
+                )
+            }
+        }
+        is MarkdownBlock.TaskItem -> {
+            var checkedState by remember(block.checked, block.text) { mutableStateOf(block.checked) }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { checkedState = !checkedState }
+                    .padding(start = (block.level * 16).dp, top = 2.dp, bottom = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = if (checkedState) Icons.Rounded.CheckBox else Icons.Rounded.CheckBoxOutlineBlank,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = if (checkedState) palette.accent else palette.textMuted
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                androidx.compose.material3.Text(
+                    text = buildMdAnnotated(block.text, palette),
+                    style = TextStyle(
+                        color = if (checkedState) palette.textMuted else palette.textPrimary,
+                        fontFamily = JetBrainsMono,
+                        fontSize = 14.sp,
+                        lineHeight = 19.sp,
+                        textDecoration = if (checkedState) androidx.compose.ui.text.style.TextDecoration.LineThrough else null
+                    ),
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+        is MarkdownBlock.MathBlock -> {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(GitHubControlRadius))
+                    .background(palette.surfaceElevated)
+                    .border(0.5.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
+                    .padding(14.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = block.latex,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = palette.syntaxKeyword,
+                    fontFamily = JetBrainsMono,
+                    textAlign = TextAlign.Center
                 )
             }
         }
@@ -461,6 +563,22 @@ internal fun buildMdAnnotated(text: String, palette: gs.git.vps.ui.theme.AiModul
         
         while (i < len) {
             when {
+                text[i] == '$' -> {
+                    val end = text.indexOf('$', i + 1)
+                    if (end > i && text.getOrNull(i + 1) != '$') {
+                        pushStyle(androidx.compose.ui.text.SpanStyle(
+                            color = palette.syntaxKeyword,
+                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                            fontFamily = FontFamily.Monospace
+                        ))
+                        append(text.substring(i + 1, end))
+                        pop()
+                        i = end + 1
+                    } else {
+                        append(text[i])
+                        i++
+                    }
+                }
                 text[i] == '`' -> {
                     val end = text.indexOf('`', i + 1)
                     if (end > i) {
@@ -723,4 +841,86 @@ internal fun findSafeCommentStart(line: String, isPython: Boolean): Int {
         i++
     }
     return -1
+}
+
+@Composable
+private fun MermaidDiagram(code: String) {
+    val palette = AiModuleTheme.colors
+    var scale by remember { mutableStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+    
+    val encoded = remember(code) {
+        try {
+            android.util.Base64.encodeToString(
+                code.toByteArray(Charsets.UTF_8),
+                android.util.Base64.NO_PADDING or android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE
+            ).trim()
+        } catch (_: Exception) { "" }
+    }
+    
+    if (encoded.isBlank()) return
+    val url = "https://mermaid.ink/img/$encoded"
+    
+    val state = rememberTransformableState { zoomChange, offsetChange, _ ->
+        scale = (scale * zoomChange).coerceIn(1f, 5f)
+        offset += offsetChange
+    }
+    
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(0.5.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
+            .background(palette.surfaceElevated)
+            .padding(8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Text(
+            text = "mermaid diagram",
+            color = palette.accent,
+            fontFamily = JetBrainsMono,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 4.dp)
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(240.dp)
+                .clip(RoundedCornerShape(GitHubControlRadius))
+                .background(palette.background)
+                .border(0.5.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
+                .transformable(state = state)
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onDoubleTap = {
+                            scale = 1f
+                            offset = Offset.Zero
+                        }
+                    )
+                }
+        ) {
+            AsyncImage(
+                model = url,
+                contentDescription = "Mermaid Diagram",
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer(
+                        scaleX = scale,
+                        scaleY = scale,
+                        translationX = offset.x,
+                        translationY = offset.y
+                    ),
+                contentScale = ContentScale.Fit
+            )
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(6.dp)
+                    .background(palette.background.copy(alpha = 0.6f), RoundedCornerShape(4.dp))
+                    .padding(horizontal = 6.dp, vertical = 3.dp)
+            ) {
+                Text("pinch to zoom / double tap to reset", fontSize = 8.sp, color = palette.textMuted)
+            }
+        }
+    }
 }

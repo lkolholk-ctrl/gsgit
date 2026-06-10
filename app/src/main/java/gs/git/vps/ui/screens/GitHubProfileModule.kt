@@ -8,6 +8,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.graphics.Color
 import gs.git.vps.data.github.GHContributionDay
 import android.widget.Toast
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -439,6 +447,8 @@ private fun copyClipboard(context: Context, label: String, text: String) {
 @Composable
 private fun ContributionGridPanel(days: List<GHContributionDay>) {
     val palette = AiModuleTheme.colors
+    var selectedDay by remember(days) { mutableStateOf<GHContributionDay?>(null) }
+    
     Column(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
         Text(
             text = "contribution matrix",
@@ -469,34 +479,105 @@ private fun ContributionGridPanel(days: List<GHContributionDay>) {
             padded.chunked(7)
         }
 
-        Row(
-            modifier = Modifier
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(3.dp)
-        ) {
-            weeks.forEach { week ->
-                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    week.forEach { day ->
-                        if (day != null) {
-                            val color = when (day.level) {
-                                1 -> Color(0xFF0e4429)
-                                2 -> Color(0xFF006d32)
-                                3 -> Color(0xFF26a641)
-                                4 -> Color(0xFF39d353)
-                                else -> palette.border.copy(alpha = 0.4f)
+        if (weeks.isNotEmpty()) {
+            val squareSize = 10.dp
+            val spacing = 3.dp
+            val density = LocalDensity.current
+            val squareSizePx = remember(density) { with(density) { squareSize.toPx() } }
+            val spacingPx = remember(density) { with(density) { spacing.toPx() } }
+            val stepPx = squareSizePx + spacingPx
+            
+            val totalWidth = remember(weeks.size) { squareSize * weeks.size + spacing * (weeks.size - 1) }
+            
+            Box(
+                modifier = Modifier
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 12.dp)
+            ) {
+                Canvas(
+                    modifier = Modifier
+                        .size(totalWidth, 88.dp)
+                        .pointerInput(weeks, stepPx, squareSizePx) {
+                            detectTapGestures { offset ->
+                                val wIdx = (offset.x / stepPx).toInt()
+                                val dIdx = (offset.y / stepPx).toInt()
+                                if (wIdx in weeks.indices) {
+                                    val week = weeks[wIdx]
+                                    if (dIdx in week.indices) {
+                                        val day = week[dIdx]
+                                        if (day != null) {
+                                            selectedDay = if (selectedDay == day) null else day
+                                        }
+                                    }
+                                }
                             }
-                            Box(
-                                Modifier
-                                    .size(10.dp)
-                                    .clip(RoundedCornerShape(2.dp))
-                                    .background(color)
-                            )
-                        } else {
-                            Box(Modifier.size(10.dp))
+                        }
+                ) {
+                    weeks.forEachIndexed { w, week ->
+                        week.forEachIndexed { d, day ->
+                            if (day != null) {
+                                val color = when (day.level) {
+                                    1 -> Color(0xFF0e4429)
+                                    2 -> Color(0xFF006d32)
+                                    3 -> Color(0xFF26a641)
+                                    4 -> Color(0xFF39d353)
+                                    else -> palette.border.copy(alpha = 0.4f)
+                                }
+                                drawRoundRect(
+                                    color = color,
+                                    topLeft = Offset(w * stepPx, d * stepPx),
+                                    size = Size(squareSizePx, squareSizePx),
+                                    cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
+                                )
+                                if (day == selectedDay) {
+                                    drawRoundRect(
+                                        color = palette.accent,
+                                        topLeft = Offset(w * stepPx, d * stepPx),
+                                        size = Size(squareSizePx, squareSizePx),
+                                        cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx()),
+                                        style = Stroke(width = 1.5f.dp.toPx())
+                                    )
+                                }
+                            }
                         }
                     }
                 }
+            }
+        }
+        
+        Spacer(Modifier.height(8.dp))
+        
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = selectedDay?.let { "${it.date} · level ${it.level} activity" } ?: "Tap a square to view details",
+                fontFamily = JetBrainsMono,
+                fontSize = 11.sp,
+                color = if (selectedDay != null) palette.textPrimary else palette.textMuted
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Less", fontSize = 10.sp, color = palette.textMuted, fontFamily = JetBrainsMono)
+                listOf(0, 1, 2, 3, 4).forEach { lvl ->
+                    val lvlColor = when (lvl) {
+                        1 -> Color(0xFF0e4429)
+                        2 -> Color(0xFF006d32)
+                        3 -> Color(0xFF26a641)
+                        4 -> Color(0xFF39d353)
+                        else -> palette.border.copy(alpha = 0.4f)
+                    }
+                    Box(
+                        Modifier
+                            .size(8.dp)
+                            .clip(RoundedCornerShape(1.dp))
+                            .background(lvlColor)
+                    )
+                }
+                Text("More", fontSize = 10.sp, color = palette.textMuted, fontFamily = JetBrainsMono)
             }
         }
     }

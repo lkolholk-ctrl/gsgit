@@ -4335,6 +4335,47 @@ object GitHubManager {
         } catch (e: Exception) { null }
     }
 
+    suspend fun getGitHubStatus(context: Context): GHStatusSummary? =
+        withContext(Dispatchers.IO) {
+            try {
+                val conn = (URL("https://www.githubstatus.com/api/v2/summary.json").openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    setRequestProperty("Accept", "application/json")
+                    setRequestProperty("User-Agent", "GlassFiles")
+                    connectTimeout = 10000
+                    readTimeout = 10000
+                }
+                val code = conn.responseCode
+                if (code !in 200..299) {
+                    conn.disconnect()
+                    return@withContext null
+                }
+                val bodyStr = conn.inputStream.bufferedReader().use { it.readText() }
+                conn.disconnect()
+                
+                val j = JSONObject(bodyStr)
+                val statusObj = j.getJSONObject("status")
+                val desc = statusObj.getString("description")
+                val indicator = statusObj.getString("indicator")
+                
+                val componentsArr = j.getJSONArray("components")
+                val componentsList = mutableListOf<GHStatusComponent>()
+                for (i in 0 until componentsArr.length()) {
+                    val compObj = componentsArr.getJSONObject(i)
+                    val name = compObj.getString("name")
+                    val status = compObj.getString("status")
+                    if (name in listOf("Git Operations", "API Requests", "GitHub Actions", "GitHub Pages", "Issues", "Pull Requests", "Copilot")) {
+                        componentsList.add(GHStatusComponent(name, status))
+                    }
+                }
+                
+                GHStatusSummary(desc, indicator, componentsList)
+            } catch (e: Exception) {
+                Log.e(TAG, "Get GitHub status: ${e.message}")
+                null
+            }
+        }
+
     suspend fun runApiDiagnostics(
         context: Context,
         owner: String = "",
@@ -8590,4 +8631,15 @@ data class GHTeamDiscussion(
     val createdAt: String,
     val commentsCount: Int,
     val htmlUrl: String
+)
+
+data class GHStatusComponent(
+    val name: String,
+    val status: String
+)
+
+data class GHStatusSummary(
+    val description: String,
+    val indicator: String,
+    val components: List<GHStatusComponent>
 )

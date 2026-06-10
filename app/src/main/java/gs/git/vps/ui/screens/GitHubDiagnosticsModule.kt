@@ -47,6 +47,8 @@ import gs.git.vps.data.github.GHApiErrorLogEntry
 import gs.git.vps.data.github.GHMeta
 import gs.git.vps.data.github.GHRateLimitGraphQL
 import gs.git.vps.data.github.GitHubManager
+import gs.git.vps.data.github.GHStatusComponent
+import gs.git.vps.data.github.GHStatusSummary
 import gs.git.vps.ui.components.AiModuleSpinner
 import gs.git.vps.ui.components.AiModuleText as Text
 import gs.git.vps.ui.theme.AiModuleTheme
@@ -58,6 +60,16 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.net.URL
+import java.net.HttpURLConnection
+import kotlinx.coroutines.delay
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectTapGestures
 
 @Composable
 internal fun GitHubDiagnosticsScreen(onBack: () -> Unit) {
@@ -163,6 +175,8 @@ internal fun GitHubDiagnosticsScreen(onBack: () -> Unit) {
             }
 
             item { LocalSecurityPanel() }
+            item { GitHubServiceStatusPanel() }
+            item { NetworkPingPanel() }
 
             report?.let { current ->
                 item { TokenValidationPanel() }
@@ -785,6 +799,331 @@ private fun LocalSecurityPanel() {
             GitHubDiagnosticKV("Emulator / Virtualized", if (emulator) "DETECTED" else "CLEAN")
         } else {
             Text("Checking device integrity...", color = palette.textMuted, fontSize = 11.sp, fontFamily = JetBrainsMono)
+        }
+    }
+}
+
+@Composable
+private fun GitHubServiceStatusPanel() {
+    val context = LocalContext.current
+    val palette = AiModuleTheme.colors
+    var statusSummary by remember { mutableStateOf<GHStatusSummary?>(null) }
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        val s = GitHubManager.getGitHubStatus(context)
+        if (s != null) {
+            statusSummary = s
+        } else {
+            error = true
+        }
+        loading = false
+    }
+
+    GitHubDiagnosticPanel {
+        Text(
+            "GitHub Services Status",
+            color = palette.accent,
+            fontFamily = JetBrainsMono,
+            fontWeight = FontWeight.Medium,
+            fontSize = 13.sp
+        )
+        Text(
+            "real-time operational states from githubstatus.com",
+            color = palette.textMuted,
+            fontFamily = JetBrainsMono,
+            fontSize = 11.sp
+        )
+        Spacer(Modifier.height(8.dp))
+
+        if (loading) {
+            Text("Checking service status...", color = palette.textMuted, fontSize = 11.sp, fontFamily = JetBrainsMono)
+        } else if (error || statusSummary == null) {
+            Text("Failed to retrieve service status.", color = palette.error, fontSize = 11.sp, fontFamily = JetBrainsMono)
+        } else {
+            val summary = statusSummary!!
+            val overallColor = when (summary.indicator) {
+                "none" -> GitHubSuccessGreen
+                "minor" -> GitHubWarningAmber()
+                "major" -> Color(0xFFFF9500)
+                "critical" -> GitHubErrorRed
+                else -> palette.textSecondary
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Box(
+                    modifier = Modifier
+                        .border(1.dp, overallColor, RoundedCornerShape(GitHubControlRadius))
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = summary.indicator.uppercase(),
+                        color = overallColor,
+                        fontFamily = JetBrainsMono,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Text(
+                    text = summary.description,
+                    color = palette.textPrimary,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+
+            Spacer(Modifier.height(10.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                summary.components.forEach { comp ->
+                    val compColor = when (comp.status) {
+                        "operational" -> GitHubSuccessGreen
+                        "degraded_performance" -> GitHubWarningAmber()
+                        "partial_outage" -> Color(0xFFFF9500)
+                        "major_outage" -> GitHubErrorRed
+                        else -> palette.textMuted
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = comp.name,
+                            color = palette.textSecondary,
+                            fontFamily = JetBrainsMono,
+                            fontSize = 11.sp
+                        )
+                        Text(
+                            text = comp.status.replace('_', ' '),
+                            color = compColor,
+                            fontFamily = JetBrainsMono,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NetworkPingPanel() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val palette = AiModuleTheme.colors
+    val density = LocalDensity.current
+    
+    var isPinging by remember { mutableStateOf(false) }
+    val pings = remember { mutableStateListOf<Long>() }
+    var lastPing by remember { mutableStateOf<Long?>(null) }
+    var failedCount by remember { mutableStateOf(0) }
+    
+    LaunchedEffect(isPinging) {
+        if (!isPinging) return@LaunchedEffect
+        while (true) {
+            val start = System.currentTimeMillis()
+            var success = false
+            try {
+                val url = URL("https://api.github.com/zen")
+                val conn = (url.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    connectTimeout = 2500
+                    readTimeout = 2500
+                    setRequestProperty("User-Agent", "GlassFiles")
+                }
+                val code = conn.responseCode
+                conn.disconnect()
+                success = code == 200
+            } catch (_: Exception) {}
+            val duration = System.currentTimeMillis() - start
+            if (success) {
+                pings.add(duration)
+                lastPing = duration
+            } else {
+                pings.add(-1L)
+                lastPing = null
+                failedCount++
+            }
+            if (pings.size > 25) {
+                pings.removeAt(0)
+            }
+            kotlinx.coroutines.delay(1500)
+        }
+    }
+    
+    val completedPings = pings.filter { it > 0 }
+    val avgPing = if (completedPings.isEmpty()) 0L else completedPings.average().toLong()
+    
+    GitHubDiagnosticPanel {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = "ping connection check",
+                    color = palette.accent,
+                    fontFamily = JetBrainsMono,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 13.sp
+                )
+                Text(
+                    text = "real-time latency to api.github.com",
+                    color = palette.textMuted,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 11.sp
+                )
+            }
+            GitHubTerminalButton(
+                label = if (isPinging) "stop" else "start",
+                onClick = { isPinging = !isPinging },
+                color = if (isPinging) palette.error else palette.accent
+            )
+            GitHubTerminalButton(
+                label = "clear",
+                onClick = {
+                    pings.clear()
+                    lastPing = null
+                    failedCount = 0
+                },
+                color = palette.textSecondary,
+                enabled = pings.isNotEmpty()
+            )
+        }
+        
+        Spacer(Modifier.height(8.dp))
+        
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            GitHubRateBox("last ping", lastPing?.let { "$it ms" } ?: if (pings.isNotEmpty() && lastPing == null) "timeout" else "n/a")
+            GitHubRateBox("avg latency", if (avgPing > 0) "$avgPing ms" else "n/a")
+            GitHubRateBox("failed", failedCount.toString())
+            GitHubRateBox("packets", pings.size.toString())
+        }
+        
+        Spacer(Modifier.height(10.dp))
+        
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(120.dp)
+                .clip(RoundedCornerShape(GitHubControlRadius))
+                .background(palette.background)
+                .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
+                .padding(8.dp)
+        ) {
+            if (pings.isEmpty()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(
+                        text = "tap START to begin connection diagnostics",
+                        color = palette.textMuted,
+                        fontFamily = JetBrainsMono,
+                        fontSize = 11.sp
+                    )
+                }
+            } else {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val width = size.width
+                    val height = size.height
+                    
+                    val maxVal = pings.filter { it > 0 }.maxOrNull()?.toFloat()?.coerceAtLeast(150f) ?: 300f
+                    
+                    // Draw horizontal grid lines
+                    val gridLines = 3
+                    val paint = android.graphics.Paint().apply {
+                        color = palette.textMuted.copy(alpha = 0.35f).toArgb()
+                        textSize = with(density) { 8.sp.toPx() }
+                        typeface = android.graphics.Typeface.MONOSPACE
+                    }
+                    
+                    for (i in 0..gridLines) {
+                        val y = height * i / gridLines
+                        drawLine(
+                            color = palette.border.copy(alpha = 0.25f),
+                            start = Offset(0f, y),
+                            end = Offset(width, y),
+                            strokeWidth = 1f
+                        )
+                        // Label for grid line
+                        val labelVal = (maxVal - (maxVal * i / gridLines)).toInt()
+                        drawIntoCanvas { canvas ->
+                            canvas.nativeCanvas.drawText(
+                                "${labelVal}ms",
+                                4.dp.toPx(),
+                                y - 4.dp.toPx(),
+                                paint
+                            )
+                        }
+                    }
+                    
+                    val spacing = width / 24f // max 25 points
+                    val points = pings.mapIndexed { idx, ping ->
+                        val x = idx * spacing
+                        val y = if (ping <= 0) {
+                            height
+                        } else {
+                            height - (ping.toFloat() / maxVal * height).coerceIn(0f, height)
+                        }
+                        Offset(x, y)
+                    }
+                    
+                    // Draw neon glow path
+                    if (points.isNotEmpty()) {
+                        val fillPath = androidx.compose.ui.graphics.Path().apply {
+                            moveTo(points.first().x, height)
+                            points.forEach { pt ->
+                                lineTo(pt.x, pt.y)
+                            }
+                            lineTo(points.last().x, height)
+                            close()
+                        }
+                        drawPath(
+                            path = fillPath,
+                            brush = androidx.compose.ui.graphics.Brush.verticalGradient(
+                                colors = listOf(
+                                    palette.accent.copy(alpha = 0.18f),
+                                    palette.accent.copy(alpha = 0.0f)
+                                ),
+                                startY = 0f,
+                                endY = height
+                            )
+                        )
+                    }
+                    
+                    // Draw line segments
+                    for (i in 0 until points.size - 1) {
+                        val p1 = points[i]
+                        val p2 = points[i + 1]
+                        val isP1Failed = pings[i] <= 0
+                        val isP2Failed = pings[i + 1] <= 0
+                        
+                        val segmentColor = if (isP1Failed || isP2Failed) Color(0xFFFF3B30) else palette.accent
+                        drawLine(
+                            color = segmentColor,
+                            start = p1,
+                            end = p2,
+                            strokeWidth = 2.dp.toPx()
+                        )
+                    }
+                    
+                    // Draw circles
+                    points.forEachIndexed { idx, pt ->
+                        val failed = pings[idx] <= 0
+                        drawCircle(
+                            color = if (failed) Color(0xFFFF3B30) else palette.accent,
+                            radius = if (failed) 3.5.dp.toPx() else 2.5.dp.toPx(),
+                            center = pt
+                        )
+                    }
+                }
+            }
         }
     }
 }

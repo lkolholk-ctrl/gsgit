@@ -66,6 +66,7 @@ import gs.git.vps.ui.components.AiModuleIcon as Icon
 import gs.git.vps.ui.components.AiModuleText as Text
 import gs.git.vps.ui.components.AiModuleTextField
 import gs.git.vps.ui.theme.AiModuleTheme
+import gs.git.vps.ui.theme.JetBrainsMono
 import gs.git.vps.data.github.GHLabelSearchResult
 import gs.git.vps.data.github.GHSearchCommitResult
 import gs.git.vps.data.github.GHSearchIssueResult
@@ -145,6 +146,14 @@ internal fun AdvancedSearchScreen(
     var page by rememberSaveable { mutableIntStateOf(1) }
     val listState = rememberSaveable(saver = LazyListState.Saver) { LazyListState(0, 0) }
 
+    var showBuilder by rememberSaveable { mutableStateOf(false) }
+    var builderOwner by rememberSaveable { mutableStateOf("") }
+    var builderIsOrg by rememberSaveable { mutableStateOf(true) }
+    var builderStars by rememberSaveable { mutableStateOf("") }
+    var builderLang by rememberSaveable { mutableStateOf("") }
+    var builderFork by rememberSaveable { mutableStateOf("all") }
+    var builderExcludeArchived by rememberSaveable { mutableStateOf(false) }
+
     var repos by rememberSaveable(saver = GhRepoSearchResultsSaver) { mutableStateOf<List<GHRepo>>(emptyList()) }
     var issues by remember { mutableStateOf<List<GHSearchIssueResult>>(emptyList()) }
     var commits by remember { mutableStateOf<List<GHSearchCommitResult>>(emptyList()) }
@@ -223,6 +232,104 @@ internal fun AdvancedSearchScreen(
                         onValueChange = { query = it },
                         placeholder = searchHint(selectedKind),
                     )
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Query Builder",
+                            fontSize = 11.sp,
+                            color = AiModuleTheme.colors.textMuted,
+                            fontFamily = JetBrainsMono
+                        )
+                        AiModuleTextAction(
+                            label = if (showBuilder) "hide filters" else "show filters",
+                            tint = AiModuleTheme.colors.accent,
+                            onClick = { showBuilder = !showBuilder }
+                        )
+                    }
+
+                    if (showBuilder) {
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(1.dp, AiModuleTheme.colors.border, RoundedCornerShape(GitHubControlRadius))
+                                .background(AiModuleTheme.colors.background)
+                                .padding(10.dp)
+                        ) {
+                            AiModuleTextField(
+                                value = builderOwner,
+                                onValueChange = { builderOwner = it },
+                                label = if (builderIsOrg) "Organization" else "User / Owner",
+                                placeholder = "e.g. google",
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                GitHubTerminalCheckbox("is organization", builderIsOrg, onToggle = { builderIsOrg = !builderIsOrg })
+                            }
+                            
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                AiModuleTextField(
+                                    value = builderStars,
+                                    onValueChange = { builderStars = it },
+                                    label = "Min Stars",
+                                    placeholder = "e.g. 1000",
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                AiModuleTextField(
+                                    value = builderLang,
+                                    onValueChange = { builderLang = it },
+                                    label = "Language",
+                                    placeholder = "e.g. kotlin",
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text("Forks options", fontSize = 11.sp, color = AiModuleTheme.colors.textMuted, fontFamily = JetBrainsMono)
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    listOf("all" to "All", "only" to "Only Forks", "exclude" to "No Forks").forEach { (value, label) ->
+                                        val active = builderFork == value
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(GitHubControlRadius))
+                                                .background(if (active) AiModuleTheme.colors.accent.copy(alpha = 0.15f) else AiModuleTheme.colors.surfaceElevated)
+                                                .border(1.dp, if (active) AiModuleTheme.colors.accent else AiModuleTheme.colors.border, RoundedCornerShape(GitHubControlRadius))
+                                                .clickable { builderFork = value }
+                                                .padding(horizontal = 8.dp, vertical = 5.dp)
+                                        ) {
+                                            Text(label, fontSize = 11.sp, color = if (active) AiModuleTheme.colors.accent else AiModuleTheme.colors.textSecondary)
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            GitHubTerminalCheckbox("exclude archived", builderExcludeArchived, onToggle = { builderExcludeArchived = !builderExcludeArchived })
+                            
+                            AiModulePrimaryButton(
+                                label = "Apply Filters",
+                                onClick = {
+                                    query = buildQueryString(
+                                        baseQuery = query,
+                                        owner = builderOwner,
+                                        isOrg = builderIsOrg,
+                                        minStars = builderStars,
+                                        language = builderLang,
+                                        forkState = builderFork,
+                                        excludeArchived = builderExcludeArchived
+                                    )
+                                    showBuilder = false
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
                     if (selectedKind == AdvancedSearchKind.LABELS) {
                         AiModuleTextField(
                             value = labelRepository,
@@ -452,3 +559,34 @@ private fun parseLabelColor(value: String): Color? =
     } catch (_: Exception) {
         null
     }
+
+private fun buildQueryString(
+    baseQuery: String,
+    owner: String,
+    isOrg: Boolean,
+    minStars: String,
+    language: String,
+    forkState: String,
+    excludeArchived: Boolean
+): String {
+    val sb = StringBuilder(baseQuery.trim())
+    if (owner.isNotBlank()) {
+        val prefix = if (isOrg) "org" else "user"
+        sb.append(" ").append("$prefix:${owner.trim()}")
+    }
+    if (minStars.isNotBlank()) {
+        sb.append(" ").append("stars:>=${minStars.trim()}")
+    }
+    if (language.isNotBlank()) {
+        sb.append(" ").append("language:${language.trim()}")
+    }
+    if (forkState == "only") {
+        sb.append(" ").append("fork:only")
+    } else if (forkState == "exclude") {
+        sb.append(" ").append("fork:false")
+    }
+    if (excludeArchived) {
+        sb.append(" ").append("archived:false")
+    }
+    return sb.toString().trim()
+}
