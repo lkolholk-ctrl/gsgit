@@ -184,9 +184,9 @@ internal fun GitHubSettingsScreen(
     var localPgpUserId by remember { mutableStateOf(gs.git.vps.security.PgpKeyManager.getUserId(context)) }
     var pgpSigningEnabled by remember { mutableStateOf(gs.git.vps.security.PgpKeyManager.isPgpEnabled(context)) }
 
-    LaunchedEffect(user) {
+    LaunchedEffect(user, emails) {
         if (localPgpUser.isBlank() && user != null) {
-            val email = user?.email.orEmpty()
+            val email = emails.firstOrNull { it.primary }?.email.orEmpty().ifBlank { emails.firstOrNull()?.email.orEmpty() }
             val name = user?.name?.ifBlank { user?.login }.orEmpty().ifBlank { user?.login.orEmpty() }
             localPgpUser = if (email.isNotBlank()) "$name <$email>" else name
         }
@@ -528,7 +528,7 @@ internal fun GitHubSettingsScreen(
                                                 }
                                                 scope.launch {
                                                     loading = true
-                                                    val success = withContext(kotlinx.coroutines.Dispatchers.Default) {
+                                                    val success = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
                                                         gs.git.vps.security.PgpKeyManager.generateKeyPair(
                                                             context,
                                                             localPgpUser,

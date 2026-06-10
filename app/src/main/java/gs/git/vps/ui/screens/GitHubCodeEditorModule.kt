@@ -694,14 +694,14 @@ fun CodeEditorScreen(
                         
                         Toast.makeText(context, "Stashed ${stashFiles.size} file(s)", Toast.LENGTH_SHORT).show()
                     },
-                    tint = palette.accent
+                    tint = AiModuleTheme.colors.accent
                 )
             },
             dismissButton = {
                 AiModuleTextAction(
                     label = "cancel",
                     onClick = { showStashDialog = false },
-                    tint = palette.textSecondary
+                    tint = AiModuleTheme.colors.textSecondary
                 )
             }
         )
@@ -3788,3 +3788,33 @@ private fun ConflictResolverDialog(
         }
     }
 }
+
+@Composable
+private fun CompactField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit
+) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        Text(
+            "> ${label.lowercase()}",
+            color = AiModuleTheme.colors.textMuted,
+            fontSize = 11.sp,
+            fontFamily = JetBrainsMono,
+        )
+        Spacer(Modifier.height(4.dp))
+        androidx.compose.foundation.text.BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            textStyle = androidx.compose.ui.text.TextStyle(
+                color = AiModuleTheme.colors.textPrimary,
+                fontSize = 13.sp,
+                fontFamily = JetBrainsMono,
+            ),
+            cursorBrush = androidx.compose.ui.graphics.SolidColor(AiModuleTheme.colors.accent),
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        )
+    }
+}
+
