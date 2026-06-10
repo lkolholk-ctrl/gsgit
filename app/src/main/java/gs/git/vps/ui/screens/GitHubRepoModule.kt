@@ -1149,7 +1149,7 @@ internal fun RepoDetailScreen(
                     Toast.makeText(context, Strings.done, Toast.LENGTH_SHORT).show()
                 },
             )
-            RepoTab.COMMITS -> CommitsTab(filteredCommits, commitsHasMore, { scope.launch { commitsPage++; val r = GitHubManager.getCommits(context, repo.owner, repo.name, commitsPage); if (r.size < 30) commitsHasMore = false; commits = commits + r } }, listState = commitsListState) { selectedCommitSha = it.sha }
+            RepoTab.COMMITS -> CommitsTab(filteredCommits, commitsHasMore, { scope.launch { commitsPage++; val r = GitHubManager.getCommits(context, repo.owner, repo.name, commitsPage); if (r.size < 30) commitsHasMore = false; commits = commits + r } }, listState = commitsListState, onClick = { selectedCommitSha = it.sha }, onExploreFiles = { selectedBranch = it; selectedTab = RepoTab.FILES })
             RepoTab.ISSUES -> IssuesTab(filteredIssues, issuesHasMore, { scope.launch { issuesPage++; val r = GitHubManager.getIssues(context, repo.owner, repo.name, page = issuesPage); if (r.size < 30) issuesHasMore = false; issues = issues + r } }, listState = issuesListState) { selectedIssue = it }
             RepoTab.PULLS -> PullsTab(
                 pulls = filteredPulls,
@@ -1589,12 +1589,14 @@ private fun GitGraphCanvas(
             color = palette.background,
             radius = nodeRadiusPx / 2,
             center = androidx.compose.ui.geometry.Offset(nodeX, nodeY)
-        )
-    }
-}
-
-@Composable
-internal fun CommitsTab(commits: List<GHCommit>, hasMore: Boolean, onLoadMore: () -> Unit, listState: LazyListState, onClick: (GHCommit) -> Unit) {
+       internal fun CommitsTab(
+    commits: List<GHCommit>,
+    hasMore: Boolean,
+    onLoadMore: () -> Unit,
+    listState: LazyListState,
+    onClick: (GHCommit) -> Unit,
+    onExploreFiles: (String) -> Unit
+) {
     var viewMode by rememberSaveable { mutableStateOf(0) } // 0 = List, 1 = Graph
     val palette = AiModuleTheme.colors
 
@@ -1738,15 +1740,16 @@ internal fun CommitsTab(commits: List<GHCommit>, hasMore: Boolean, onLoadMore: (
                 }
             }
         } else {
-            InteractiveGitGraphView(commits, onClick)
+            InteractiveGitGraphView(commits, onClick, onExploreFiles)
         }
-}
+    }
 }
 
 @Composable
 internal fun InteractiveGitGraphView(
     commits: List<GHCommit>,
-    onClick: (GHCommit) -> Unit
+    onClick: (GHCommit) -> Unit,
+    onExploreFiles: (String) -> Unit
 ) {
     val palette = AiModuleTheme.colors
     val density = LocalDensity.current
@@ -1754,6 +1757,7 @@ internal fun InteractiveGitGraphView(
     
     var scale by remember { mutableStateOf<Float>(1f) }
     var offset by remember { mutableStateOf<Offset>(Offset.Zero) }
+    var searchQuery by remember { mutableStateOf("") }
     
     val graphLayout = remember<GitGraphLayout>(commits) { GitGraphLayout(commits) }
     var selectedNode by remember { mutableStateOf<GitGraphLayout.CommitNode?>(null) }
@@ -1782,6 +1786,7 @@ internal fun InteractiveGitGraphView(
     Box(
         Modifier
             .fillMaxSize()
+            .clipToBounds()
             .background(palette.background)
             .transformable(transformState)
             .pointerInput(commits, scale, offset) {
@@ -1794,7 +1799,7 @@ internal fun InteractiveGitGraphView(
                     
                     graphLayout.nodes.forEachIndexed { idx, node ->
                         val nx = (node.lane + 1) * horizontalSpacingPx
-                        val ny = idx * verticalSpacingPx + 40.dp.toPx()
+                        val ny = idx * verticalSpacingPx + 60.dp.toPx()
                         val dx = nx - graphX
                         val dy = ny - graphY
                         val dist = dx*dx + dy*dy
@@ -1813,14 +1818,15 @@ internal fun InteractiveGitGraphView(
                 }
             }
     ) {
-        Canvas(Modifier.fillMaxSize()) {
+        Canvas(Modifier.fillMaxSize().clipToBounds()) {
             drawIntoCanvas { canvas ->
                 canvas.save()
                 canvas.translate(offset.x, offset.y)
                 canvas.scale(scale, scale)
                 
-                val gridColor = palette.border.copy(alpha = 0.05f)
-                val gridSpacing = 40.dp.toPx()
+                // Draw fine crosshairs on grid intersections
+                val gridColor = palette.border.copy(alpha = 0.08f)
+                val gridSpacing = 50.dp.toPx()
                 val startX = -offset.x / scale
                 val endX = (size.width - offset.x) / scale
                 val startY = -offset.y / scale
@@ -1828,25 +1834,46 @@ internal fun InteractiveGitGraphView(
                 
                 var xGrid = (startX - (startX % gridSpacing)) - gridSpacing
                 while (xGrid < endX + gridSpacing) {
-                    drawLine(gridColor, Offset(xGrid, startY), Offset(xGrid, endY), 1f)
+                    var yGrid = (startY - (startY % gridSpacing)) - gridSpacing
+                    while (yGrid < endY + gridSpacing) {
+                        drawLine(gridColor, Offset(xGrid - 4f, yGrid), Offset(xGrid + 4f, yGrid), 1f)
+                        drawLine(gridColor, Offset(xGrid, yGrid - 4f), Offset(xGrid, yGrid + 4f), 1f)
+                        yGrid += gridSpacing
+                    }
                     xGrid += gridSpacing
                 }
-                var yGrid = (startY - (startY % gridSpacing)) - gridSpacing
-                while (yGrid < endY + gridSpacing) {
-                    drawLine(gridColor, Offset(startX, yGrid), Offset(endX, yGrid), 1f)
-                    yGrid += gridSpacing
+
+                // Draw branch lanes references
+                val laneCount = 6
+                for (lane in 0 until laneCount) {
+                    val lx = (lane + 1) * horizontalSpacingPx
+                    val lanePaint = android.graphics.Paint().apply {
+                        color = colors[lane % colors.size].copy(alpha = 0.4f).toArgb()
+                        textSize = with(density) { 7.sp.toPx() }
+                        typeface = android.graphics.Typeface.MONOSPACE
+                        isAntiAlias = true
+                    }
+                    canvas.nativeCanvas.drawText("LANE $lane", lx - 12.dp.toPx(), 28.dp.toPx(), lanePaint)
+                    
+                    drawLine(
+                        color = colors[lane % colors.size].copy(alpha = 0.06f),
+                        start = Offset(lx, 34.dp.toPx()),
+                        end = Offset(lx, endY + gridSpacing),
+                        strokeWidth = 1f
+                    )
                 }
 
+                // Draw connection curves with neon glow
                 graphLayout.nodes.forEachIndexed { index, node ->
                     val fromX = (node.lane + 1) * horizontalSpacingPx
-                    val fromY = index * verticalSpacingPx + 40.dp.toPx()
+                    val fromY = index * verticalSpacingPx + 60.dp.toPx()
                     
                     node.commit.parents.forEach { parentSha ->
                         val pIdx = commits.indexOfFirst { it.sha == parentSha }
                         if (pIdx != -1) {
                             val pNode = graphLayout.nodes[pIdx]
                             val toX = (pNode.lane + 1) * horizontalSpacingPx
-                            val toY = pIdx * verticalSpacingPx + 40.dp.toPx()
+                            val toY = pIdx * verticalSpacingPx + 60.dp.toPx()
                             
                             val path = androidx.compose.ui.graphics.Path().apply {
                                 moveTo(fromX, fromY)
@@ -1856,10 +1883,17 @@ internal fun InteractiveGitGraphView(
                                     toX, toY
                                 )
                             }
+                            // Glow path
                             drawPath(
                                 path = path,
-                                color = colors[pNode.lane % colors.size].copy(alpha = 0.8f),
-                                style = Stroke(width = 2.dp.toPx())
+                                color = colors[pNode.lane % colors.size].copy(alpha = 0.15f),
+                                style = Stroke(width = 5.dp.toPx())
+                            )
+                            // Core path
+                            drawPath(
+                                path = path,
+                                color = colors[pNode.lane % colors.size].copy(alpha = 0.85f),
+                                style = Stroke(width = 1.5.dp.toPx())
                             )
                         } else {
                             drawLine(
@@ -1872,16 +1906,31 @@ internal fun InteractiveGitGraphView(
                     }
                 }
 
+                // Draw commit nodes as structured boxes
                 graphLayout.nodes.forEachIndexed { index, node ->
                     val nodeX = (node.lane + 1) * horizontalSpacingPx
-                    val nodeY = index * verticalSpacingPx + 40.dp.toPx()
+                    val nodeY = index * verticalSpacingPx + 60.dp.toPx()
                     
                     val isSelected = selectedNode?.commit?.sha == node.commit.sha
-                    val nodeColor = colors[node.lane % colors.size]
+                    val isMatch = searchQuery.isNotBlank() && (
+                        node.commit.message.contains(searchQuery, ignoreCase = true) ||
+                        node.commit.sha.startsWith(searchQuery, ignoreCase = true) ||
+                        node.commit.author.contains(searchQuery, ignoreCase = true)
+                    )
+                    
+                    val nodeColor = if (isMatch) Color(0xFFD29922) else colors[node.lane % colors.size]
+                    
+                    if (isMatch) {
+                        drawCircle(
+                            color = Color(0xFFD29922).copy(alpha = 0.35f),
+                            radius = nodeRadiusPx * 3.5f,
+                            center = Offset(nodeX, nodeY)
+                        )
+                    }
                     
                     if (isSelected) {
                         drawCircle(
-                            color = palette.accent.copy(alpha = 0.3f),
+                            color = palette.accent.copy(alpha = 0.25f),
                             radius = nodeRadiusPx * 2.2f,
                             center = Offset(nodeX, nodeY)
                         )
@@ -1898,18 +1947,39 @@ internal fun InteractiveGitGraphView(
                         center = Offset(nodeX, nodeY)
                     )
                     
+                    // Card background for text label (prevents text clipping)
+                    val cardWidth = 140.dp.toPx()
+                    val cardHeight = 22.dp.toPx()
+                    val cardLeft = nodeX + nodeRadiusPx + 8.dp.toPx()
+                    val cardTop = nodeY - cardHeight / 2f
+                    
+                    drawRoundRect(
+                        color = palette.surface.copy(alpha = 0.85f),
+                        topLeft = Offset(cardLeft, cardTop),
+                        size = Size(cardWidth, cardHeight),
+                        cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
+                    )
+                    drawRoundRect(
+                        color = nodeColor.copy(alpha = 0.4f),
+                        topLeft = Offset(cardLeft, cardTop),
+                        size = Size(cardWidth, cardHeight),
+                        cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx()),
+                        style = Stroke(width = 0.8f.dp.toPx())
+                    )
+                    
                     val textPaint = android.graphics.Paint().apply {
-                        color = (if (isSelected) palette.accent else palette.textSecondary).toArgb()
-                        textSize = with(density) { 8.sp.toPx() }
+                        color = (if (isSelected) palette.accent else palette.textPrimary).toArgb()
+                        textSize = with(density) { 7.5.sp.toPx() }
                         typeface = android.graphics.Typeface.MONOSPACE
                         isAntiAlias = true
                     }
-                    val label = node.commit.message.lines().firstOrNull().orEmpty().take(22) + "..."
-                    val shaLabel = "[${node.commit.sha.take(7)}]"
+                    val msg = node.commit.message.lines().firstOrNull().orEmpty()
+                    val truncatedMsg = if (msg.length > 15) msg.take(15) + ".." else msg
+                    val shaStr = node.commit.sha.take(5).uppercase()
                     
                     canvas.nativeCanvas.drawText(
-                        "$shaLabel $label",
-                        nodeX + nodeRadiusPx + 8.dp.toPx(),
+                        "[$shaStr] $truncatedMsg",
+                        cardLeft + 6.dp.toPx(),
                         nodeY + 3.dp.toPx(),
                         textPaint
                     )
@@ -1919,36 +1989,91 @@ internal fun InteractiveGitGraphView(
             }
         }
         
-        Column(
+        // HUD Overlay
+        Row(
             modifier = Modifier
                 .align(Alignment.TopStart)
-                .padding(12.dp)
-                .background(palette.background.copy(alpha = 0.8f))
-                .border(1.dp, palette.border, RoundedCornerShape(4.dp))
-                .padding(8.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+                .fillMaxWidth()
+                .padding(12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "GIT GRAPH TELEMETRY",
-                color = palette.accent,
-                fontFamily = JetBrainsMono,
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = "PINCH TO ZOOM / DRAG TO PAN",
-                color = palette.textMuted,
-                fontFamily = JetBrainsMono,
-                fontSize = 7.sp
-            )
-            Text(
-                text = "NODES LOADED: ${commits.size}",
-                color = palette.textSecondary,
-                fontFamily = JetBrainsMono,
-                fontSize = 8.sp
-            )
+            Column(
+                modifier = Modifier
+                    .background(palette.background.copy(alpha = 0.8f))
+                    .border(1.dp, palette.border, RoundedCornerShape(4.dp))
+                    .padding(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = "GIT GRAPH TELEMETRY",
+                    color = palette.accent,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "PINCH TO ZOOM / DRAG TO PAN",
+                    color = palette.textMuted,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 7.sp
+                )
+                Text(
+                    text = "NODES: ${commits.size}",
+                    color = palette.textSecondary,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 8.sp
+                )
+            }
+            
+            // Search field & reset
+            Row(
+                modifier = Modifier
+                    .background(palette.background.copy(alpha = 0.85f))
+                    .border(1.dp, palette.border, RoundedCornerShape(4.dp))
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = "FIND:",
+                    color = palette.accent,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                BasicTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    textStyle = TextStyle(
+                        color = palette.textPrimary,
+                        fontFamily = JetBrainsMono,
+                        fontSize = 11.sp
+                    ),
+                    cursorBrush = SolidColor(palette.accent),
+                    modifier = Modifier
+                        .width(100.dp)
+                        .background(palette.surface)
+                        .border(0.5.dp, palette.border, RoundedCornerShape(2.dp))
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                )
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(palette.accent.copy(alpha = 0.1f))
+                        .border(0.5.dp, palette.accent, RoundedCornerShape(3.dp))
+                        .clickable {
+                            scale = 1f
+                            offset = Offset.Zero
+                        }
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text("RESET", color = palette.accent, fontSize = 8.sp, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold)
+                }
+            }
         }
         
+        // Selected Commit Details Bottom Card
         AnimatedVisibility(
             visible = selectedNode != null,
             modifier = Modifier
@@ -2027,7 +2152,7 @@ internal fun InteractiveGitGraphView(
                                 )
                             }
                             
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Box(
                                     Modifier
                                         .clip(RoundedCornerShape(6.dp))
@@ -2036,9 +2161,23 @@ internal fun InteractiveGitGraphView(
                                             onClick(c)
                                         }
                                         .background(palette.accent.copy(alpha = 0.1f))
-                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                        .padding(horizontal = 8.dp, vertical = 6.dp)
                                 ) {
                                     Text("Open", fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.accent, fontWeight = FontWeight.Bold)
+                                }
+                                
+                                Box(
+                                    Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .border(1.dp, Color(0xFF3FB950), RoundedCornerShape(6.dp))
+                                        .clickable {
+                                            onExploreFiles(c.sha)
+                                            Toast.makeText(context, "Switched file tree to commit ${c.sha.take(7)}", Toast.LENGTH_SHORT).show()
+                                        }
+                                        .background(Color(0xFF3FB950).copy(alpha = 0.1f))
+                                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                                ) {
+                                    Text("Explore Files", fontFamily = JetBrainsMono, fontSize = 10.sp, color = Color(0xFF3FB950), fontWeight = FontWeight.Bold)
                                 }
                                 
                                 Box(
@@ -2049,7 +2188,7 @@ internal fun InteractiveGitGraphView(
                                             Toast.makeText(context, "Cherry-picked ${c.sha.take(7)} successfully!", Toast.LENGTH_SHORT).show()
                                         }
                                         .background(Color(0xFFBC8CFF).copy(alpha = 0.1f))
-                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                        .padding(horizontal = 8.dp, vertical = 6.dp)
                                 ) {
                                     Text("Cherry-Pick", fontFamily = JetBrainsMono, fontSize = 10.sp, color = Color(0xFFBC8CFF), fontWeight = FontWeight.Bold)
                                 }
