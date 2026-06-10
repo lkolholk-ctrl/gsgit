@@ -1675,10 +1675,13 @@ private fun ActivityDonutChart(slices: List<ActivitySlice>) {
                                 val dy = tapOffset.y - centerY
                                 val distance = sqrt(dx*dx + dy*dy)
                                 
-                                val donutSize = size.height * 0.9f
-                                val outerRadius = donutSize / 2f
-                                val strokeWidthPx = 16.dp.toPx()
-                                val innerRadius = outerRadius - strokeWidthPx
+                                val strokeWidthPx = 12.dp.toPx()
+                                val selectedStrokeWidthPx = strokeWidthPx + 3.dp.toPx()
+                                val glowStrokeWidthPx = selectedStrokeWidthPx + 5.dp.toPx()
+                                val donutSize = size.height - glowStrokeWidthPx - 6.dp.toPx()
+                                
+                                val outerRadius = donutSize / 2f + selectedStrokeWidthPx / 2f
+                                val innerRadius = donutSize / 2f - selectedStrokeWidthPx / 2f
                                 
                                 if (distance in innerRadius..outerRadius) {
                                     var angle = Math.toDegrees(Math.atan2(dy.toDouble(), dx.toDouble())).toFloat()
@@ -1700,10 +1703,13 @@ private fun ActivityDonutChart(slices: List<ActivitySlice>) {
                             }
                         }
                 ) {
-                    val donutSize = size.height * 0.9f
+                    val strokeWidthPx = 12.dp.toPx()
+                    val selectedStrokeWidthPx = strokeWidthPx + 3.dp.toPx()
+                    val glowStrokeWidthPx = selectedStrokeWidthPx + 5.dp.toPx()
+                    
+                    val donutSize = size.height - glowStrokeWidthPx - 6.dp.toPx()
                     val donutLeft = (size.width - donutSize) / 2f
                     val donutTop = (size.height - donutSize) / 2f
-                    val strokeWidthPx = 14.dp.toPx()
                     
                     var startAngle = -90f
                     
@@ -1711,7 +1717,7 @@ private fun ActivityDonutChart(slices: List<ActivitySlice>) {
                         if (totalWeight > 0) {
                             val sweepAngle = (slice.percentage / totalWeight) * 360f
                             val isSelected = selectedSliceIndex == index
-                            val currentStrokeWidth = if (isSelected) strokeWidthPx + 4.dp.toPx() else strokeWidthPx
+                            val currentStrokeWidth = if (isSelected) selectedStrokeWidthPx else strokeWidthPx
                             
                             if (isSelected) {
                                 drawArc(
@@ -1719,9 +1725,9 @@ private fun ActivityDonutChart(slices: List<ActivitySlice>) {
                                     startAngle = startAngle,
                                     sweepAngle = sweepAngle,
                                     useCenter = false,
-                                    topLeft = Offset(donutLeft - 2.dp.toPx(), donutTop - 2.dp.toPx()),
-                                    size = Size(donutSize + 4.dp.toPx(), donutSize + 4.dp.toPx()),
-                                    style = Stroke(currentStrokeWidth + 4.dp.toPx())
+                                    topLeft = Offset(donutLeft, donutTop),
+                                    size = Size(donutSize, donutSize),
+                                    style = Stroke(glowStrokeWidthPx)
                                 )
                             }
                             
