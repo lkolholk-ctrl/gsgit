@@ -38,6 +38,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.drawscope.Stroke
+import gs.git.vps.ui.theme.JetBrainsMono
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -171,6 +174,26 @@ internal fun CompareCommitsScreen(
                                 Toast.makeText(context, Strings.error, Toast.LENGTH_SHORT).show()
                             }
                         }
+                    },
+                    onMerge = {
+                        loading = true
+                        scope.launch {
+                            val success = GitHubManager.mergeBranch(
+                                context = context,
+                                owner = repoOwner,
+                                repo = repoName,
+                                base = baseBranch,
+                                head = headBranch,
+                                commitMessage = "Merge $headBranch into $baseBranch"
+                            )
+                            if (success) {
+                                Toast.makeText(context, "Merged successfully", Toast.LENGTH_SHORT).show()
+                                compareResult = GitHubManager.compareCommits(context, repoOwner, repoName, baseBranch, headBranch)
+                            } else {
+                                Toast.makeText(context, "Merge conflict or error", Toast.LENGTH_SHORT).show()
+                            }
+                            loading = false
+                        }
                     }
                 )
             }
@@ -241,28 +264,46 @@ private fun CompareResultPanel(
     headBranch: String,
     onOpenDiff: () -> Unit,
     onCreatePr: () -> Unit,
-    onOpenWeb: () -> Unit
+    onOpenWeb: () -> Unit,
+    onMerge: () -> Unit
 ) {
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Column(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).border(1.dp, AiModuleTheme.colors.border, RoundedCornerShape(GitHubControlRadius)).padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                CompareMetric("${result.aheadBy}", "ahead", Color(0xFF34C759))
-                CompareMetric("${result.behindBy}", "behind", Color(0xFFFF3B30))
-                CompareMetric("${result.totalCommits}", "commits", AiModuleTheme.colors.accent)
-                CompareMetric("${result.files.size}", "files", AiModuleTheme.colors.textSecondary)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                AheadBehindDonutChart(ahead = result.aheadBy, behind = result.behindBy)
+                
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        CompareMetric("${result.totalCommits}", "commits", AiModuleTheme.colors.accent)
+                        CompareMetric("${result.files.size}", "files", AiModuleTheme.colors.textSecondary)
+                    }
+                    Text(
+                        compareStatusText(result.status, baseBranch, headBranch),
+                        fontSize = 12.sp,
+                        color = AiModuleTheme.colors.textSecondary,
+                        lineHeight = 16.sp
+                    )
+                }
             }
-            Text(
-                compareStatusText(result.status, baseBranch, headBranch),
-                fontSize = 12.sp,
-                color = AiModuleTheme.colors.textSecondary,
-                lineHeight = 16.sp
-            )
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 GitHubTerminalButton("view diff", onClick = onOpenDiff, enabled = result.files.isNotEmpty(), color = AiModuleTheme.colors.accent)
                 GitHubTerminalButton("create pr", onClick = onCreatePr, enabled = result.aheadBy > 0, color = Color(0xFF34C759))
+                if (result.aheadBy > 0) {
+                    GitHubTerminalButton("merge branches", onClick = onMerge, color = Color(0xFFFF9500))
+                }
                 GitHubTerminalButton("github", onClick = onOpenWeb, enabled = result.htmlUrl.isNotBlank(), color = AiModuleTheme.colors.textSecondary)
             }
         }
@@ -449,4 +490,79 @@ private fun compareStatusText(status: String, baseBranch: String, headBranch: St
     "behind" -> "$headBranch is behind $baseBranch."
     "diverged" -> "$baseBranch and $headBranch have diverged."
     else -> status.ifBlank { "Comparison loaded." }
+}
+
+@Composable
+private fun AheadBehindDonutChart(ahead: Int, behind: Int) {
+    val total = ahead + behind
+    val palette = AiModuleTheme.colors
+    
+    Box(
+        modifier = Modifier
+            .size(70.dp)
+            .padding(4.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val strokeWidth = 5.dp.toPx()
+            val size = size.minDimension - strokeWidth
+            val halfStroke = strokeWidth / 2
+            val rect = androidx.compose.ui.geometry.Rect(
+                halfStroke,
+                halfStroke,
+                size + halfStroke,
+                size + halfStroke
+            )
+            
+            if (total == 0) {
+                drawArc(
+                    color = palette.border,
+                    startAngle = 0f,
+                    sweepAngle = 360f,
+                    useCenter = false,
+                    style = strokeWidth.let { androidx.compose.ui.graphics.drawscope.Stroke(it) }
+                )
+            } else {
+                val aheadSweep = (ahead.toFloat() / total) * 360f
+                val behindSweep = (behind.toFloat() / total) * 360f
+                
+                if (ahead > 0) {
+                    drawArc(
+                        color = Color(0xFF34C759),
+                        startAngle = -90f,
+                        sweepAngle = aheadSweep,
+                        useCenter = false,
+                        style = strokeWidth.let { androidx.compose.ui.graphics.drawscope.Stroke(it) }
+                    )
+                }
+                
+                if (behind > 0) {
+                    drawArc(
+                        color = Color(0xFFFF3B30),
+                        startAngle = -90f + aheadSweep,
+                        sweepAngle = behindSweep,
+                        useCenter = false,
+                        style = strokeWidth.let { androidx.compose.ui.graphics.drawscope.Stroke(it) }
+                    )
+                }
+            }
+        }
+        
+        Column(horizontalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "+$ahead",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF34C759),
+                fontFamily = JetBrainsMono
+            )
+            Text(
+                text = "-$behind",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFFFF3B30),
+                fontFamily = JetBrainsMono
+            )
+        }
+    }
 }

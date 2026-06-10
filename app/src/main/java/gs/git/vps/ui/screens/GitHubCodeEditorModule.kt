@@ -197,6 +197,10 @@ fun CodeEditorScreen(
     var currentMatchIndex by rememberSaveable(file.path, branch) { mutableIntStateOf(0) }
     var fontSize by rememberSaveable(file.path, branch) { mutableIntStateOf(13) }
     var zenMode by rememberSaveable(file.path, branch) { mutableStateOf(false) }
+    var showConflictResolver by remember { mutableStateOf(false) }
+    val hasConflictMarkers = remember(textState.text) {
+        textState.text.contains("<<<<<<<") && textState.text.contains("=======") && textState.text.contains(">>>>>>>")
+    }
     
     LaunchedEffect(initialLine) {
         if (initialLine != null) {
@@ -712,6 +716,17 @@ fun CodeEditorScreen(
         )
     }
 
+    if (showConflictResolver) {
+        ConflictResolverDialog(
+            content = textState.text,
+            onDismiss = { showConflictResolver = false },
+            onResolved = { resolvedContent ->
+                textState = textState.copy(text = resolvedContent)
+                showConflictResolver = false
+            }
+        )
+    }
+
     AiModuleSurface {
     val palette = AiModuleTheme.colors
     Column(Modifier.fillMaxSize().background(palette.background)) {
@@ -727,6 +742,30 @@ fun CodeEditorScreen(
                 onBack = ::handleEditorBack,
                 onAskAi = onAskAi
             )
+
+            AnimatedVisibility(visible = hasConflictMarkers && !zenMode) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF3F2F1F))
+                        .border(1.dp, Color(0xFFFF9500))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "⚠️ Merge conflicts detected.",
+                        fontSize = 11.sp,
+                        color = Color(0xFFFF9500),
+                        fontFamily = JetBrainsMono
+                    )
+                    AiModuleTextAction(
+                        label = "resolve interactively",
+                        tint = Color(0xFFFF9500),
+                        onClick = { showConflictResolver = true }
+                    )
+                }
+            }
             
             // Tabs Bar
             Row(
@@ -3334,6 +3373,311 @@ private fun FilePickerDialog(
                     if (contents.isEmpty()) {
                         item {
                             Text("empty directory", fontSize = 11.sp, color = palette.textMuted, modifier = Modifier.padding(8.dp))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private sealed class MergeBlock {
+    data class Normal(val content: String) : MergeBlock()
+    data class Conflict(
+        val base: String,
+        val incoming: String,
+        val baseName: String = "Current (Base)",
+        val incomingName: String = "Incoming (Head)",
+        var resolvedContent: String? = null
+    ) : MergeBlock()
+}
+
+private fun parseConflictContent(content: String): List<MergeBlock> {
+    val lines = content.lineSequence().toList()
+    val blocks = mutableListOf<MergeBlock>()
+    val currentNormal = StringBuilder()
+    
+    var inConflict = false
+    val baseBuilder = StringBuilder()
+    val incomingBuilder = StringBuilder()
+    var inIncoming = false
+    
+    var baseLabel = "Current (Base)"
+    var incomingLabel = "Incoming (Head)"
+    
+    for (line in lines) {
+        if (line.startsWith("<<<<<<<")) {
+            if (currentNormal.isNotEmpty()) {
+                blocks.add(MergeBlock.Normal(currentNormal.toString()))
+                currentNormal.clear()
+            }
+            inConflict = true
+            inIncoming = false
+            baseLabel = line.substring(7).trim().ifBlank { "Current (Base)" }
+            baseBuilder.clear()
+        } else if (line.startsWith("=======")) {
+            if (inConflict) {
+                inIncoming = true
+            } else {
+                currentNormal.append(line).append("\n")
+            }
+        } else if (line.startsWith(">>>>>>>")) {
+            if (inConflict) {
+                incomingLabel = line.substring(7).trim().ifBlank { "Incoming (Head)" }
+                blocks.add(
+                    MergeBlock.Conflict(
+                        base = baseBuilder.toString().trimEnd('\n'),
+                        incoming = incomingBuilder.toString().trimEnd('\n'),
+                        baseName = baseLabel,
+                        incomingName = incomingLabel
+                    )
+                )
+                baseBuilder.clear()
+                incomingBuilder.clear()
+                inConflict = false
+                inIncoming = false
+            } else {
+                currentNormal.append(line).append("\n")
+            }
+        } else {
+            if (inConflict) {
+                if (inIncoming) {
+                    incomingBuilder.append(line).append("\n")
+                } else {
+                    baseBuilder.append(line).append("\n")
+                }
+            } else {
+                currentNormal.append(line).append("\n")
+            }
+        }
+    }
+    
+    if (inConflict) {
+        currentNormal.append("<<<<<<< ").append(baseLabel).append("\n")
+        currentNormal.append(baseBuilder)
+        if (inIncoming) {
+            currentNormal.append("=======\n")
+            currentNormal.append(incomingBuilder)
+        }
+    }
+    
+    if (currentNormal.isNotEmpty()) {
+        blocks.add(MergeBlock.Normal(currentNormal.toString().trimEnd('\n')))
+    }
+    
+    return blocks
+}
+
+private fun assembleResolvedContent(blocks: List<MergeBlock>): String {
+    val sb = StringBuilder()
+    for (block in blocks) {
+        when (block) {
+            is MergeBlock.Normal -> {
+                sb.append(block.content).append("\n")
+            }
+            is MergeBlock.Conflict -> {
+                val resolved = block.resolvedContent ?: "<<<<<<< ${block.baseName}\n${block.base}\n=======\n${block.incoming}\n>>>>>>> ${block.incomingName}"
+                if (resolved.isNotEmpty()) {
+                    sb.append(resolved).append("\n")
+                }
+            }
+        }
+    }
+    return sb.toString().trimEnd('\n')
+}
+
+@Composable
+private fun ConflictResolverDialog(
+    content: String,
+    onDismiss: () -> Unit,
+    onResolved: (String) -> Unit
+) {
+    val palette = AiModuleTheme.colors
+    val blocks = remember(content) { parseConflictContent(content) }
+    val resolvedBlocks = remember { mutableStateListOf<MergeBlock>().apply { addAll(blocks) } }
+    
+    val totalConflicts = blocks.count { it is MergeBlock.Conflict }
+    val resolvedCount = resolvedBlocks.count { it is MergeBlock.Conflict && it.resolvedContent != null }
+
+    AiModuleAlertDialog(
+        onDismissRequest = onDismiss,
+        title = "resolve conflicts",
+        confirmButton = {
+            AiModuleTextAction(
+                label = "apply",
+                tint = palette.accent,
+                onClick = {
+                    val resolvedText = assembleResolvedContent(resolvedBlocks)
+                    onResolved(resolvedText)
+                }
+            )
+        },
+        dismissButton = {
+            AiModuleTextAction(
+                label = Strings.cancel.lowercase(),
+                tint = palette.textSecondary,
+                onClick = onDismiss
+            )
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 450.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = "Resolved: $resolvedCount of $totalConflicts conflicts",
+                fontSize = 12.sp,
+                fontFamily = JetBrainsMono,
+                color = if (resolvedCount == totalConflicts) Color(0xFF34C759) else palette.textSecondary
+            )
+            
+            Box(Modifier.fillMaxWidth().height(1.dp).background(palette.border))
+            
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                itemsIndexed(resolvedBlocks) { index, block ->
+                    when (block) {
+                        is MergeBlock.Normal -> {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(palette.background.copy(alpha = 0.5f))
+                                    .padding(6.dp)
+                            ) {
+                                Text(
+                                    text = block.content,
+                                    fontSize = 10.sp,
+                                    fontFamily = JetBrainsMono,
+                                    color = palette.textMuted,
+                                    maxLines = 3,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                        is MergeBlock.Conflict -> {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .border(1.dp, Color(0xFFFF9500), RoundedCornerShape(GitHubControlRadius))
+                                    .background(palette.surface)
+                                    .padding(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = "Conflict #${resolvedBlocks.take(index + 1).count { it is MergeBlock.Conflict }}",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFFF9500),
+                                    fontFamily = JetBrainsMono
+                                )
+                                
+                                val isBaseActive = block.resolvedContent == block.base
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .border(
+                                            1.dp,
+                                            if (isBaseActive) Color(0xFF34C759) else palette.border,
+                                            RoundedCornerShape(GitHubControlRadius)
+                                        )
+                                        .clickable {
+                                            resolvedBlocks[index] = block.copy(resolvedContent = block.base)
+                                        }
+                                        .background(if (isBaseActive) Color(0xFF34C759).copy(alpha = 0.05f) else Color.Transparent)
+                                        .padding(8.dp)
+                                ) {
+                                    Text(
+                                        text = "Current: " + block.baseName,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isBaseActive) Color(0xFF34C759) else palette.textPrimary,
+                                        fontFamily = JetBrainsMono
+                                    )
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        text = block.base.ifBlank { "(empty)" },
+                                        fontSize = 10.sp,
+                                        fontFamily = JetBrainsMono,
+                                        color = if (isBaseActive) palette.textPrimary else palette.textSecondary,
+                                        maxLines = 5,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                
+                                val isIncomingActive = block.resolvedContent == block.incoming
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .border(
+                                            1.dp,
+                                            if (isIncomingActive) palette.accent else palette.border,
+                                            RoundedCornerShape(GitHubControlRadius)
+                                        )
+                                        .clickable {
+                                            resolvedBlocks[index] = block.copy(resolvedContent = block.incoming)
+                                        }
+                                        .background(if (isIncomingActive) palette.accent.copy(alpha = 0.05f) else Color.Transparent)
+                                        .padding(8.dp)
+                                ) {
+                                    Text(
+                                        text = "Incoming: " + block.incomingName,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isIncomingActive) palette.accent else palette.textPrimary,
+                                        fontFamily = JetBrainsMono
+                                    )
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        text = block.incoming.ifBlank { "(empty)" },
+                                        fontSize = 10.sp,
+                                        fontFamily = JetBrainsMono,
+                                        color = if (isIncomingActive) palette.textPrimary else palette.textSecondary,
+                                        maxLines = 5,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                
+                                val bothText = block.base + "\n" + block.incoming
+                                val isBothActive = block.resolvedContent == bothText
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .border(
+                                            1.dp,
+                                            if (isBothActive) Color(0xFF8E8E93) else palette.border,
+                                            RoundedCornerShape(GitHubControlRadius)
+                                        )
+                                        .clickable {
+                                            resolvedBlocks[index] = block.copy(resolvedContent = bothText)
+                                        }
+                                        .background(if (isBothActive) Color(0xFF8E8E93).copy(alpha = 0.05f) else Color.Transparent)
+                                        .padding(8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Accept both changes",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = if (isBothActive) palette.textPrimary else palette.textSecondary,
+                                        fontFamily = JetBrainsMono
+                                    )
+                                    if (isBothActive) {
+                                        Text(
+                                            text = "Active",
+                                            fontSize = 10.sp,
+                                            color = Color(0xFF8E8E93),
+                                            fontFamily = JetBrainsMono
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
