@@ -1204,7 +1204,23 @@ internal fun RepoDetailScreen(
                 }
             })
             RepoTab.CODE_SEARCH -> CodeSearchTab(repo)
-            RepoTab.TIME_TRAVEL -> TimeTravelTab(repo, selectedBranch)
+            RepoTab.TIME_TRAVEL -> TimeTravelTab(
+                repo = repo,
+                selectedBranch = selectedBranch,
+                onOpenFileWithContent = { path, content ->
+                    val name = path.substringAfterLast("/")
+                    val tempContent = GHContent(
+                        name = name,
+                        path = path,
+                        type = "file",
+                        size = content.length.toLong(),
+                        downloadUrl = "",
+                        sha = ""
+                    )
+                    editingFile = tempContent
+                    fileContent = content
+                }
+            )
             RepoTab.TELEMETRY -> TelemetryTab(repo, commits)
         }
     }
@@ -6821,7 +6837,11 @@ fun Color.toHex(): String {
 }
 
 @Composable
-internal fun TimeTravelTab(repo: GHRepo, selectedBranch: String) {
+internal fun TimeTravelTab(
+    repo: GHRepo,
+    selectedBranch: String,
+    onOpenFileWithContent: (String, String) -> Unit
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val palette = AiModuleTheme.colors
@@ -6948,7 +6968,17 @@ internal fun TimeTravelTab(repo: GHRepo, selectedBranch: String) {
                                     .background(palette.surface)
                                     .border(0.5.dp, palette.border, RoundedCornerShape(4.dp))
                                     .clickable {
-                                        Toast.makeText(context, "Stash applied to memory workspace", Toast.LENGTH_SHORT).show()
+                                        if (stash.files.isNotEmpty()) {
+                                            if (stash.files.size == 1) {
+                                                val first = stash.files.first()
+                                                onOpenFileWithContent(first.path, first.content)
+                                                Toast.makeText(context, "Stash applied: opened ${first.path.substringAfterLast("/")}", Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                viewingStash = stash
+                                            }
+                                        } else {
+                                            Toast.makeText(context, "Stash is empty", Toast.LENGTH_SHORT).show()
+                                        }
                                     }
                                     .padding(vertical = 4.dp),
                                 contentAlignment = Alignment.Center
@@ -6964,6 +6994,15 @@ internal fun TimeTravelTab(repo: GHRepo, selectedBranch: String) {
                                     .background(palette.accent.copy(alpha = 0.1f))
                                     .border(0.5.dp, palette.accent, RoundedCornerShape(4.dp))
                                     .clickable {
+                                        if (stash.files.isNotEmpty()) {
+                                            if (stash.files.size == 1) {
+                                                val first = stash.files.first()
+                                                onOpenFileWithContent(first.path, first.content)
+                                                Toast.makeText(context, "Stash applied: opened ${first.path.substringAfterLast("/")}", Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                viewingStash = stash
+                                            }
+                                        }
                                         LocalTimeTravelManager.deleteStash(context, repo.fullName, stash.id)
                                         refreshData()
                                         Toast.makeText(context, "Stash popped (applied and deleted)", Toast.LENGTH_SHORT).show()
@@ -7171,7 +7210,23 @@ internal fun TimeTravelTab(repo: GHRepo, selectedBranch: String) {
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         items(stash.files) { sFile ->
                             Column(modifier = Modifier.fillMaxWidth()) {
-                                Text(sFile.path, color = palette.accent, fontSize = 11.sp, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(sFile.path, color = palette.accent, fontSize = 11.sp, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                    Text(
+                                        text = "[open]",
+                                        color = palette.accent,
+                                        fontFamily = JetBrainsMono,
+                                        fontSize = 11.sp,
+                                        modifier = Modifier.clickable {
+                                            onOpenFileWithContent(sFile.path, sFile.content)
+                                            viewingStash = null
+                                        }
+                                    )
+                                }
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -7221,21 +7276,32 @@ internal fun TelemetryTab(repo: GHRepo, commits: List<GHCommit>) {
     var isSearchingGrep by remember { mutableStateOf(false) }
     var grepResults by remember { mutableStateOf<List<GrepResult>>(emptyList()) }
     val commitDetailsCache = remember { mutableStateMapOf<String, GHCommitDetail>() }
+    var activeCommitsState by remember { mutableStateOf<List<GHCommit>>(emptyList()) }
 
     LaunchedEffect(repo.fullName, commits) {
-        if (commits.isEmpty()) {
-            telemetryLoading = false
-            return@LaunchedEffect
-        }
-        
         try {
             telemetryLoading = true
+            val activeCommits = if (commits.isEmpty()) {
+                progressMessage = "Fetching commits..."
+                withContext(Dispatchers.IO) {
+                    GitHubManager.getCommits(context, repo.owner, repo.name, 1)
+                }
+            } else {
+                commits
+            }
+            activeCommitsState = activeCommits
+            
+            if (activeCommits.isEmpty()) {
+                telemetryLoading = false
+                return@LaunchedEffect
+            }
+            
             progressMessage = "Fetching contributors..."
             contributors = withContext(Dispatchers.IO) {
                 GitHubManager.getContributors(context, repo.owner, repo.name)
             }
             
-            val targetCommits = commits.take(8)
+            val targetCommits = activeCommits.take(8)
             val adds = mutableListOf<Int>()
             val dels = mutableListOf<Int>()
             val shas = mutableListOf<String>()
@@ -7488,7 +7554,7 @@ internal fun TelemetryTab(repo: GHRepo, commits: List<GHCommit>) {
                                 
                                 scope.launch(Dispatchers.Default) {
                                     val results = mutableListOf<GrepResult>()
-                                    commits.take(15).forEach { commit ->
+                                    activeCommitsState.take(15).forEach { commit ->
                                         if (regex.containsMatchIn(commit.message) || regex.containsMatchIn(commit.author)) {
                                             results.add(GrepResult(commit.sha, commit.message, "commit-meta", ""))
                                         }
