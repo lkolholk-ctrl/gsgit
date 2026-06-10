@@ -120,6 +120,10 @@ object PgpKeyManager {
     }
 
     fun signPayload(payload: String, privateKeyArmored: String, passphraseStr: String): String? {
+        return signBytes(payload.toByteArray(Charsets.UTF_8), privateKeyArmored, passphraseStr)
+    }
+
+    fun signBytes(data: ByteArray, privateKeyArmored: String, passphraseStr: String): String? {
         return try {
             val keyIn = ArmoredInputStream(ByteArrayInputStream(privateKeyArmored.toByteArray(Charsets.UTF_8)))
             val pgpSecRing = PGPSecretKeyRing(keyIn, JcaKeyFingerprintCalculator())
@@ -140,7 +144,7 @@ object PgpKeyManager {
             sigSubpacketGenerator.setIssuerKeyID(false, secKey.publicKey.keyID)
             signGen.setHashedSubpackets(sigSubpacketGenerator.generate())
 
-            signGen.update(payload.toByteArray(Charsets.UTF_8))
+            signGen.update(data)
 
             val out = ByteArrayOutputStream()
             val armor = ArmoredOutputStream(out)

@@ -675,8 +675,12 @@ internal val htmlKeywords = setOf(
     "class", "id", "src", "href", "type", "value", "name", "content", "rel", "width", "height"
 )
 
-internal fun highlightLine(line: String, ext: String): androidx.compose.ui.text.AnnotatedString {
-    val defColor = AiModuleDarkColors.textPrimary
+internal fun highlightLine(
+    line: String,
+    ext: String,
+    palette: gs.git.vps.ui.theme.AiModuleColors = gs.git.vps.ui.theme.AiModuleDarkColors
+): androidx.compose.ui.text.AnnotatedString {
+    val defColor = palette.textPrimary
 
     // Safety: very long lines → no highlighting (prevents OOM on minified files)
     if (line.length > 500) {
@@ -688,7 +692,7 @@ internal fun highlightLine(line: String, ext: String): androidx.compose.ui.text.
     }
 
     return try {
-        doHighlightLine(line, ext)
+        doHighlightLine(line, ext, palette)
     } catch (_: Exception) {
         // Fallback: plain text if highlighting crashes
         androidx.compose.ui.text.buildAnnotatedString {
@@ -697,8 +701,11 @@ internal fun highlightLine(line: String, ext: String): androidx.compose.ui.text.
     }
 }
 
-internal fun doHighlightLine(line: String, ext: String): androidx.compose.ui.text.AnnotatedString {
-    val palette = AiModuleDarkColors
+internal fun doHighlightLine(
+    line: String,
+    ext: String,
+    palette: gs.git.vps.ui.theme.AiModuleColors = gs.git.vps.ui.theme.AiModuleDarkColors
+): androidx.compose.ui.text.AnnotatedString {
     val kwColor = palette.syntaxKeyword
     val strColor = palette.syntaxString
     val commentColor = palette.syntaxComment

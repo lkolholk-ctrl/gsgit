@@ -264,6 +264,7 @@ fun CodeEditorScreen(
         buildSearchMatches(text, searchState.text, isRegex, matchCase)
     }
     val currentMatch = matches.getOrNull(currentMatchIndex)
+    val palette = AiModuleTheme.colors
     val symbols = remember(lines, ext) { buildEditorSymbols(lines, ext) }
 
     var highlightedText by remember(file.path, branch) {
@@ -274,13 +275,17 @@ fun CodeEditorScreen(
         })
     }
 
-    LaunchedEffect(text, searchState.text, currentMatchIndex, isRegex, matchCase) {
+    LaunchedEffect(text, searchState.text, currentMatchIndex, isRegex, matchCase, palette) {
         kotlinx.coroutines.delay(40)
         val asyncHighlight = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
             val range = currentMatch?.let { it.start until it.end }
-            buildEditorAnnotatedText(text, ext, searchState.text, range, isRegex, matchCase)
+            buildEditorAnnotatedText(text, ext, searchState.text, range, isRegex, matchCase, palette)
         }
         highlightedText = asyncHighlight
+    }
+
+    val gutterStates = remember(savedContent, text) {
+        computeGutterDiff(savedContent, text)
     }
 
     val currentWord = remember(textState.text, textState.selection) {
@@ -1288,7 +1293,7 @@ fun CodeEditorScreen(
                                 }
                             )
                         }
-                        mode == GitHubEditorMode.READ -> ModernReadCanvas(lines, ext, lineNumbers, wrapLines, currentMatch?.line, fontSize)
+                        mode == GitHubEditorMode.READ -> ModernReadCanvas(lines, ext, lineNumbers, wrapLines, currentMatch?.line, fontSize, gutterStates)
                         mode == GitHubEditorMode.DIFF -> ModernDiffCanvas(savedContent, text, fontSize)
                         else -> ModernEditCanvas(
                             textState = textState,
@@ -1302,6 +1307,7 @@ fun CodeEditorScreen(
                             currentMatchRange = currentMatch?.let { it.start until it.end },
                             verticalScrollState = verticalScrollState,
                             highlightedText = highlightedText,
+                            gutterStates = gutterStates,
                             onValueChange = { applyEditorInput(it) }
                         )
                     }
@@ -2334,6 +2340,7 @@ private fun ModernEditCanvas(
     currentMatchRange: IntRange?,
     verticalScrollState: ScrollState,
     highlightedText: AnnotatedString,
+    gutterStates: List<GutterDiffState>,
     onValueChange: (TextFieldValue) -> Unit
 ) {
     val palette = AiModuleTheme.colors
@@ -2345,20 +2352,42 @@ private fun ModernEditCanvas(
                     .width(56.dp)
                     .fillMaxSize()
                     .background(palette.surface)
-                    .padding(top = 12.dp, end = 8.dp)
+                    .padding(top = 12.dp)
                     .verticalScroll(vertical)
             ) {
                 lines.forEachIndexed { index, _ ->
                     val active = currentHighlightedLine == index
-                    Text(
-                        text = "${index + 1}",
-                        color = if (active) palette.accent else palette.textMuted,
-                        fontSize = (fontSize - 1).coerceAtLeast(10).sp,
-                        fontFamily = FontFamily.Monospace,
-                        textAlign = TextAlign.End,
-                        lineHeight = (fontSize + 7).sp,
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 1.dp)
-                    )
+                    val state = gutterStates.getOrNull(index) ?: GutterDiffState.NONE
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 1.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "${index + 1}",
+                            color = if (active) palette.accent else palette.textMuted,
+                            fontSize = (fontSize - 1).coerceAtLeast(10).sp,
+                            fontFamily = FontFamily.Monospace,
+                            textAlign = TextAlign.End,
+                            lineHeight = (fontSize + 7).sp,
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 4.dp)
+                        )
+                        val barColor = when (state) {
+                            GutterDiffState.ADDED -> Color(0xFF00FF66)
+                            GutterDiffState.MODIFIED -> Color(0xFF00E5FF)
+                            GutterDiffState.DELETED_ABOVE -> Color(0xFFFF0055)
+                            GutterDiffState.NONE -> Color.Transparent
+                        }
+                        Box(
+                            Modifier
+                                .width(3.dp)
+                                .height(with(LocalDensity.current) { (fontSize + 7).toDp() })
+                                .background(barColor)
+                        )
+                    }
                 }
             }
         }
@@ -2462,7 +2491,8 @@ private fun ModernReadCanvas(
     lineNumbers: Boolean,
     wrapLines: Boolean,
     currentHighlightedLine: Int?,
-    fontSize: Int
+    fontSize: Int,
+    gutterStates: List<GutterDiffState>
 ) {
     val palette = AiModuleTheme.colors
     SelectionContainer {
@@ -2472,21 +2502,39 @@ private fun ModernReadCanvas(
         ) {
             itemsIndexed(lines) { index, line ->
                 val active = currentHighlightedLine == index
+                val state = gutterStates.getOrNull(index) ?: GutterDiffState.NONE
                 Row(
                     Modifier.fillMaxWidth().background(if (active) palette.accent.copy(alpha = 0.10f) else Color.Transparent).padding(vertical = 1.dp)
                 ) {
                     if (lineNumbers) {
-                        Text(
-                            text = "${index + 1}",
-                            color = if (active) palette.accent else palette.textMuted,
-                            fontSize = (fontSize - 1).coerceAtLeast(10).sp,
-                            fontFamily = FontFamily.Monospace,
-                            textAlign = TextAlign.End,
-                            modifier = Modifier.width(44.dp).padding(end = 8.dp)
-                        )
+                        Row(
+                            modifier = Modifier.width(52.dp).padding(end = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "${index + 1}",
+                                color = if (active) palette.accent else palette.textMuted,
+                                fontSize = (fontSize - 1).coerceAtLeast(10).sp,
+                                fontFamily = FontFamily.Monospace,
+                                textAlign = TextAlign.End,
+                                modifier = Modifier.weight(1f).padding(end = 4.dp)
+                            )
+                            val barColor = when (state) {
+                                GutterDiffState.ADDED -> Color(0xFF00FF66)
+                                GutterDiffState.MODIFIED -> Color(0xFF00E5FF)
+                                GutterDiffState.DELETED_ABOVE -> Color(0xFFFF0055)
+                                GutterDiffState.NONE -> Color.Transparent
+                            }
+                            Box(
+                                Modifier
+                                    .width(3.dp)
+                                    .height(with(LocalDensity.current) { (fontSize + 7).toDp() })
+                                    .background(barColor)
+                            )
+                        }
                     }
                     Text(
-                        text = highlightLine(line.ifEmpty { " " }, ext),
+                        text = highlightLine(line.ifEmpty { " " }, ext, palette),
                         color = palette.textPrimary,
                         fontSize = fontSize.sp,
                         fontFamily = FontFamily.Monospace,
@@ -2599,11 +2647,12 @@ private fun buildEditorAnnotatedText(
     searchQuery: String,
     currentMatchRange: IntRange?,
     isRegex: Boolean = false,
-    matchCase: Boolean = false
+    matchCase: Boolean = false,
+    palette: gs.git.vps.ui.theme.AiModuleColors = gs.git.vps.ui.theme.AiModuleDarkColors
 ): AnnotatedString {
     val syntax = buildAnnotatedString {
         if (text.length > 180_000) {
-            pushStyle(SpanStyle(color = Color(0xFFE5E7EB)))
+            pushStyle(SpanStyle(color = palette.textPrimary))
             append(text)
             pop()
             return@buildAnnotatedString
@@ -2615,11 +2664,11 @@ private fun buildEditorAnnotatedText(
             val end = if (nextBreak < 0) text.length else nextBreak
             val line = text.substring(start, end)
             if (line.length > 1_200) {
-                pushStyle(SpanStyle(color = Color(0xFFE5E7EB)))
+                pushStyle(SpanStyle(color = palette.textPrimary))
                 append(line)
                 pop()
             } else {
-                append(doHighlightLine(line, ext))
+                append(doHighlightLine(line, ext, palette))
             }
             if (nextBreak < 0) break
             append('\n')
@@ -3816,5 +3865,121 @@ private fun CompactField(
             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         )
     }
+}
+
+private enum class GutterDiffState { NONE, ADDED, MODIFIED, DELETED_ABOVE }
+
+private fun computeGutterDiff(oldText: String, newText: String): List<GutterDiffState> {
+    val oldLines = oldText.lines()
+    val newLines = newText.lines()
+    val n = oldLines.size
+    val m = newLines.size
+    
+    val states = MutableList(m) { GutterDiffState.NONE }
+    if (oldText == newText) return states
+
+    // Fallback/Fast path for very large files to avoid OOM/ANR
+    if (n * m > 100_000) {
+        val oldSet = oldLines.toSet()
+        for (j in 0 until m) {
+            if (newLines[j] !in oldSet) {
+                states[j] = GutterDiffState.ADDED
+            }
+        }
+        return states
+    }
+
+    // Standard LCS DP
+    val dp = Array(n + 1) { IntArray(m + 1) }
+    for (i in 1..n) {
+        for (j in 1..m) {
+            if (oldLines[i - 1] == newLines[j - 1]) {
+                dp[i][j] = dp[i - 1][j - 1] + 1
+            } else {
+                dp[i][j] = maxOf(dp[i - 1][j], dp[i][j - 1])
+            }
+        }
+    }
+
+    // Backtrack to align
+    var i = n
+    var j = m
+    
+    val path = mutableListOf<Pair<Int, Int>>()
+    while (i > 0 || j > 0) {
+        if (i > 0 && j > 0 && oldLines[i - 1] == newLines[j - 1]) {
+            path.add(Pair(i - 1, j - 1))
+            i--
+            j--
+        } else if (j > 0 && (i == 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+            path.add(Pair(-1, j - 1))
+            j--
+        } else {
+            path.add(Pair(i - 1, -1))
+            i--
+        }
+    }
+    path.reverse()
+
+    var idx = 0
+    while (idx < path.size) {
+        val step = path[idx]
+        if (step.first == -1 && step.second != -1) {
+            // Addition in newText. Let's check if there was a deletion nearby in this edit group.
+            var hasDeletionNearby = false
+            var k = idx - 1
+            while (k >= 0) {
+                if (path[k].first != -1 && path[k].second != -1) break
+                if (path[k].first != -1 && path[k].second == -1) {
+                    hasDeletionNearby = true
+                    break
+                }
+                k--
+            }
+            if (!hasDeletionNearby) {
+                k = idx + 1
+                while (k < path.size) {
+                    if (path[k].first != -1 && path[k].second != -1) break
+                    if (path[k].first != -1 && path[k].second == -1) {
+                        hasDeletionNearby = true
+                        break
+                    }
+                    k++
+                }
+            }
+            
+            if (hasDeletionNearby) {
+                states[step.second] = GutterDiffState.MODIFIED
+            } else {
+                states[step.second] = GutterDiffState.ADDED
+            }
+            idx++
+        } else if (step.first != -1 && step.second == -1) {
+            // Deletion in oldText. Mark next line of newText as DELETED_ABOVE.
+            var nextNewIdx = -1
+            var k = idx + 1
+            while (k < path.size) {
+                if (path[k].second != -1) {
+                    nextNewIdx = path[k].second
+                    break
+                }
+                k++
+            }
+            if (nextNewIdx != -1) {
+                if (states[nextNewIdx] == GutterDiffState.NONE) {
+                    states[nextNewIdx] = GutterDiffState.DELETED_ABOVE
+                }
+            } else {
+                if (m > 0 && states[m - 1] == GutterDiffState.NONE) {
+                    states[m - 1] = GutterDiffState.DELETED_ABOVE
+                }
+            }
+            idx++
+        } else {
+            idx++
+        }
+    }
+    
+    return states
 }
 

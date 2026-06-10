@@ -252,7 +252,52 @@ private fun ReleaseCard(
                                 workManager.enqueue(workRequest)
                                 Toast.makeText(context, "Download started in background", Toast.LENGTH_SHORT).show()
                             },
-                            onDelete = if (canWrite && asset.id > 0L) { { deletingAsset = asset } } else null
+                            onDelete = if (canWrite && asset.id > 0L) { { deletingAsset = asset } } else null,
+                            onSign = if (canWrite && gs.git.vps.security.PgpKeyManager.isPgpEnabled(context) && asset.id > 0L && !asset.name.endsWith(".asc")) {
+                                {
+                                    scope.launch {
+                                        val privateKey = gs.git.vps.security.PgpKeyManager.getPrivateKey(context)
+                                        val passphrase = gs.git.vps.security.PgpKeyManager.getPassphrase(context)
+                                        if (privateKey.isNullOrBlank()) {
+                                            Toast.makeText(context, "PGP Private Key not found. Please generate it in Settings.", Toast.LENGTH_LONG).show()
+                                            return@launch
+                                        }
+                                        Toast.makeText(context, "Downloading asset for signing...", Toast.LENGTH_SHORT).show()
+                                        
+                                        val tempFile = File(context.cacheDir, asset.name)
+                                        val downloaded = GitHubManager.downloadReleaseAsset(context, asset, tempFile)
+                                        if (!downloaded) {
+                                            Toast.makeText(context, "Failed to download asset", Toast.LENGTH_SHORT).show()
+                                            return@launch
+                                        }
+                                        
+                                        Toast.makeText(context, "Signing asset...", Toast.LENGTH_SHORT).show()
+                                        val bytes = tempFile.readBytes()
+                                        val signature = gs.git.vps.security.PgpKeyManager.signBytes(bytes, privateKey, passphrase ?: "")
+                                        if (signature.isNullOrBlank()) {
+                                            Toast.makeText(context, "Failed to generate PGP signature", Toast.LENGTH_SHORT).show()
+                                            return@launch
+                                        }
+                                        
+                                        val sigFile = File(context.cacheDir, "${asset.name}.asc")
+                                        sigFile.writeText(signature)
+                                        
+                                        Toast.makeText(context, "Uploading PGP signature...", Toast.LENGTH_SHORT).show()
+                                        val uploadedSig = GitHubManager.uploadReleaseAssetDetailed(context, repoOwner, repoName, release.id, sigFile)
+                                        if (uploadedSig != null) {
+                                            Toast.makeText(context, "PGP Signature uploaded successfully!", Toast.LENGTH_SHORT).show()
+                                            onReleasesUpdate(releases.map {
+                                                if (it.tag == release.tag) it.copy(assets = it.assets + uploadedSig) else it
+                                            })
+                                        } else {
+                                            Toast.makeText(context, "Failed to upload PGP signature to release", Toast.LENGTH_SHORT).show()
+                                        }
+                                        
+                                        tempFile.delete()
+                                        sigFile.delete()
+                                    }
+                                }
+                            } else null
                         )
                     }
                 }
@@ -388,7 +433,12 @@ private fun ReleaseCard(
 }
 
 @Composable
-private fun AssetRow(asset: GHAsset, onDownload: () -> Unit, onDelete: (() -> Unit)?) {
+private fun AssetRow(
+    asset: GHAsset, 
+    onDownload: () -> Unit, 
+    onDelete: (() -> Unit)?, 
+    onSign: (() -> Unit)? = null
+) {
     val colors = AiModuleTheme.colors
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius))
@@ -405,6 +455,11 @@ private fun AssetRow(asset: GHAsset, onDownload: () -> Unit, onDelete: (() -> Un
         Text("${formatGitHubNumber(asset.downloadCount)} downloads", fontSize = 11.sp, color = colors.textMuted)
         IconButton(onClick = onDownload, modifier = Modifier.size(30.dp)) {
             Icon(Icons.Rounded.Download, null, Modifier.size(16.dp), tint = colors.textSecondary)
+        }
+        if (onSign != null && !asset.name.endsWith(".asc")) {
+            IconButton(onClick = onSign, modifier = Modifier.size(30.dp)) {
+                Icon(Icons.Rounded.Fingerprint, null, Modifier.size(16.dp), tint = colors.accent)
+            }
         }
         if (onDelete != null) {
             IconButton(onClick = onDelete, modifier = Modifier.size(30.dp)) {

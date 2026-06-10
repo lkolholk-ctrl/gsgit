@@ -57,7 +57,7 @@ import org.json.JSONObject
 private val RULESET_FILTERS = listOf("all", "active", "evaluate", "disabled")
 private val ALERT_SEVERITIES = listOf("all", "critical", "high", "medium", "low")
 private val ALERT_STATES = listOf("open", "fixed", "resolved", "dismissed", "published", "draft", "closed", "all")
-private val SECURITY_TABS = listOf("Dependabot", "Code", "Secrets", "Advisories", "Community", "Settings")
+private val SECURITY_TABS = listOf("Dependabot", "Code", "Secrets", "Advisories", "Community", "Audit", "Settings")
 
 @Composable
 internal fun RulesetsScreen(
@@ -816,10 +816,11 @@ internal fun SecurityScreen(
                                 }
                             }
                         )
+                        "Audit" -> LocalSecurityAuditSummaryCard()
                         else -> SecuritySummaryCard(alerts)
                     }
                 }
-                val searchableTab = selectedTab != "Settings" && selectedTab != "Community"
+                val searchableTab = selectedTab != "Settings" && selectedTab != "Community" && selectedTab != "Audit"
                 if (searchableTab) item {
                     AiModuleSearchField(
                         value = query,
@@ -851,6 +852,16 @@ internal fun SecurityScreen(
                     }
                     "Community" -> {
                         item { CommunityChecklistCard(communityProfile) }
+                    }
+                    "Audit" -> {
+                        item {
+                            LocalSecurityAuditCard(
+                                repoOwner = repoOwner,
+                                repoName = repoName,
+                                alerts = alerts,
+                                secretAlerts = secretAlerts
+                            )
+                        }
                     }
                     "Advisories" -> {
                         val visibleAdvisories = advisories.filter { advisory ->
@@ -1007,7 +1018,7 @@ internal fun SecurityScreen(
     }
 
     selectedDependabotAlert?.let { alert ->
-        DependabotDetailDialog(alert, onDismiss = { selectedDependabotAlert = null }) {
+        DependabotDetailDialog(repoOwner, repoName, alert, onDismiss = { selectedDependabotAlert = null }) {
             openGitHubSecurityUrl(context, alert.htmlUrl)
         }
     }
@@ -1535,12 +1546,59 @@ private fun SecretScanningDetailDialog(alert: GHSecretScanningAlert, onDismiss: 
 }
 
 @Composable
-private fun DependabotDetailDialog(alert: GHDependabotAlert, onDismiss: () -> Unit, onOpen: () -> Unit) {
+private fun DependabotDetailDialog(
+    repoOwner: String,
+    repoName: String,
+    alert: GHDependabotAlert,
+    onDismiss: () -> Unit,
+    onOpen: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var fixPullRequest by remember(alert.number) { mutableStateOf<gs.git.vps.data.github.GHPullRequest?>(null) }
+    var checkingFix by remember(alert.number) { mutableStateOf(false) }
+    var mergingFix by remember { mutableStateOf(false) }
+    
+    LaunchedEffect(alert.number) {
+        checkingFix = true
+        try {
+            val prs = GitHubManager.getPullRequests(context, repoOwner, repoName)
+            fixPullRequest = prs.firstOrNull { pr ->
+                pr.author.contains("dependabot", ignoreCase = true) && 
+                    pr.title.contains(alert.packageName, ignoreCase = true) && 
+                    pr.state == "open"
+            }
+        } catch (_: Exception) {}
+        checkingFix = false
+    }
+
     AiModuleAlertDialog(
         onDismissRequest = onDismiss,
         title = "dependabot alert #${alert.number}",
         confirmButton = {
-            AiModuleTextAction(label = "open", enabled = alert.htmlUrl.isNotBlank(), onClick = onOpen, tint = AiModuleTheme.colors.accent)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (fixPullRequest != null) {
+                    AiModuleTextAction(
+                        label = if (mergingFix) "merging..." else "merge fix pr",
+                        enabled = !mergingFix,
+                        onClick = {
+                            mergingFix = true
+                            scope.launch {
+                                val success = GitHubManager.mergePullRequest(context, repoOwner, repoName, fixPullRequest!!.number)
+                                mergingFix = false
+                                if (success) {
+                                    android.widget.Toast.makeText(context, "Vulnerability fix applied!", android.widget.Toast.LENGTH_SHORT).show()
+                                    onDismiss()
+                                } else {
+                                    android.widget.Toast.makeText(context, "Failed to merge pull request", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        },
+                        tint = Color(0xFF34C759)
+                    )
+                }
+                AiModuleTextAction(label = "open", enabled = alert.htmlUrl.isNotBlank(), onClick = onOpen, tint = AiModuleTheme.colors.accent)
+            }
         },
         dismissButton = {
             AiModuleTextAction(label = "close", onClick = onDismiss, tint = AiModuleTheme.colors.textSecondary)
@@ -1827,6 +1885,378 @@ private fun EditAdvisoryDialog(advisory: GHRepositorySecurityAdvisory, actionInF
                     }
                 }
             }
+        }
+    }
+}
+
+private data class FoundSecret(
+    val filePath: String,
+    val lineNumber: Int,
+    val patternName: String,
+    val matchedValue: String
+)
+
+@Composable
+private fun LocalSecurityAuditSummaryCard() {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .ghGlassCard(14.dp)
+            .padding(14.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Icon(Icons.Rounded.Shield, null, Modifier.size(22.dp), tint = Color(0xFF34C759))
+            Text("local repository audit", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = AiModuleTheme.colors.textPrimary)
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "Runs client-side checks and regex credential scanning to identify potential vulnerabilities before pushing code.",
+            fontSize = 12.sp,
+            color = AiModuleTheme.colors.textSecondary
+        )
+    }
+}
+
+@Composable
+private fun LocalSecurityAuditCard(
+    repoOwner: String,
+    repoName: String,
+    alerts: List<GHDependabotAlert>,
+    secretAlerts: List<GHSecretScanningAlert>
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    
+    // Checklist state
+    val pgpEnabled = remember(context) { gs.git.vps.security.PgpKeyManager.isPgpEnabled(context) }
+    var rulesets by remember { mutableStateOf<List<GHRuleset>>(emptyList()) }
+    var loadingRulesets by remember { mutableStateOf(false) }
+
+    LaunchedEffect(repoOwner, repoName) {
+        loadingRulesets = true
+        try {
+            rulesets = GitHubManager.getRulesets(context, repoOwner, repoName)
+        } catch (_: Exception) {}
+        loadingRulesets = false
+    }
+
+    // Scanner state
+    var scanning by remember { mutableStateOf(false) }
+    var scanProgress by remember { mutableFloatStateOf(0f) }
+    var scannedFileCount by remember { mutableIntStateOf(0) }
+    var currentScannedFile by remember { mutableStateOf("") }
+    var foundSecrets by remember { mutableStateOf<List<FoundSecret>>(emptyList()) }
+    var scanFinished by remember { mutableStateOf(false) }
+
+    // Coroutine scan
+    fun startScan() {
+        scanning = true
+        scanFinished = false
+        foundSecrets = emptyList()
+        scanProgress = 0f
+        scannedFileCount = 0
+        currentScannedFile = "Fetching repository tree..."
+        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val repoMeta = GitHubManager.getRepo(context, repoOwner, repoName)
+                val branch = repoMeta?.defaultBranch ?: "main"
+                
+                val tree = GitHubManager.getGitTree(context, repoOwner, repoName, branch, recursive = true)
+                if (tree == null || tree.items.isEmpty()) {
+                    currentScannedFile = "Failed to fetch repository tree."
+                    scanning = false
+                    return@launch
+                }
+                
+                val textExtensions = listOf("env", "yml", "yaml", "json", "properties", "xml", "py", "js", "ts", "kt", "java", "gradle", "md", "txt", "conf", "config", "ini", "toml")
+                val filesToScan = tree.items.filter { 
+                    it.type == "blob" && textExtensions.any { ext -> it.path.endsWith(".$ext", ignoreCase = true) } 
+                }.take(35) // Limit to top 35 key files
+                
+                val totalFiles = filesToScan.size
+                if (totalFiles == 0) {
+                    currentScannedFile = "No text files found to scan."
+                    scanning = false
+                    scanFinished = true
+                    return@launch
+                }
+                
+                val scanPatterns = listOf(
+                    Pair("AWS Client ID", Regex("""AKIA[0-9A-Z]{16}""")),
+                    Pair("AWS Secret Key", Regex("""(?i)aws(.{0,20})?[0-9a-zA-Z\/+]{40}""")),
+                    Pair("GitHub Token", Regex("""ghp_[a-zA-Z0-9]{36}""")),
+                    Pair("GitHub Fine-Grained Token", Regex("""github_pat_[a-zA-Z0-9_]{82}""")),
+                    Pair("Google API Key", Regex("""AIza[0-9A-Za-z\-_]{35}""")),
+                    Pair("Slack Webhook URL", Regex("""https://hooks.slack.com/services/T[a-zA-Z0-9_]+/B[a-zA-Z0-9_]+/([a-zA-Z0-9_]+)""")),
+                    Pair("Generic Private Key", Regex("""-----BEGIN [A-Z ]+ PRIVATE KEY-----""")),
+                    Pair("Stripe API Key", Regex("""sk_live_[0-9a-zA-Z]{24}""")),
+                    Pair("Generic API Key", Regex("""(?i)(api_key|apikey|secret|token|password|auth|db_conn|connection_string)\s*[:=]\s*["'][a-zA-Z0-9_\-\.\+\/\*=]{16,}["']"""))
+                )
+
+                val list = mutableListOf<FoundSecret>()
+                for ((idx, item) in filesToScan.withIndex()) {
+                    currentScannedFile = "Scanning: ${item.path}"
+                    scanProgress = (idx + 1).toFloat() / totalFiles
+                    scannedFileCount = idx + 1
+                    
+                    try {
+                        val content = GitHubManager.getFileContent(context, repoOwner, repoName, item.path, branch)
+                        if (content != null) {
+                            val lines = content.lines()
+                            lines.forEachIndexed { lineIdx, line ->
+                                scanPatterns.forEach { (patternName, regex) ->
+                                    val matches = regex.findAll(line)
+                                    matches.forEach { match ->
+                                        val rawValue = match.value
+                                        val masked = if (rawValue.length > 8) {
+                                            rawValue.take(4) + "*".repeat(rawValue.length - 8) + rawValue.takeLast(4)
+                                        } else {
+                                            "*".repeat(rawValue.length)
+                                        }
+                                        list.add(
+                                            FoundSecret(
+                                                filePath = item.path,
+                                                lineNumber = lineIdx + 1,
+                                                patternName = patternName,
+                                                matchedValue = masked
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    } catch (_: Exception) {}
+                }
+                foundSecrets = list
+                currentScannedFile = "Scan complete. Scanned $totalFiles files."
+            } catch (e: Exception) {
+                currentScannedFile = "Scan failed: ${e.localizedMessage}"
+            }
+            scanning = false
+            scanFinished = true
+        }
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        // --- 1. AUDIT CHECKLIST CARD ---
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .ghGlassCard(14.dp)
+                .padding(14.dp)
+        ) {
+            Text("security health checklist", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = AiModuleTheme.colors.textPrimary)
+            Spacer(Modifier.height(12.dp))
+            
+            // Item: GPG Sign
+            ChecklistItemRow(
+                title = "PGP Commit Signing",
+                status = if (pgpEnabled) "Enabled" else "Disabled",
+                icon = if (pgpEnabled) Icons.Rounded.CheckCircle else Icons.Rounded.Warning,
+                iconColor = if (pgpEnabled) Color(0xFF34C759) else Color(0xFFFFCC00),
+                description = "Validates developer identity for all pushed commits."
+            )
+            
+            AiModuleHairline(Modifier.padding(vertical = 8.dp))
+            
+            // Item: Branch rulesets
+            val hasRulesets = rulesets.isNotEmpty()
+            ChecklistItemRow(
+                title = "Branch Rulesets",
+                status = if (loadingRulesets) "Checking..." else if (hasRulesets) "Configured (${rulesets.size})" else "Missing",
+                icon = if (hasRulesets) Icons.Rounded.CheckCircle else Icons.Rounded.Warning,
+                iconColor = if (hasRulesets) Color(0xFF34C759) else Color(0xFFFFCC00),
+                description = "Protects main branches from direct force-pushes."
+            )
+            
+            AiModuleHairline(Modifier.padding(vertical = 8.dp))
+            
+            // Item: Dependabot
+            val openDependabotCount = alerts.filter { it.state == "open" }.size
+            ChecklistItemRow(
+                title = "Dependabot Status",
+                status = if (openDependabotCount == 0) "Healthy" else "$openDependabotCount alerts",
+                icon = if (openDependabotCount == 0) Icons.Rounded.CheckCircle else Icons.Rounded.Warning,
+                iconColor = if (openDependabotCount == 0) Color(0xFF34C759) else Color(0xFFFF3B30),
+                description = "Monitors dependencies for security vulnerabilities."
+            )
+
+            AiModuleHairline(Modifier.padding(vertical = 8.dp))
+            
+            // Item: Secrets
+            val openSecretsCount = secretAlerts.filter { it.state == "open" }.size
+            ChecklistItemRow(
+                title = "Secret Scanning",
+                status = if (openSecretsCount == 0) "No Leaks" else "$openSecretsCount leaks",
+                icon = if (openSecretsCount == 0) Icons.Rounded.CheckCircle else Icons.Rounded.Warning,
+                iconColor = if (openSecretsCount == 0) Color(0xFF34C759) else Color(0xFFFF3B30),
+                description = "Scans push payloads for exposed auth credentials."
+            )
+        }
+
+        // --- 2. LOCAL SECRETS SCANNER CARD ---
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .ghGlassCard(14.dp)
+                .padding(14.dp)
+        ) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("local credentials scanner", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = AiModuleTheme.colors.textPrimary)
+                AiModulePillButton(
+                    label = if (scanning) "scanning..." else "run scan",
+                    onClick = { if (!scanning) startScan() },
+                    accent = true,
+                    enabled = !scanning
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Locally parses repository config, yaml, and environment files for leaked keys and credentials.",
+                fontSize = 11.sp,
+                color = AiModuleTheme.colors.textMuted
+            )
+            
+            if (scanning || scanFinished) {
+                Spacer(Modifier.height(10.dp))
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(AiModuleTheme.colors.background)
+                        .padding(10.dp)
+                ) {
+                    Text(
+                        currentScannedFile,
+                        fontSize = 11.sp,
+                        fontFamily = JetBrainsMono,
+                        color = AiModuleTheme.colors.textSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (scanning) {
+                        Spacer(Modifier.height(6.dp))
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(AiModuleTheme.colors.border)
+                        ) {
+                            Box(
+                                Modifier
+                                    .fillMaxHeight()
+                                    .fillMaxWidth(scanProgress)
+                                    .background(AiModuleTheme.colors.accent)
+                            )
+                        }
+                    }
+                }
+            }
+            
+            if (scanFinished) {
+                Spacer(Modifier.height(12.dp))
+                if (foundSecrets.isEmpty()) {
+                    Row(
+                        Modifier.padding(vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(Icons.Rounded.Shield, null, Modifier.size(16.dp), tint = Color(0xFF34C759))
+                        Text("No secrets or credentials found in scanned files.", fontSize = 12.sp, color = Color(0xFF34C759))
+                    }
+                } else {
+                    Text("identified secrets (${foundSecrets.size}):", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFFF3B30))
+                    Spacer(Modifier.height(8.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        foundSecrets.forEach { leak ->
+                            Column(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(GitHubControlRadius))
+                                    .background(AiModuleTheme.colors.background)
+                                    .padding(10.dp)
+                            ) {
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        leak.patternName,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color(0xFFFF9500)
+                                    )
+                                    Text(
+                                        "Line ${leak.lineNumber}",
+                                        fontSize = 11.sp,
+                                        fontFamily = JetBrainsMono,
+                                        color = AiModuleTheme.colors.textMuted
+                                    )
+                                }
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    leak.filePath,
+                                    fontSize = 11.sp,
+                                    fontFamily = JetBrainsMono,
+                                    color = AiModuleTheme.colors.textSecondary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Box(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(Color.Black.copy(alpha = 0.3f))
+                                        .padding(6.dp)
+                                ) {
+                                    Text(
+                                        leak.matchedValue,
+                                        fontSize = 11.sp,
+                                        fontFamily = JetBrainsMono,
+                                        color = Color(0xFFFF3B30)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChecklistItemRow(
+    title: String,
+    status: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    iconColor: Color,
+    description: String
+) {
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Icon(icon, null, Modifier.size(18.dp).padding(top = 2.dp), tint = iconColor)
+        Column(Modifier.weight(1f)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(title, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = AiModuleTheme.colors.textPrimary)
+                Text(status, fontSize = 12.sp, fontFamily = JetBrainsMono, color = iconColor)
+            }
+            Spacer(Modifier.height(2.dp))
+            Text(description, fontSize = 11.sp, color = AiModuleTheme.colors.textMuted)
         }
     }
 }
