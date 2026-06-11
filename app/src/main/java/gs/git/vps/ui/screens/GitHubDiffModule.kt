@@ -621,7 +621,55 @@ fun PRReviewCommentsScreen(
                             Text(comment.author, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = AiModuleTheme.colors.textPrimary)
                             Text(comment.createdAt.take(10), fontSize = 11.sp, color = AiModuleTheme.colors.textMuted)
                         }
-                        Spacer(Modifier.height(6.dp))
+                        if (comment.diffHunk.isNotBlank()) {
+                            Spacer(Modifier.height(8.dp))
+                            Column(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(Color(0xFF1C1C1E))
+                                    .border(0.5.dp, AiModuleTheme.colors.border, RoundedCornerShape(4.dp))
+                                    .padding(8.dp)
+                            ) {
+                                val lines = comment.diffHunk.lines()
+                                val visibleLines = if (lines.size > 8) lines.takeLast(6) else lines
+                                visibleLines.forEach { line ->
+                                    val ext = comment.path.substringAfterLast(".", "")
+                                    val lineText = if (line.startsWith("+") || line.startsWith("-")) line.drop(1) else line
+                                    val highlighted = doHighlightLine(lineText, ext, AiModuleTheme.colors)
+                                    val bgColor = when {
+                                        line.startsWith("+") -> Color(0x1F34C759)
+                                        line.startsWith("-") -> Color(0x1FFF3B30)
+                                        line.startsWith("@@") -> Color(0x1F8E8E93)
+                                        else -> Color.Transparent
+                                    }
+                                    val prefix = when {
+                                        line.startsWith("+") -> "+"
+                                        line.startsWith("-") -> "-"
+                                        else -> " "
+                                    }
+                                    Row(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .background(bgColor)
+                                            .padding(horizontal = 4.dp, vertical = 1.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        if (prefix != " ") {
+                                            Text(prefix, fontFamily = FontFamily.Monospace, fontSize = 10.sp, color = if (prefix == "+") Color(0xFF34C759) else Color(0xFFFF3B30), modifier = Modifier.width(12.dp))
+                                        } else {
+                                            Spacer(Modifier.width(12.dp))
+                                        }
+                                        Text(
+                                            text = highlighted,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontSize = 10.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
                         Text(comment.body, fontSize = 13.sp, color = AiModuleTheme.colors.textPrimary, lineHeight = 18.sp)
                     }
                 }
