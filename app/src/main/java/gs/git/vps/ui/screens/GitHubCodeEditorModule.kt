@@ -61,6 +61,8 @@ import androidx.compose.material.icons.rounded.Undo
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.WrapText
 import androidx.compose.material.icons.rounded.ZoomOutMap
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.rounded.Send
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -203,6 +205,8 @@ fun CodeEditorScreen(
     val hasConflictMarkers = remember(textState.text) {
         textState.text.contains("<<<<<<<") && textState.text.contains("=======") && textState.text.contains(">>>>>>>")
     }
+    var showCopilotChat by rememberSaveable(file.path, branch) { mutableStateOf(false) }
+    var copilotInitialPrompt by remember { mutableStateOf<String?>(null) }
     
     LaunchedEffect(initialLine) {
         if (initialLine != null) {
@@ -809,7 +813,8 @@ fun CodeEditorScreen(
 
     AiModuleSurface {
     val palette = AiModuleTheme.colors
-    Column(Modifier.fillMaxSize().background(palette.background)) {
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().background(palette.background)) {
         if (!zenMode) {
             GitHubEditorTopBar(
                 fileName = currentFile.name,
@@ -820,7 +825,10 @@ fun CodeEditorScreen(
                 onToggleMoreMenu = { showMoreMenu = !showMoreMenu },
                 onSave = { showCommitDialog = true },
                 onBack = ::handleEditorBack,
-                onAskAi = onAskAi
+                onAskAi = {
+                    copilotInitialPrompt = it
+                    showCopilotChat = true
+                }
             )
 
             AnimatedVisibility(visible = hasConflictMarkers && !zenMode) {
@@ -1128,7 +1136,7 @@ fun CodeEditorScreen(
                 isMarkdown = isMarkdown,
                 hasChanges = hasChanges
             )
-            if (onAskAi != null) {
+            run {
                 val selectedRange = textState.selection
                 val selectedText = run {
                     val src = textState.text
@@ -1142,7 +1150,10 @@ fun CodeEditorScreen(
                     filePath = file.path,
                     branch = branch,
                     selectedText = selectedText,
-                    onSendPrompt = { onAskAi(it) },
+                    onSendPrompt = { prompt ->
+                        copilotInitialPrompt = prompt
+                        showCopilotChat = true
+                    },
                 )
             }
         }
@@ -1531,6 +1542,39 @@ fun CodeEditorScreen(
                 currentColumn = currentColumn,
                 mode = mode,
                 onBranchClick = { showBranchSwitcher = true }
+            )
+        }
+
+        AnimatedVisibility(
+            visible = showCopilotChat,
+            enter = slideInHorizontally(initialOffsetX = { it }),
+            exit = slideOutHorizontally(targetOffsetX = { it }),
+            modifier = Modifier.align(Alignment.CenterEnd)
+        ) {
+            CopilotChatPanel(
+                palette = palette,
+                filePath = currentFile.path,
+                branch = branch,
+                selectedText = textState.selection.let { range ->
+                    val src = textState.text
+                    val start = minOf(range.start, range.end).coerceIn(0, src.length)
+                    val end = maxOf(range.start, range.end).coerceIn(0, src.length)
+                    if (end > start) src.substring(start, end) else ""
+                },
+                initialPrompt = copilotInitialPrompt,
+                onClose = { showCopilotChat = false },
+                onApplyCode = { codeSnippet ->
+                    val range = textState.selection
+                    val src = textState.text
+                    val start = minOf(range.start, range.end).coerceIn(0, src.length)
+                    val end = maxOf(range.start, range.end).coerceIn(0, src.length)
+                    val newText = src.substring(0, start) + codeSnippet + src.substring(end)
+                    textState = TextFieldValue(
+                        text = newText,
+                        selection = TextRange(start + codeSnippet.length)
+                    )
+                    showCopilotChat = false
+                }
             )
         }
     }
@@ -2919,142 +2963,46 @@ private fun coarseDiff(oldText: String, newText: String, maxLines: Int = 60): St
  * asks for a Conventional-Commit-style one-liner. Used by the "AI
  * suggest" button in the commit dialog.
  */
-private suspend fun generateCommitMessage(
+internal suspend fun askCopilot(
     context: android.content.Context,
-    path: String,
-    oldText: String,
-    newText: String,
+    messages: List<Pair<String, String>>,
 ): String = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
     val prefs = context.getSharedPreferences("github_prefs", android.content.Context.MODE_PRIVATE)
-    val model = prefs.getString("ai_model", "Anthropic Fable 5") ?: "Anthropic Fable 5"
-    val apiKey = prefs.getString("ai_api_key", "") ?: ""
-    val customEndpoint = prefs.getString("ai_custom_endpoint", "") ?: ""
-
-    val systemPrompt =
-        "You are a Conventional Commits assistant. Given the path of a file and a diff " +
-        "of an edit, produce a single-line commit message in Conventional Commits style " +
-        "(e.g. \"fix(api): handle empty list\", \"docs: clarify install\"). " +
-        "Keep it under 72 characters. Output ONLY the message, no explanation, no quotes."
-    val userPrompt = buildString {
-        appendLine("Path: $path")
-        appendLine()
-        append(coarseDiff(oldText, newText))
+    val copilotModel = prefs.getString("copilot_model", "gpt-4o") ?: "gpt-4o"
+    val copilotRouting = prefs.getString("copilot_routing", "Auto") ?: "Auto"
+    val routeHost = when (copilotRouting) {
+        "Individual" -> "api.individual.githubcopilot.com"
+        "Business" -> "api.business.githubcopilot.com"
+        "Enterprise" -> "api.enterprise.githubcopilot.com"
+        else -> "api.githubcopilot.com"
+    }
+    
+    val copilotToken = GitHubManager.getCopilotToken(context)
+    if (copilotToken.isBlank()) {
+        throw java.io.IOException("GitHub Copilot token not found. Please log in to GitHub first.")
     }
 
-    val isAnthropic = model.startsWith("Anthropic") || model.startsWith("Claude")
-    val isGemini = model.startsWith("Gemini")
-    val isOllama = model.startsWith("Ollama")
-
-    val urlStr = when {
-        customEndpoint.isNotBlank() -> {
-            if (isGemini && !customEndpoint.contains("key=") && apiKey.isNotBlank()) {
-                val modelId = when (model) {
-                    "Gemini 3.5 Pro" -> "gemini-3.5-pro"
-                    else -> "gemini-2.0-pro"
-                }
-                if (customEndpoint.contains("generateContent")) customEndpoint else "$customEndpoint/v1beta/models/$modelId:generateContent?key=$apiKey"
-            } else {
-                customEndpoint
+    val requestBody = JSONObject().apply {
+        put("model", copilotModel)
+        put("messages", JSONArray().apply {
+            messages.forEach { (role, content) ->
+                put(JSONObject().apply {
+                    put("role", role)
+                    put("content", content)
+                })
             }
-        }
-        isAnthropic -> "https://api.anthropic.com/v1/messages"
-        isGemini -> {
-            val modelId = when (model) {
-                "Gemini 3.5 Pro" -> "gemini-3.5-pro"
-                else -> "gemini-2.0-pro"
-            }
-            "https://generativelanguage.googleapis.com/v1beta/models/$modelId:generateContent?key=$apiKey"
-        }
-        isOllama -> "http://10.0.2.2:11434/api/chat"
-        else -> "https://api.openai.com/v1/chat/completions"
-    }
-
-    val requestBody = when {
-        isAnthropic -> {
-            val modelId = when (model) {
-                "Anthropic Fable 5" -> "claude-5-fable"
-                "Claude 3.5 Sonnet" -> "claude-3-5-sonnet-20241022"
-                "Claude 4 Sonnet" -> "claude-4-sonnet-20260215"
-                else -> "claude-5-fable"
-            }
-            JSONObject().apply {
-                put("model", modelId)
-                put("max_tokens", 150)
-                put("system", systemPrompt)
-                put("messages", JSONArray().apply {
-                    put(JSONObject().apply {
-                        put("role", "user")
-                        put("content", userPrompt)
-                    })
-                })
-            }.toString()
-        }
-        isGemini -> {
-            JSONObject().apply {
-                put("contents", JSONArray().apply {
-                    put(JSONObject().apply {
-                        put("role", "user")
-                        put("parts", JSONArray().apply {
-                            put(JSONObject().apply { put("text", userPrompt) })
-                        })
-                    })
-                })
-                put("systemInstruction", JSONObject().apply {
-                    put("parts", JSONArray().apply {
-                        put(JSONObject().apply { put("text", systemPrompt) })
-                    })
-                })
-                put("generationConfig", JSONObject().apply {
-                    put("maxOutputTokens", 150)
-                })
-            }.toString()
-        }
-        isOllama -> {
-            JSONObject().apply {
-                put("model", if (model == "Ollama Local") "fable-5" else model)
-                put("messages", JSONArray().apply {
-                    put(JSONObject().apply {
-                        put("role", "system")
-                        put("content", systemPrompt)
-                    })
-                    put(JSONObject().apply {
-                        put("role", "user")
-                        put("content", userPrompt)
-                    })
-                })
-                put("stream", false)
-            }.toString()
-        }
-        else -> {
-            val modelId = when (model) {
-                "GPT-5 Omni" -> "gpt-5-omni"
-                else -> "gpt-5-omni"
-            }
-            JSONObject().apply {
-                put("model", modelId)
-                put("max_tokens", 150)
-                put("messages", JSONArray().apply {
-                    put(JSONObject().apply {
-                        put("role", "system")
-                        put("content", systemPrompt)
-                    })
-                    put(JSONObject().apply {
-                        put("role", "user")
-                        put("content", userPrompt)
-                    })
-                })
-            }.toString()
-        }
-    }
+        })
+        put("stream", false)
+    }.toString()
 
     var connection: java.net.HttpURLConnection? = null
-    val raw = try {
+    try {
         val proxyEnabled = prefs.getBoolean("network_proxy_enabled", false)
         val proxyHost = prefs.getString("network_proxy_host", "") ?: ""
         val proxyPort = prefs.getInt("network_proxy_port", 8080)
         val sslBypass = prefs.getBoolean("network_ssl_bypass", false)
 
-        val url = java.net.URL(urlStr)
+        val url = java.net.URL("https://$routeHost/chat/completions")
         val connRaw = if (proxyEnabled && proxyHost.isNotBlank()) {
             val proxy = java.net.Proxy(java.net.Proxy.Type.HTTP, java.net.InetSocketAddress(proxyHost, proxyPort))
             url.openConnection(proxy)
@@ -3064,24 +3012,15 @@ private suspend fun generateCommitMessage(
 
         connection = (connRaw as java.net.HttpURLConnection).apply {
             requestMethod = "POST"
-            connectTimeout = 15000
-            readTimeout = 15000
+            connectTimeout = 30000
+            readTimeout = 30000
             doOutput = true
-            
             setRequestProperty("Content-Type", "application/json")
-            when {
-                isAnthropic -> {
-                    setRequestProperty("x-api-key", apiKey)
-                    setRequestProperty("anthropic-version", "2023-06-01")
-                }
-                isGemini -> {
-                }
-                else -> {
-                    if (apiKey.isNotBlank()) {
-                        setRequestProperty("Authorization", "Bearer $apiKey")
-                    }
-                }
-            }
+            setRequestProperty("Authorization", "Bearer $copilotToken")
+            setRequestProperty("Copilot-Integration-Id", "vscode-chat")
+            setRequestProperty("Editor-Version", "vscode/1.85.0")
+            setRequestProperty("Editor-Plugin-Version", "copilot-chat/0.11.0")
+            setRequestProperty("User-Agent", "GitHubCopilotChat/0.11.0")
         }
 
         if (sslBypass && connection is javax.net.ssl.HttpsURLConnection) {
@@ -3098,7 +3037,7 @@ private suspend fun generateCommitMessage(
                 connection.sslSocketFactory = sc.socketFactory
                 connection.hostnameVerifier = javax.net.ssl.HostnameVerifier { _, _ -> true }
             } catch (e: Exception) {
-                android.util.Log.e("AI_SUGGEST", "SSL bypass error: ${e.message}")
+                android.util.Log.e("COPILOT_CHAT", "SSL bypass error: ${e.message}")
             }
         }
 
@@ -3106,40 +3045,347 @@ private suspend fun generateCommitMessage(
         val code = connection.responseCode
         if (code in 200..299) {
             val responseText = connection.inputStream.bufferedReader().use { it.readText() }
-            
-            when {
-                isAnthropic -> {
-                    JSONObject(responseText).getJSONArray("content").getJSONObject(0).getString("text")
-                }
-                isGemini -> {
-                    JSONObject(responseText).getJSONArray("candidates").getJSONObject(0)
-                        .getJSONObject("content").getJSONArray("parts").getJSONObject(0).getString("text")
-                }
-                isOllama -> {
-                    JSONObject(responseText).getJSONObject("message").getString("content")
-                }
-                else -> {
-                    JSONObject(responseText).getJSONArray("choices").getJSONObject(0)
-                        .getJSONObject("message").getString("content")
-                }
-            }
+            JSONObject(responseText).getJSONArray("choices").getJSONObject(0)
+                .getJSONObject("message").getString("content")
         } else {
             val errorText = connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
             throw java.io.IOException("HTTP error $code: $errorText")
         }
-    } catch (e: Exception) {
-        android.util.Log.e("AI_SUGGEST", "Error generating commit message: ${e.message}", e)
-        throw e
     } finally {
         connection?.disconnect()
     }
+}
 
-    raw.lineSequence()
+private suspend fun generateCommitMessage(
+    context: android.content.Context,
+    path: String,
+    oldText: String,
+    newText: String,
+): String {
+    val systemPrompt =
+        "You are a Conventional Commits assistant. Given the path of a file and a diff " +
+        "of an edit, produce a single-line commit message in Conventional Commits style " +
+        "(e.g. \"fix(api): handle empty list\", \"docs: clarify install\"). " +
+        "Keep it under 72 characters. Output ONLY the message, no explanation, no quotes."
+    val userPrompt = buildString {
+        appendLine("Path: $path")
+        appendLine()
+        append(coarseDiff(oldText, newText))
+    }
+    
+    val response = askCopilot(
+        context = context,
+        messages = listOf(
+            "system" to systemPrompt,
+            "user" to userPrompt
+        )
+    )
+    return response.lineSequence()
         .firstOrNull { it.isNotBlank() }
         .orEmpty()
         .trim()
         .trim('"', '\'', '`')
         .take(120)
+}
+
+@Composable
+internal fun CopilotChatPanel(
+    palette: gs.git.vps.ui.theme.AiModuleColors,
+    filePath: String,
+    branch: String,
+    selectedText: String,
+    initialPrompt: String?,
+    onClose: () -> Unit,
+    onApplyCode: (String) -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    
+    val messages = remember { mutableStateListOf<Pair<String, String>>() }
+    var inputText by remember { mutableStateOf("") }
+    var isLoading by remember { mutableStateOf(false) }
+    var errorText by remember { mutableStateOf<String?>(null) }
+    val listState = rememberLazyListState()
+    
+    LaunchedEffect(initialPrompt) {
+        if (!initialPrompt.isNullOrBlank()) {
+            val userMsg = initialPrompt
+            messages.add("user" to userMsg)
+            isLoading = true
+            errorText = null
+            scope.launch {
+                try {
+                    val history = mutableListOf<Pair<String, String>>()
+                    val prefs = context.getSharedPreferences("github_prefs", Context.MODE_PRIVATE)
+                    val systemInstructions = prefs.getString("ai_system_prompt", "You are a professional developer helping to review code, troubleshoot errors, and suggest fixes.") ?: ""
+                    if (systemInstructions.isNotBlank()) {
+                        history.add("system" to systemInstructions)
+                    }
+                    messages.forEach { history.add(it) }
+                    
+                    val response = askCopilot(context, history)
+                    messages.add("assistant" to response)
+                    listState.animateScrollToItem(messages.size - 1)
+                } catch (e: Exception) {
+                    errorText = e.message ?: e.javaClass.simpleName
+                } finally {
+                    isLoading = false
+                }
+            }
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxHeight()
+            .width(if (LocalGHCompact.current) 320.dp else 400.dp)
+            .background(palette.surfaceElevated)
+            .border(start = 1.dp, color = palette.border)
+            .padding(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(if (isLoading) Color(0xFFFFB300) else palette.accent)
+                )
+                Text(
+                    text = "COPILOT CHAT",
+                    fontFamily = JetBrainsMono,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = palette.accent
+                )
+            }
+            IconButton(onClick = onClose, modifier = Modifier.size(24.dp)) {
+                Text("×", color = palette.textSecondary, fontSize = 20.sp, fontFamily = JetBrainsMono)
+            }
+        }
+        
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .background(palette.background)
+                .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
+                .padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            if (messages.isEmpty()) {
+                item {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "Ask Copilot about the code.",
+                            fontSize = 11.sp,
+                            color = palette.textMuted,
+                            fontFamily = JetBrainsMono,
+                            textAlign = TextAlign.Center
+                        )
+                        if (selectedText.isNotBlank()) {
+                            Spacer(Modifier.height(8.dp))
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(GitHubControlRadius))
+                                    .background(palette.accent.copy(alpha = 0.08f))
+                                    .border(0.5.dp, palette.accent.copy(alpha = 0.5f), RoundedCornerShape(GitHubControlRadius))
+                                    .clickable {
+                                        val prompt = "Explain this selected code:\n\n```\n$selectedText\n```"
+                                        messages.add("user" to prompt)
+                                        inputText = ""
+                                        isLoading = true
+                                        scope.launch {
+                                            try {
+                                                val history = mutableListOf<Pair<String, String>>()
+                                                val prefs = context.getSharedPreferences("github_prefs", Context.MODE_PRIVATE)
+                                                val systemInstructions = prefs.getString("ai_system_prompt", "") ?: ""
+                                                if (systemInstructions.isNotBlank()) history.add("system" to systemInstructions)
+                                                messages.forEach { history.add(it) }
+                                                val response = askCopilot(context, history)
+                                                messages.add("assistant" to response)
+                                                listState.animateScrollToItem(messages.size - 1)
+                                            } catch (e: Exception) {
+                                                errorText = e.message ?: e.javaClass.simpleName
+                                            } finally {
+                                                isLoading = false
+                                            }
+                                        }
+                                    }
+                                    .padding(8.dp)
+                            ) {
+                                Text(
+                                    text = "Explain selection (${selectedText.take(20)}...)",
+                                    fontSize = 10.sp,
+                                    color = palette.accent,
+                                    fontFamily = JetBrainsMono
+                                )
+                            }
+                        }
+                    }
+                }
+            } else {
+                items(messages.size) { index ->
+                    val (role, text) = messages[index]
+                    val isUser = role == "user"
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = if (isUser) Alignment.End else Alignment.Start
+                    ) {
+                        Text(
+                            text = if (isUser) "YOU" else "COPILOT",
+                            fontSize = 9.sp,
+                            color = if (isUser) palette.accent else palette.textSecondary,
+                            fontFamily = JetBrainsMono,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Box(
+                            modifier = Modifier
+                                .padding(top = 2.dp)
+                                .clip(RoundedCornerShape(GitHubControlRadius))
+                                .background(if (isUser) palette.accent.copy(alpha = 0.06f) else palette.surfaceElevated)
+                                .border(0.5.dp, if (isUser) palette.accent.copy(alpha = 0.4f) else palette.border, RoundedCornerShape(GitHubControlRadius))
+                                .padding(8.dp)
+                        ) {
+                            Column {
+                                Text(
+                                    text = text,
+                                    fontSize = 11.sp,
+                                    color = palette.textPrimary,
+                                    fontFamily = JetBrainsMono
+                                )
+                                
+                                val codeBlocks = remember(text) { extractCodeBlocks(text) }
+                                if (codeBlocks.isNotEmpty()) {
+                                    Spacer(Modifier.height(8.dp))
+                                    codeBlocks.forEachIndexed { _, code ->
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            modifier = Modifier.padding(top = 4.dp)
+                                        ) {
+                                            AiModuleTextAction("Apply Code") {
+                                                onApplyCode(code)
+                                            }
+                                            AiModuleTextAction("Copy", tint = palette.textSecondary) {
+                                                val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                                cm.setPrimaryClip(android.content.ClipData.newPlainText("Copilot Code", code))
+                                                Toast.makeText(context, "Copied code block", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            if (isLoading) {
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        AiModuleSpinner()
+                        Text("Copilot is typing...", fontSize = 11.sp, color = palette.textSecondary, fontFamily = JetBrainsMono)
+                    }
+                }
+            }
+            
+            errorText?.let { err ->
+                item {
+                    Text(
+                        text = "Error: $err",
+                        color = palette.error,
+                        fontSize = 11.sp,
+                        fontFamily = JetBrainsMono,
+                        modifier = Modifier.fillMaxWidth().padding(8.dp)
+                    )
+                }
+            }
+        }
+        
+        Spacer(Modifier.height(10.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            AiModuleTextField(
+                value = inputText,
+                onValueChange = { inputText = it },
+                label = "Ask anything...",
+                singleLine = false,
+                modifier = Modifier.weight(1f)
+            )
+            IconButton(
+                onClick = {
+                    if (inputText.isNotBlank() && !isLoading) {
+                        val prompt = inputText
+                        messages.add("user" to prompt)
+                        inputText = ""
+                        isLoading = true
+                        errorText = null
+                        scope.launch {
+                            try {
+                                val history = mutableListOf<Pair<String, String>>()
+                                val prefs = context.getSharedPreferences("github_prefs", Context.MODE_PRIVATE)
+                                val systemInstructions = prefs.getString("ai_system_prompt", "") ?: ""
+                                if (systemInstructions.isNotBlank()) history.add("system" to systemInstructions)
+                                messages.forEach { history.add(it) }
+                                
+                                val response = askCopilot(context, history)
+                                messages.add("assistant" to response)
+                                listState.animateScrollToItem(messages.size - 1)
+                            } catch (e: Exception) {
+                                errorText = e.message ?: e.javaClass.simpleName
+                            } finally {
+                                isLoading = false
+                            }
+                        }
+                    }
+                },
+                enabled = inputText.isNotBlank() && !isLoading,
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(GitHubControlRadius))
+                    .background(if (inputText.isNotBlank() && !isLoading) palette.accent else palette.border)
+            ) {
+                Icon(Icons.Rounded.Send, null, tint = if (inputText.isNotBlank() && !isLoading) Color.Black else palette.textMuted, modifier = Modifier.size(16.dp))
+            }
+        }
+    }
+}
+
+private fun extractCodeBlocks(text: String): List<String> {
+    val blocks = mutableListOf<String>()
+    val lines = text.lines()
+    var inBlock = false
+    val currentBlock = StringBuilder()
+    
+    for (line in lines) {
+        if (line.trim().startsWith("```")) {
+            if (inBlock) {
+                blocks.add(currentBlock.toString().trimEnd())
+                currentBlock.clear()
+                inBlock = false
+            } else {
+                inBlock = true
+            }
+        } else if (inBlock) {
+            currentBlock.appendLine(line)
+        }
+    }
+    return blocks
 }
 
 @Composable

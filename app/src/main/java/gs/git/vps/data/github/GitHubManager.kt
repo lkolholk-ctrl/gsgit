@@ -62,6 +62,24 @@ object GitHubManager {
         } catch (e: Exception) { TokenValidation(false, "", "", e.message ?: "parse error") }
     }
 
+    suspend fun getCopilotToken(context: Context): String {
+        val res = request(
+            context = context,
+            endpoint = "https://api.github.com/copilot_user/token",
+            method = "GET",
+            extraHeaders = mapOf(
+                "User-Agent" to "GitHubCopilotChat/0.11.0",
+                "Accept" to "application/json"
+            ),
+            trackErrors = false
+        )
+        if (res.success) {
+            return JSONObject(res.body).optString("token", "")
+        } else {
+            throw java.io.IOException("Failed to get Copilot token: HTTP ${res.code}: ${res.body.trim()}")
+        }
+    }
+
     fun saveToken(context: Context, token: String) = GitHubAuth.saveToken(context, token)
     fun getToken(context: Context): String = GitHubAuth.getToken(context)
     fun isLoggedIn(context: Context): Boolean = GitHubAuth.isLoggedIn(context)

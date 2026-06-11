@@ -176,10 +176,9 @@ internal fun GitHubSettingsScreen(
     var securityPinCode by remember { mutableStateOf(prefs.getString("security_pin_code", "").orEmpty()) }
     var securityPgpKeyAlgorithm by remember { mutableStateOf(prefs.getString("security_pgp_key_algorithm", "RSA-4096").orEmpty()) }
 
-    // Category 3: AI Helper
-    var aiApiKey by remember { mutableStateOf(prefs.getString("ai_api_key", "").orEmpty()) }
-    var aiModel by remember { mutableStateOf(prefs.getString("ai_model", "Anthropic Fable 5").orEmpty()) }
-    var aiCustomEndpoint by remember { mutableStateOf(prefs.getString("ai_custom_endpoint", "").orEmpty()) }
+    // Category 3: GitHub Copilot
+    var copilotModel by remember { mutableStateOf(prefs.getString("copilot_model", "gpt-4o").orEmpty()) }
+    var copilotRouting by remember { mutableStateOf(prefs.getString("copilot_routing", "Auto").orEmpty()) }
     var aiSystemPrompt by remember { mutableStateOf(prefs.getString("ai_system_prompt", "You are a professional developer helping to review code, troubleshoot errors, and suggest fixes.").orEmpty()) }
 
     // Category 4: Network & Proxy
@@ -1451,9 +1450,9 @@ internal fun GitHubSettingsScreen(
                                 }
                             }
                         }
-                        SettingsSection.AI_HELPER -> SectionCard("AI Settings") {
+                        SettingsSection.AI_HELPER -> SectionCard("GitHub Copilot Settings") {
                             Text(
-                                text = "// modern language model",
+                                text = "// active model",
                                 color = AiModuleTheme.colors.textMuted,
                                 fontSize = 11.sp,
                                 fontFamily = JetBrainsMono,
@@ -1461,17 +1460,17 @@ internal fun GitHubSettingsScreen(
                                 modifier = Modifier.padding(bottom = 6.dp)
                             )
                             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                listOf("Anthropic Fable 5", "Claude 3.5 Sonnet", "Claude 4 Sonnet", "Gemini 2.0 Pro", "Gemini 3.5 Pro", "GPT-5 Omni", "Ollama Local").forEach { modelName ->
-                                    val isSelected = aiModel == modelName
+                                listOf("gpt-4o", "claude-3.5-sonnet", "o1-mini", "o1-preview").forEach { modelName ->
+                                    val isSelected = copilotModel == modelName
                                     Box(
                                         modifier = Modifier
                                             .clip(RoundedCornerShape(GitHubControlRadius))
                                             .background(if (isSelected) AiModuleTheme.colors.accent.copy(alpha = 0.14f) else AiModuleTheme.colors.border)
                                             .border(1.dp, if (isSelected) AiModuleTheme.colors.accent else Color.Transparent, RoundedCornerShape(GitHubControlRadius))
                                             .clickable {
-                                                aiModel = modelName
-                                                prefs.edit().putString("ai_model", modelName).apply()
-                                                addLog("AI model set to $modelName")
+                                                copilotModel = modelName
+                                                prefs.edit().putString("copilot_model", modelName).apply()
+                                                addLog("Copilot model set to $modelName")
                                             }
                                             .padding(horizontal = 8.dp, vertical = 4.dp)
                                     ) {
@@ -1480,15 +1479,90 @@ internal fun GitHubSettingsScreen(
                                 }
                             }
                             
+                            Spacer(Modifier.height(16.dp))
+                            Text(
+                                text = "// plan routing endpoint",
+                                color = AiModuleTheme.colors.textMuted,
+                                fontSize = 11.sp,
+                                fontFamily = JetBrainsMono,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(bottom = 6.dp)
+                            )
+                            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                listOf("Auto", "Individual", "Business", "Enterprise").forEach { routeName ->
+                                    val isSelected = copilotRouting == routeName
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(GitHubControlRadius))
+                                            .background(if (isSelected) AiModuleTheme.colors.accent.copy(alpha = 0.14f) else AiModuleTheme.colors.border)
+                                            .border(1.dp, if (isSelected) AiModuleTheme.colors.accent else Color.Transparent, RoundedCornerShape(GitHubControlRadius))
+                                            .clickable {
+                                                copilotRouting = routeName
+                                                prefs.edit().putString("copilot_routing", routeName).apply()
+                                                addLog("Copilot routing set to $routeName")
+                                            }
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(routeName, fontSize = 11.sp, color = if (isSelected) AiModuleTheme.colors.accent else AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono)
+                                    }
+                                }
+                            }
+                            
+                            Spacer(Modifier.height(16.dp))
+                            var testingState by remember { mutableStateOf<String?>(null) }
+                            val testScope = rememberCoroutineScope()
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                AiModuleTextAction("Test Copilot Connection") {
+                                    testingState = "Fetching Copilot Token..."
+                                    testScope.launch {
+                                        try {
+                                            val token = GitHubManager.getCopilotToken(context)
+                                            if (token.isNotBlank()) {
+                                                testingState = "Token Ok. Testing Chat endpoint..."
+                                                // Make a simple ping request
+                                                val routeHost = when (copilotRouting) {
+                                                    "Individual" -> "api.individual.githubcopilot.com"
+                                                    "Business" -> "api.business.githubcopilot.com"
+                                                    "Enterprise" -> "api.enterprise.githubcopilot.com"
+                                                    else -> "api.githubcopilot.com"
+                                                }
+                                                val success = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                                    val url = URL("https://$routeHost/chat/completions")
+                                                    val conn = url.openConnection() as HttpURLConnection
+                                                    conn.requestMethod = "POST"
+                                                    conn.setRequestProperty("Authorization", "Bearer $token")
+                                                    conn.setRequestProperty("Content-Type", "application/json")
+                                                    conn.setRequestProperty("User-Agent", "GitHubCopilotChat/0.11.0")
+                                                    conn.doOutput = true
+                                                    val requestBody = JSONObject().apply {
+                                                        put("model", copilotModel)
+                                                        put("messages", JSONArray().apply {
+                                                            put(JSONObject().apply {
+                                                                put("role", "user")
+                                                                put("content", "ping")
+                                                            })
+                                                        })
+                                                        put("max_tokens", 5)
+                                                    }.toString()
+                                                    conn.outputStream.use { it.write(requestBody.toByteArray()) }
+                                                    conn.responseCode in 200..299
+                                                }
+                                                testingState = if (success) "Connection successful! Copilot is active." else "Chat API request failed."
+                                            } else {
+                                                testingState = "Token request returned empty."
+                                            }
+                                        } catch (e: Exception) {
+                                            testingState = "Error: ${e.message ?: e.javaClass.simpleName}"
+                                        }
+                                    }
+                                }
+                                testingState?.let {
+                                    Spacer(Modifier.width(12.dp))
+                                    Text(it, fontSize = 11.sp, color = if (it.contains("successful")) AiModuleTheme.colors.accent else AiModuleTheme.colors.error, fontFamily = JetBrainsMono)
+                                }
+                            }
+
                             Spacer(Modifier.height(12.dp))
-                            CompactField("AI API Key", aiApiKey, password = true) {
-                                aiApiKey = it
-                                prefs.edit().putString("ai_api_key", it).apply()
-                            }
-                            CompactField("Custom Endpoint (optional)", aiCustomEndpoint) {
-                                aiCustomEndpoint = it
-                                prefs.edit().putString("ai_custom_endpoint", it).apply()
-                            }
                             CompactField("System Instructions", aiSystemPrompt, singleLine = false, minLines = 3) {
                                 aiSystemPrompt = it
                                 prefs.edit().putString("ai_system_prompt", it).apply()

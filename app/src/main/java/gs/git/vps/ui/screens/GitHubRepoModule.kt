@@ -161,6 +161,8 @@ internal fun RepoDetailScreen(
     var showRepoInsights by remember { mutableStateOf(false) }
     var showGitDataTools by remember { mutableStateOf(false) }
     var repoReloadNonce by remember { mutableIntStateOf(0) }
+    var showCopilotChat by rememberSaveable(repo.fullName) { mutableStateOf(false) }
+    var copilotPrompt by remember { mutableStateOf<String?>(null) }
     var selectedBranch by rememberSaveable(repo.fullName) { mutableStateOf(repo.defaultBranch) }
     var prevBranchForReflog by remember { mutableStateOf(selectedBranch) }
     LaunchedEffect(selectedBranch) {
@@ -542,8 +544,9 @@ internal fun RepoDetailScreen(
         WorkflowRunDetailScreen(
             repo = repo,
             runId = selectedRunId!!,
-            onSuggestFix = onOpenAiAgent?.let { open ->
-                { prompt -> open(repo.fullName, selectedBranch, prompt) }
+            onSuggestFix = { prompt ->
+                copilotPrompt = prompt
+                showCopilotChat = true
             },
             onBack = { selectedRunId = null },
         )
@@ -867,20 +870,22 @@ internal fun RepoDetailScreen(
 
     AiModuleSurface {
     val palette = AiModuleTheme.colors
-    Column(Modifier.fillMaxSize().background(palette.background)) {
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().background(palette.background)) {
         GitHubPageBar(
             title = "> ${repo.name}",
             subtitle = if (currentPath.isNotBlank()) "${repo.fullName} \u00B7 $currentPath" else repo.fullName,
             onBack = ::handleRepoBack,
             trailing = {
-                if (onOpenAiAgent != null) {
-                    GitHubTopBarAction(
-                        glyph = GhGlyphs.AI,
-                        onClick = { onOpenAiAgent(repo.fullName, selectedBranch, null) },
-                        tint = palette.accent,
-                        contentDescription = "ai agent",
-                    )
-                }
+                GitHubTopBarAction(
+                    glyph = GhGlyphs.AI,
+                    onClick = {
+                        copilotPrompt = null
+                        showCopilotChat = true
+                    },
+                    tint = palette.accent,
+                    contentDescription = "copilot chat",
+                )
                 GitHubTopBarAction(
                     glyph = GhGlyphs.REFRESH,
                     onClick = { repoReloadNonce++ },
@@ -1263,6 +1268,28 @@ internal fun RepoDetailScreen(
                 }
             )
             RepoTab.TELEMETRY -> TelemetryTab(repo, commits)
+        }
+
+        AnimatedVisibility(
+            visible = showCopilotChat,
+            enter = slideInHorizontally(initialOffsetX = { it }),
+            exit = slideOutHorizontally(targetOffsetX = { it }),
+            modifier = Modifier.align(Alignment.CenterEnd)
+        ) {
+            CopilotChatPanel(
+                palette = palette,
+                filePath = if (currentPath.isNotBlank()) currentPath else "repository root",
+                branch = selectedBranch,
+                selectedText = "",
+                initialPrompt = copilotPrompt,
+                onClose = { showCopilotChat = false },
+                onApplyCode = { codeSnippet ->
+                    val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    cm.setPrimaryClip(android.content.ClipData.newPlainText("Copilot Code", codeSnippet))
+                    Toast.makeText(context, "Code copied to clipboard", Toast.LENGTH_SHORT).show()
+                    showCopilotChat = false
+                }
+            )
         }
     }
     if (showUpload) UploadDialog(repo, currentPath, selectedBranch, { showUpload = false }) { showUpload = false; scope.launch { contents = GitHubManager.getRepoContents(context, repo.owner, repo.name, currentPath, selectedBranch) } }
