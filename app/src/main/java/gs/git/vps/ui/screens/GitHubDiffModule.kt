@@ -7,6 +7,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.runtime.*
@@ -106,12 +110,26 @@ fun DiffViewerScreen(
                 }
         },
     ) {
-
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp)) {
-            items(files) { file ->
-                val fileComments = comments.filter { it.path == file.filename }
-                DiffFileCard(file, files.indexOf(file) + 1, files.size, fileComments.size) { selectedFile = file }
-                if (file != files.lastOrNull()) Spacer(Modifier.height(8.dp))
+        var searchQuery by remember { mutableStateOf("") }
+        Column(Modifier.fillMaxSize()) {
+            Box(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                AiModuleTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    label = "Filter files",
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            val filteredFiles = remember(files, searchQuery) {
+                if (searchQuery.isBlank()) files else files.filter { it.filename.contains(searchQuery, ignoreCase = true) }
+            }
+            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp)) {
+                items(filteredFiles) { file ->
+                    val fileComments = comments.filter { it.path == file.filename }
+                    DiffFileCard(file, files.indexOf(file) + 1, files.size, fileComments.size) { selectedFile = file }
+                    if (file != filteredFiles.lastOrNull()) Spacer(Modifier.height(8.dp))
+                }
             }
         }
     }
@@ -203,12 +221,12 @@ private fun FileDiffScreen(
                 )
         },
     ) {
-
-        LazyColumn(
-            Modifier.fillMaxSize().padding(horizontal = 8.dp),
-            contentPadding = PaddingValues(vertical = 8.dp)
-        ) {
-            if (viewMode == DiffViewMode.UNIFIED) {
+        val ext = remember(file.filename) { file.filename.substringAfterLast(".", "") }
+        if (viewMode == DiffViewMode.UNIFIED) {
+            LazyColumn(
+                Modifier.fillMaxSize().padding(horizontal = 8.dp),
+                contentPadding = PaddingValues(vertical = 8.dp)
+            ) {
                 items(lines) { line ->
                     val lineNum = when (line) {
                         is PatchDiffLine.Added -> line.lineNum
@@ -220,6 +238,7 @@ private fun FileDiffScreen(
                     Column {
                         DiffLineItem(
                             line = line,
+                            ext = ext,
                             viewMode = viewMode,
                             onAddComment = if (pullNumber != null && lineNum > 0) {
                                 {
@@ -241,34 +260,49 @@ private fun FileDiffScreen(
                         }
                     }
                 }
-            } else {
-                items(splitLines) { pair ->
-                    val lineNum = when (val right = pair.right) {
-                        is PatchDiffLine.Added -> right.lineNum
-                        is PatchDiffLine.Context -> right.newLineNum
-                        else -> 0
-                    }
-                    val lineComments = if (lineNum > 0) comments.filter { it.line == lineNum } else emptyList()
+            }
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .horizontalScroll(rememberScrollState())
+            ) {
+                LazyColumn(
+                    modifier = Modifier
+                        .width(800.dp)
+                        .fillMaxHeight()
+                        .padding(horizontal = 8.dp),
+                    contentPadding = PaddingValues(vertical = 8.dp)
+                ) {
+                    items(splitLines) { pair ->
+                        val lineNum = when (val right = pair.right) {
+                            is PatchDiffLine.Added -> right.lineNum
+                            is PatchDiffLine.Context -> right.newLineNum
+                            else -> 0
+                        }
+                        val lineComments = if (lineNum > 0) comments.filter { it.line == lineNum } else emptyList()
 
-                    Column {
-                        SplitDiffLineRow(
-                            pair = pair,
-                            onAddCommentRight = if (pullNumber != null && lineNum > 0) {
-                                {
-                                    commentLine = lineNum
-                                    commentPath = file.filename
-                                    showCommentDialog = true
+                        Column {
+                            SplitDiffLineRow(
+                                pair = pair,
+                                ext = ext,
+                                onAddCommentRight = if (pullNumber != null && lineNum > 0) {
+                                    {
+                                        commentLine = lineNum
+                                        commentPath = file.filename
+                                        showCommentDialog = true
+                                    }
+                                } else null
+                            )
+
+                            if (lineComments.isNotEmpty()) {
+                                lineComments.forEach { comment ->
+                                    CommentBubble(
+                                        comment = comment,
+                                        onEdit = if (canMutateComments) ({ editComment = comment }) else null,
+                                        onDelete = if (canMutateComments) ({ deleteComment = comment }) else null
+                                    )
                                 }
-                            } else null
-                        )
-
-                        if (lineComments.isNotEmpty()) {
-                            lineComments.forEach { comment ->
-                                CommentBubble(
-                                    comment = comment,
-                                    onEdit = if (canMutateComments) ({ editComment = comment }) else null,
-                                    onDelete = if (canMutateComments) ({ deleteComment = comment }) else null
-                                )
                             }
                         }
                     }
@@ -410,7 +444,9 @@ private fun parseDiffLines(patch: String): List<PatchDiffLine> {
 }
 
 @Composable
-private fun DiffLineItem(line: PatchDiffLine, viewMode: DiffViewMode, onAddComment: (() -> Unit)? = null) {
+private fun DiffLineItem(line: PatchDiffLine, ext: String, viewMode: DiffViewMode, onAddComment: (() -> Unit)? = null) {
+    val palette = AiModuleTheme.colors
+    val context = LocalContext.current
     when (line) {
         is PatchDiffLine.Header -> {
             Box(Modifier.fillMaxWidth().background(Color(0xFF2C2C2E)).padding(horizontal = 8.dp, vertical = 4.dp)) {
@@ -420,34 +456,71 @@ private fun DiffLineItem(line: PatchDiffLine, viewMode: DiffViewMode, onAddComme
         is PatchDiffLine.Added -> {
             Row(
                 Modifier.fillMaxWidth().background(Color(0x0D34C759))
-                    .clickable(enabled = onAddComment != null) { onAddComment?.invoke() }
                     .padding(horizontal = 8.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text("+${line.lineNum}", modifier = Modifier.width(40.dp), fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = Color(0xFF34C759))
-                Text(line.text, modifier = Modifier.weight(1f), fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = AiModuleTheme.colors.textPrimary)
+                Text(
+                    text = doHighlightLine(line.text, ext, palette),
+                    modifier = Modifier.weight(1f).combinedClickable(
+                        onClick = { onAddComment?.invoke() },
+                        onLongClick = {
+                            val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("code", line.text))
+                            android.widget.Toast.makeText(context, "Copied line", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    ),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 12.sp
+                )
                 if (onAddComment != null) {
-                    Icon(Icons.Rounded.AddComment, null, Modifier.size(14.dp), tint = AiModuleTheme.colors.accent.copy(0.5f))
+                    Icon(Icons.Rounded.AddComment, null, Modifier.size(14.dp), tint = palette.accent.copy(0.5f))
                 }
             }
         }
         is PatchDiffLine.Removed -> {
-            Row(Modifier.fillMaxWidth().background(Color(0x0DFF3B30)).padding(horizontal = 8.dp, vertical = 2.dp)) {
+            Row(
+                Modifier.fillMaxWidth().background(Color(0x0DFF3B30)).padding(horizontal = 8.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text("-${line.lineNum}", modifier = Modifier.width(40.dp), fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = Color(0xFFFF3B30))
-                Text(line.text, modifier = Modifier.weight(1f), fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = AiModuleTheme.colors.textPrimary)
+                Text(
+                    text = doHighlightLine(line.text, ext, palette),
+                    modifier = Modifier.weight(1f).combinedClickable(
+                        onClick = {},
+                        onLongClick = {
+                            val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("code", line.text))
+                            android.widget.Toast.makeText(context, "Copied line", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    ),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 12.sp
+                )
             }
         }
         is PatchDiffLine.Context -> {
             Row(
                 Modifier.fillMaxWidth()
-                    .clickable(enabled = onAddComment != null) { onAddComment?.invoke() }
                     .padding(horizontal = 8.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text("${line.oldLineNum}", modifier = Modifier.width(40.dp), fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = Color(0xFF6E7681))
-                Text(line.text, modifier = Modifier.weight(1f), fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = AiModuleTheme.colors.textSecondary)
+                Text(
+                    text = doHighlightLine(line.text, ext, palette),
+                    modifier = Modifier.weight(1f).combinedClickable(
+                        onClick = { onAddComment?.invoke() },
+                        onLongClick = {
+                            val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("code", line.text))
+                            android.widget.Toast.makeText(context, "Copied line", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    ),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 12.sp
+                )
                 if (onAddComment != null) {
-                    Icon(Icons.Rounded.AddComment, null, Modifier.size(14.dp), tint = AiModuleTheme.colors.accent.copy(0.3f))
+                    Icon(Icons.Rounded.AddComment, null, Modifier.size(14.dp), tint = palette.accent.copy(0.3f))
                 }
             }
         }
@@ -785,13 +858,72 @@ private fun alignSplitLines(lines: List<PatchDiffLine>): List<SplitDiffLine> {
     return result
 }
 
+private fun highlightWordDiff(
+    leftText: String,
+    rightText: String,
+    ext: String,
+    palette: gs.git.vps.ui.theme.AiModuleColors
+): Pair<AnnotatedString, AnnotatedString> {
+    val leftAnnotated = doHighlightLine(leftText, ext, palette)
+    val rightAnnotated = doHighlightLine(rightText, ext, palette)
+    
+    var prefixLen = 0
+    val minLen = minOf(leftText.length, rightText.length)
+    while (prefixLen < minLen && leftText[prefixLen] == rightText[prefixLen]) {
+        prefixLen++
+    }
+    
+    var suffixLen = 0
+    val maxSuffixLen = minLen - prefixLen
+    while (suffixLen < maxSuffixLen && 
+           leftText[leftText.length - 1 - suffixLen] == rightText[rightText.length - 1 - suffixLen]) {
+        suffixLen++
+    }
+    
+    if (prefixLen > 0 || suffixLen > 0) {
+        val leftDiffStart = prefixLen
+        val leftDiffEnd = leftText.length - suffixLen
+        val rightDiffStart = prefixLen
+        val rightDiffEnd = rightText.length - suffixLen
+        
+        if (leftDiffStart < leftDiffEnd || rightDiffStart < rightDiffEnd) {
+            val leftResult = buildAnnotatedString {
+                append(leftAnnotated)
+                if (leftDiffStart < leftDiffEnd) {
+                    addStyle(
+                        SpanStyle(background = Color(0xFFFF3B30).copy(alpha = 0.35f)),
+                        leftDiffStart,
+                        leftDiffEnd
+                    )
+                }
+            }
+            val rightResult = buildAnnotatedString {
+                append(rightAnnotated)
+                if (rightDiffStart < rightDiffEnd) {
+                    addStyle(
+                        SpanStyle(background = Color(0xFF34C759).copy(alpha = 0.35f)),
+                        rightDiffStart,
+                        rightDiffEnd
+                    )
+                }
+            }
+            return Pair(leftResult, rightResult)
+        }
+    }
+    
+    return Pair(leftAnnotated, rightAnnotated)
+}
+
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun SplitDiffLineRow(
     pair: SplitDiffLine,
+    ext: String,
     onAddCommentLeft: (() -> Unit)? = null,
     onAddCommentRight: (() -> Unit)? = null
 ) {
     val palette = AiModuleTheme.colors
+    val context = LocalContext.current
     
     if (pair.left is PatchDiffLine.Header) {
         Box(Modifier.fillMaxWidth().background(Color(0xFF2C2C2E)).padding(horizontal = 8.dp, vertical = 4.dp)) {
@@ -804,6 +936,23 @@ private fun SplitDiffLineRow(
         return
     }
     
+    val isWordDiffPair = pair.left is PatchDiffLine.Removed && pair.right is PatchDiffLine.Added
+    val (leftAnnotated, rightAnnotated) = if (isWordDiffPair) {
+        highlightWordDiff((pair.left as PatchDiffLine.Removed).text, (pair.right as PatchDiffLine.Added).text, ext, palette)
+    } else {
+        val leftAnn = when (val left = pair.left) {
+            is PatchDiffLine.Removed -> doHighlightLine(left.text, ext, palette)
+            is PatchDiffLine.Context -> doHighlightLine(left.text, ext, palette)
+            else -> buildAnnotatedString {}
+        }
+        val rightAnn = when (val right = pair.right) {
+            is PatchDiffLine.Added -> doHighlightLine(right.text, ext, palette)
+            is PatchDiffLine.Context -> doHighlightLine(right.text, ext, palette)
+            else -> buildAnnotatedString {}
+        }
+        Pair(leftAnn, rightAnn)
+    }
+
     Row(Modifier.fillMaxWidth()) {
         Box(
             modifier = Modifier
@@ -829,13 +978,41 @@ private fun SplitDiffLineRow(
                 is PatchDiffLine.Removed -> {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("-${left.lineNum}", modifier = Modifier.width(30.dp), fontFamily = FontFamily.Monospace, fontSize = 9.sp, color = Color(0xFFFF3B30))
-                        Text(left.text, modifier = Modifier.weight(1f), fontFamily = FontFamily.Monospace, fontSize = 10.sp, color = palette.textPrimary, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        Text(
+                            text = leftAnnotated,
+                            modifier = Modifier.weight(1f).combinedClickable(
+                                onClick = { onAddCommentLeft?.invoke() },
+                                onLongClick = {
+                                    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("code", left.text))
+                                    android.widget.Toast.makeText(context, "Copied line", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            ),
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 10.sp,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        )
                     }
                 }
                 is PatchDiffLine.Context -> {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("${left.oldLineNum}", modifier = Modifier.width(30.dp), fontFamily = FontFamily.Monospace, fontSize = 9.sp, color = Color(0xFF6E7681))
-                        Text(left.text, modifier = Modifier.weight(1f), fontFamily = FontFamily.Monospace, fontSize = 10.sp, color = palette.textSecondary, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        Text(
+                            text = leftAnnotated,
+                            modifier = Modifier.weight(1f).combinedClickable(
+                                onClick = { onAddCommentLeft?.invoke() },
+                                onLongClick = {
+                                    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("code", left.text))
+                                    android.widget.Toast.makeText(context, "Copied line", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            ),
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 10.sp,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        )
                     }
                 }
                 else -> {
@@ -854,14 +1031,27 @@ private fun SplitDiffLineRow(
                         else -> Color.Transparent
                     }
                 )
-                .clickable(enabled = onAddCommentRight != null && pair.right != null) { onAddCommentRight?.invoke() }
                 .padding(horizontal = 4.dp, vertical = 2.dp)
         ) {
             when (val right = pair.right) {
                 is PatchDiffLine.Added -> {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("+${right.lineNum}", modifier = Modifier.width(30.dp), fontFamily = FontFamily.Monospace, fontSize = 9.sp, color = Color(0xFF34C759))
-                        Text(right.text, modifier = Modifier.weight(1f), fontFamily = FontFamily.Monospace, fontSize = 10.sp, color = palette.textPrimary, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        Text(
+                            text = rightAnnotated,
+                            modifier = Modifier.weight(1f).combinedClickable(
+                                onClick = { onAddCommentRight?.invoke() },
+                                onLongClick = {
+                                    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("code", right.text))
+                                    android.widget.Toast.makeText(context, "Copied line", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            ),
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 10.sp,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        )
                         if (onAddCommentRight != null) {
                             Icon(Icons.Rounded.AddComment, null, Modifier.size(11.dp), tint = palette.accent.copy(0.5f))
                         }
@@ -870,7 +1060,21 @@ private fun SplitDiffLineRow(
                 is PatchDiffLine.Context -> {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("${right.newLineNum}", modifier = Modifier.width(30.dp), fontFamily = FontFamily.Monospace, fontSize = 9.sp, color = Color(0xFF6E7681))
-                        Text(right.text, modifier = Modifier.weight(1f), fontFamily = FontFamily.Monospace, fontSize = 10.sp, color = palette.textSecondary, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        Text(
+                            text = rightAnnotated,
+                            modifier = Modifier.weight(1f).combinedClickable(
+                                onClick = { onAddCommentRight?.invoke() },
+                                onLongClick = {
+                                    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("code", right.text))
+                                    android.widget.Toast.makeText(context, "Copied line", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            ),
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 10.sp,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        )
                         if (onAddCommentRight != null) {
                             Icon(Icons.Rounded.AddComment, null, Modifier.size(11.dp), tint = palette.accent.copy(0.3f))
                         }
