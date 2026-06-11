@@ -18,7 +18,22 @@ import java.util.Locale
 object GitHubManager {
 
     private const val TAG = "GH"
-    private const val API = "https://api.github.com"
+    @Volatile private var cachedApiUrl: String = "https://api.github.com"
+    fun getApiUrl(): String = cachedApiUrl
+    fun setApiUrl(context: Context, url: String) {
+        val clean = url.trim().trimEnd('/')
+        val resolved = clean.ifBlank { "https://api.github.com" }
+        cachedApiUrl = resolved
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString("custom_api_url", resolved)
+            .apply()
+    }
+    private fun updateApiUrl(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val custom = prefs.getString("custom_api_url", "") ?: ""
+        cachedApiUrl = custom.ifBlank { "https://api.github.com" }
+    }
     private const val PREFS = "github_prefs"
     private const val KEY_USER = "user_json"
     private const val CODE_NOT_MODIFIED = 304
@@ -64,10 +79,11 @@ object GitHubManager {
         backoffRetries: Int = 3,
     ): ApiResult =
         withContext(Dispatchers.IO) {
+            updateApiUrl(context)
             var conn: HttpURLConnection? = null
             try {
                 val token = getToken(context)
-                val url = if (endpoint.startsWith("http")) endpoint else "$API$endpoint"
+                val url = if (endpoint.startsWith("http")) endpoint else "${getApiUrl()}$endpoint"
                 val cacheKey = "$method:$url"
                 val cachedEtag = if (method == "GET") etagCache[cacheKey]?.let { (_, h) -> h["etag"] } else null
                 conn = (URL(url).openConnection() as HttpURLConnection).apply {
@@ -168,7 +184,7 @@ object GitHubManager {
         withContext(Dispatchers.IO) {
             var conn: HttpURLConnection? = null
             try {
-                val url = if (endpoint.startsWith("http")) endpoint else "$API$endpoint"
+                val url = if (endpoint.startsWith("http")) endpoint else "${getApiUrl()}$endpoint"
                 val auth = android.util.Base64.encodeToString("$username:$password".toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
                 conn = (URL(url).openConnection() as HttpURLConnection).apply {
                     requestMethod = method
@@ -486,8 +502,9 @@ object GitHubManager {
     suspend fun cloneRepo(context: Context, owner: String, repo: String, destDir: java.io.File, onProgress: (String) -> Unit): Boolean =
         withContext(Dispatchers.IO) {
             try {
+                updateApiUrl(context)
                 onProgress("Downloading...")
-                val zipUrl = "$API/repos/$owner/$repo/zipball"
+                val zipUrl = "${getApiUrl()}/repos/$owner/$repo/zipball"
                 val token = getToken(context)
                 val conn = (URL(zipUrl).openConnection() as HttpURLConnection).apply {
                     setRequestProperty("Authorization", "Bearer $token")
@@ -2016,8 +2033,9 @@ object GitHubManager {
     suspend fun uploadReleaseAsset(context: Context, owner: String, repo: String, releaseId: Long, file: java.io.File, label: String = ""): Boolean =
         withContext(Dispatchers.IO) {
             try {
+                updateApiUrl(context)
                 val token = getToken(context)
-                val uploadUrl = "$API/repos/$owner/$repo/releases/$releaseId/assets?name=${URLEncoder.encode(file.name, "UTF-8")}"
+                val uploadUrl = "${getApiUrl()}/repos/$owner/$repo/releases/$releaseId/assets?name=${URLEncoder.encode(file.name, "UTF-8")}"
                 val conn = (URL(uploadUrl).openConnection() as HttpURLConnection).apply {
                     requestMethod = "POST"
                     setRequestProperty("Authorization", "Bearer $token")
@@ -2040,9 +2058,10 @@ object GitHubManager {
     suspend fun uploadReleaseAssetDetailed(context: Context, owner: String, repo: String, releaseId: Long, file: java.io.File, label: String = ""): GHAsset? =
         withContext(Dispatchers.IO) {
             try {
+                updateApiUrl(context)
                 val token = getToken(context)
                 val labelQuery = label.takeIf { it.isNotBlank() }?.let { "&label=${URLEncoder.encode(it, "UTF-8")}" }.orEmpty()
-                val uploadUrl = "$API/repos/$owner/$repo/releases/$releaseId/assets?name=${URLEncoder.encode(file.name, "UTF-8")}$labelQuery"
+                val uploadUrl = "${getApiUrl()}/repos/$owner/$repo/releases/$releaseId/assets?name=${URLEncoder.encode(file.name, "UTF-8")}$labelQuery"
                 val conn = (URL(uploadUrl).openConnection() as HttpURLConnection).apply {
                     requestMethod = "POST"
                     setRequestProperty("Authorization", "Bearer $token")
@@ -2310,8 +2329,9 @@ object GitHubManager {
     suspend fun getWorkflowRunLogs(context: Context, owner: String, repo: String, runId: Long): String =
         withContext(Dispatchers.IO) {
             try {
+                updateApiUrl(context)
                 val token = getToken(context)
-                val url = "$API/repos/$owner/$repo/actions/runs/$runId/logs"
+                val url = "${getApiUrl()}/repos/$owner/$repo/actions/runs/$runId/logs"
                 val conn = (URL(url).openConnection() as HttpURLConnection).apply {
                     setRequestProperty("Authorization", "Bearer $token")
                     setRequestProperty("Accept", "application/vnd.github.v3+json")
@@ -2332,8 +2352,9 @@ object GitHubManager {
     suspend fun getJobLogs(context: Context, owner: String, repo: String, jobId: Long): String =
         withContext(Dispatchers.IO) {
             try {
+                updateApiUrl(context)
                 val token = getToken(context)
-                val url = "$API/repos/$owner/$repo/actions/jobs/$jobId/logs"
+                val url = "${getApiUrl()}/repos/$owner/$repo/actions/jobs/$jobId/logs"
                 val conn = (URL(url).openConnection() as HttpURLConnection).apply {
                     setRequestProperty("Authorization", "Bearer $token")
                     setRequestProperty("Accept", "application/vnd.github.v3+json")
@@ -2543,8 +2564,9 @@ object GitHubManager {
     suspend fun downloadArtifact(context: Context, owner: String, repo: String, artifactId: Long, destFile: java.io.File): Boolean =
         withContext(Dispatchers.IO) {
             try {
+                updateApiUrl(context)
                 val token = getToken(context)
-                val url = "$API/repos/$owner/$repo/actions/artifacts/$artifactId/zip"
+                val url = "${getApiUrl()}/repos/$owner/$repo/actions/artifacts/$artifactId/zip"
                 val conn = (URL(url).openConnection() as HttpURLConnection).apply {
                     setRequestProperty("Authorization", "Bearer $token")
                     setRequestProperty("Accept", "application/vnd.github.v3+json")
@@ -2589,8 +2611,10 @@ object GitHubManager {
         return parseJobs(r.body)
     }
 
-    suspend fun getWorkflowRunAttemptLogs(context: Context, owner: String, repo: String, runId: Long, attempt: Int): String =
-        getRedirectLocationOrText(context, "$API/repos/$owner/$repo/actions/runs/$runId/attempts/$attempt/logs")
+    suspend fun getWorkflowRunAttemptLogs(context: Context, owner: String, repo: String, runId: Long, attempt: Int): String {
+        updateApiUrl(context)
+        return getRedirectLocationOrText(context, "${getApiUrl()}/repos/$owner/$repo/actions/runs/$runId/attempts/$attempt/logs")
+    }
 
     suspend fun rerunJob(context: Context, owner: String, repo: String, jobId: Long): Boolean =
         request(context, "/repos/$owner/$repo/actions/jobs/$jobId/rerun", "POST", "{}").success

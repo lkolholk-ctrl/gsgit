@@ -208,8 +208,10 @@ internal fun GitHubSettingsScreen(
     var repoInvitations by remember { mutableStateOf<List<GHUserRepositoryInvitation>>(emptyList()) }
     var rateLimitSummary by remember { mutableStateOf("Unavailable") }
     var showChangeToken by remember { mutableStateOf(false) }
+    var showChangeApiUrl by remember { mutableStateOf(false) }
     var showDeviceLogin by remember { mutableStateOf(false) }
     var newToken by remember { mutableStateOf("") }
+    var newApiUrl by remember { mutableStateOf(GitHubManager.getApiUrl()) }
     var emailQuery by remember { mutableStateOf("") }
     var notificationQuery by remember { mutableStateOf("") }
     var keyQuery by remember { mutableStateOf("") }
@@ -230,6 +232,7 @@ internal fun GitHubSettingsScreen(
         when {
             pendingConfirmation != null -> pendingConfirmation = null
             showChangeToken -> showChangeToken = false
+            showChangeApiUrl -> showChangeApiUrl = false
             currentSection == null -> onBack()
             else -> currentSection = null
         }
@@ -889,8 +892,13 @@ internal fun GitHubSettingsScreen(
                         }
                         SettingsSection.DEVELOPER -> SectionCard("Developer") {
                             InfoLine("Token", maskToken(GitHubManager.getToken(context)))
+                            InfoLine("Base URL", GitHubManager.getApiUrl())
                             InfoLine("Rate limit", rateLimitSummary)
                             ActionRow(Icons.Rounded.Key, "Change token") { showChangeToken = true }
+                            ActionRow(Icons.Rounded.Code, "Custom API Base URL") {
+                                newApiUrl = GitHubManager.getApiUrl()
+                                showChangeApiUrl = true
+                            }
                             ActionRow(Icons.Rounded.Add, "Device login") { showDeviceLogin = true }
                             ActionRow(Icons.Rounded.Delete, "Clear GitHub cache") {
                                 confirmAction(
@@ -1390,6 +1398,27 @@ internal fun GitHubSettingsScreen(
             },
             dismissButton = {
                 AiModuleTextAction(label = Strings.cancel.lowercase(), onClick = { showChangeToken = false }, tint = AiModuleTheme.colors.textSecondary)
+            },
+        )
+    }
+
+    if (showChangeApiUrl) {
+        AiModuleAlertDialog(
+            onDismissRequest = { showChangeApiUrl = false },
+            title = "custom api base url",
+            content = {
+                CompactField("API Base URL", newApiUrl, onValueChange = { newApiUrl = it })
+            },
+            confirmButton = {
+                AiModuleTextAction(label = Strings.done.lowercase(), onClick = {
+                    GitHubManager.setApiUrl(context, newApiUrl.trim())
+                    addLog("API base URL updated")
+                    showChangeApiUrl = false
+                    scope.launch { refreshSection(SettingsSection.DEVELOPER) }
+                })
+            },
+            dismissButton = {
+                AiModuleTextAction(label = Strings.cancel.lowercase(), onClick = { showChangeApiUrl = false }, tint = AiModuleTheme.colors.textSecondary)
             },
         )
     }
