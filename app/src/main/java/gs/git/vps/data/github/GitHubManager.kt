@@ -526,6 +526,40 @@ object GitHubManager {
         } catch (e: Exception) { emptyList() }
     }
 
+    suspend fun getFileBlame(context: Context, owner: String, repo: String, path: String, branch: String? = null): List<GHBlameRange> {
+        val ref = branch?.takeIf { it.isNotBlank() } ?: "HEAD"
+        val query = """query(${"$"}owner: String!, ${"$"}repo: String!, ${"$"}expression: String!) {
+            repository(owner: ${"$"}owner, name: ${"$"}repo) {
+                object(expression: ${"$"}expression) {
+                    ... on Blob { blame(path: "${path}") { ranges { startingLine endingLine age commit { oid abbreviatedOid message author { name avatarUrl date } } } } }
+                }
+            }
+        }"""
+        val variables = JSONObject().apply {
+            put("owner", owner)
+            put("repo", repo)
+            put("expression", "$ref:$path")
+        }
+        val data = graphql(context, query, variables) ?: return emptyList()
+        return try {
+            val blob = data.optJSONObject("repository")?.optJSONObject("object") ?: return emptyList()
+            val ranges = blob.optJSONObject("blame")?.optJSONArray("ranges") ?: return emptyList()
+            (0 until ranges.length()).map { i ->
+                val r = ranges.getJSONObject(i)
+                val commit = r.optJSONObject("commit")
+                GHBlameRange(
+                    startLine = r.optInt("startingLine"),
+                    endLine = r.optInt("endingLine"),
+                    sha = commit?.optString("abbreviatedOid") ?: "",
+                    message = commit?.optString("message")?.lineSequence()?.firstOrNull() ?: "",
+                    author = commit?.optJSONObject("author")?.optString("name") ?: "?",
+                    date = commit?.optJSONObject("author")?.optString("date") ?: "",
+                    avatarUrl = commit?.optJSONObject("author")?.optString("avatarUrl") ?: ""
+                )
+            }
+        } catch (e: Exception) { Log.e(TAG, "Parse blame: ${e.message}"); emptyList() }
+    }
+
     suspend fun getIssues(context: Context, owner: String, repo: String, state: String = "open", page: Int = 1): List<GHIssue> {
         val r = request(context, "/repos/$owner/$repo/issues?state=$state&per_page=30&page=$page")
         if (!r.success) return emptyList()
@@ -1833,6 +1867,29 @@ object GitHubManager {
 
     suspend fun getUserReceivedEvents(context: Context, username: String, page: Int = 1): List<GHRepoEvent> {
         val r = request(context, "/users/$username/received_events?per_page=30&page=$page")
+        if (!r.success) return emptyList()
+        return try {
+            val arr = JSONArray(r.body)
+            (0 until arr.length()).map { i ->
+                val j = arr.getJSONObject(i)
+                val payload = j.optJSONObject("payload")
+                GHRepoEvent(
+                    id = j.optString("id", ""),
+                    type = j.optString("type", ""),
+                    actor = j.optJSONObject("actor")?.optString("login") ?: "",
+                    createdAt = j.optString("created_at", ""),
+                    action = payload?.optString("action", "") ?: "",
+                    ref = payload?.optString("ref", "") ?: "",
+                    refType = payload?.optString("ref_type", "") ?: "",
+                    size = payload?.optInt("size", 0) ?: 0,
+                    repoName = j.optJSONObject("repo")?.optString("name") ?: ""
+                )
+            }
+        } catch (e: Exception) { emptyList() }
+    }
+
+    suspend fun getUserPublicEvents(context: Context, username: String, page: Int = 1): List<GHRepoEvent> {
+        val r = request(context, "/users/$username/events/public?per_page=100&page=$page")
         if (!r.success) return emptyList()
         return try {
             val arr = JSONArray(r.body)
@@ -7674,6 +7731,16 @@ data class GHAppInstallation(
 )
 
 data class GHCommit(val sha: String, val message: String, val author: String, val date: String, val avatarUrl: String, val parents: List<String> = emptyList(), val verified: Boolean = false)
+
+data class GHBlameRange(
+    val startLine: Int,
+    val endLine: Int,
+    val sha: String,
+    val message: String,
+    val author: String,
+    val date: String,
+    val avatarUrl: String
+)
 
 data class GHIssue(val number: Int, val title: String, val state: String, val author: String,
     val createdAt: String, val comments: Int, val isPR: Boolean)

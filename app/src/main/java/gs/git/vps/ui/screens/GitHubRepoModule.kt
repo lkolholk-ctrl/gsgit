@@ -153,6 +153,7 @@ internal fun RepoDetailScreen(
     var workflows by remember { mutableStateOf<List<GHWorkflow>>(emptyList()) }; var showDispatch by remember { mutableStateOf(false) }
     var branches by remember { mutableStateOf<List<String>>(emptyList()) }; var loading by remember { mutableStateOf(true) }
     var fileContent by remember { mutableStateOf<String?>(null) }; var openedFile by remember { mutableStateOf<GHContent?>(null) }; var editingFile by remember { mutableStateOf<GHContent?>(null) }
+    var showBlameFor by remember { mutableStateOf<GHContent?>(null) }; var showFileHistoryFor by remember { mutableStateOf<GHContent?>(null) }
     var repoQuery by rememberSaveable(repo.fullName) { mutableStateOf("") }
     var cloneProgress by remember { mutableStateOf<String?>(null) }; var isStarred by remember { mutableStateOf(false) }
     var isWatching by remember { mutableStateOf(false) }
@@ -644,6 +645,32 @@ internal fun RepoDetailScreen(
         return
     }
     
+    // Blame screen
+    val safeBlameFile = showBlameFor
+    if (safeBlameFile != null) {
+        BlameViewScreen(
+            repo = repo,
+            file = safeBlameFile,
+            branch = selectedBranch,
+            onBack = { showBlameFor = null },
+            onCommitClick = { sha -> selectedCommitSha = sha; showBlameFor = null }
+        )
+        return
+    }
+
+    // File History screen
+    val safeHistoryFile = showFileHistoryFor
+    if (safeHistoryFile != null) {
+        FileHistoryScreen(
+            repo = repo,
+            file = safeHistoryFile,
+            branch = selectedBranch,
+            onBack = { showFileHistoryFor = null },
+            onCommitClick = { sha -> selectedCommitSha = sha; showFileHistoryFor = null }
+        )
+        return
+    }
+
     // Releases screen
     if (selectedTab == RepoTab.RELEASES) {
         gs.git.vps.ui.screens.ReleasesScreen(
@@ -726,6 +753,20 @@ internal fun RepoDetailScreen(
                         onClick = { editingFile = safeOpenedFile },
                         tint = viewerPalette.accent,
                         contentDescription = "edit",
+                    )
+                    AiModuleGlyphAction(
+                        glyph = "B",
+                        onClick = { showBlameFor = safeOpenedFile },
+                        tint = viewerPalette.textSecondary,
+                        fontSize = 12.sp,
+                        contentDescription = "blame",
+                    )
+                    AiModuleGlyphAction(
+                        glyph = "H",
+                        onClick = { showFileHistoryFor = safeOpenedFile },
+                        tint = viewerPalette.textSecondary,
+                        fontSize = 12.sp,
+                        contentDescription = "history",
                     )
                 },
             )
@@ -7814,6 +7855,165 @@ private fun CompactField(
             cursorBrush = androidx.compose.ui.graphics.SolidColor(AiModuleTheme.colors.accent),
             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         )
+    }
+}
+
+@Composable
+private fun BlameViewScreen(
+    repo: GHRepo,
+    file: GHContent,
+    branch: String,
+    onBack: () -> Unit,
+    onCommitClick: (String) -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val palette = AiModuleTheme.colors
+    var ranges by remember { mutableStateOf<List<GHBlameRange>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(file.path, branch) {
+        loading = true; error = null
+        ranges = try { GitHubManager.getFileBlame(context, repo.owner, repo.name, file.path, branch) }
+        catch (e: Exception) { error = e.message; emptyList() }
+        loading = false
+    }
+    AiModuleSurface {
+        Column(Modifier.fillMaxSize().background(palette.background)) {
+            GitHubPageBar(title = "BLAME", subtitle = "${file.path} · $branch", onBack = onBack)
+            if (loading) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { AiModuleSpinner(label = "loading blame…") }
+            } else if (error != null) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("Error: $error", color = Color(0xFFFF4444), fontSize = 13.sp, fontFamily = JetBrainsMono)
+                }
+            } else if (ranges.isEmpty()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("No blame data available", color = palette.textMuted, fontSize = 13.sp, fontFamily = JetBrainsMono)
+                }
+            } else {
+                LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) {
+                    ranges.forEach { range ->
+                        item(key = "${range.startLine}-${range.sha}") {
+                            Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp)) {
+                                Row(
+                                    Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp)).background(palette.surface)
+                                        .clickable { onCommitClick(range.sha) }.padding(horizontal = 8.dp, vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        range.sha.take(7),
+                                        fontSize = 11.sp, fontFamily = JetBrainsMono,
+                                        color = palette.accent, fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        range.author,
+                                        fontSize = 11.sp, fontFamily = JetBrainsMono,
+                                        color = palette.textPrimary
+                                    )
+                                    Text(
+                                        range.date.take(10),
+                                        fontSize = 10.sp, fontFamily = JetBrainsMono,
+                                        color = palette.textMuted
+                                    )
+                                    Spacer(Modifier.weight(1f))
+                                    Text(
+                                        "L${range.startLine}-${range.endLine}",
+                                        fontSize = 10.sp, fontFamily = JetBrainsMono,
+                                        color = palette.textSecondary
+                                    )
+                                }
+                                Text(
+                                    range.message,
+                                    fontSize = 11.sp, fontFamily = JetBrainsMono,
+                                    color = palette.textSecondary,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(start = 8.dp, top = 2.dp, bottom = 4.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FileHistoryScreen(
+    repo: GHRepo,
+    file: GHContent,
+    branch: String,
+    onBack: () -> Unit,
+    onCommitClick: (String) -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val palette = AiModuleTheme.colors
+    var commits by remember { mutableStateOf<List<GHCommit>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(file.path, branch) {
+        loading = true; error = null
+        commits = try { GitHubManager.getFileCommits(context, repo.owner, repo.name, file.path, branch) }
+        catch (e: Exception) { error = e.message; emptyList() }
+        loading = false
+    }
+    AiModuleSurface {
+        Column(Modifier.fillMaxSize().background(palette.background)) {
+            GitHubPageBar(title = "HISTORY", subtitle = "${file.path} · $branch", onBack = onBack)
+            if (loading) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { AiModuleSpinner(label = "loading history…") }
+            } else if (error != null) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("Error: $error", color = Color(0xFFFF4444), fontSize = 13.sp, fontFamily = JetBrainsMono)
+                }
+            } else if (commits.isEmpty()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("No commit history", color = palette.textMuted, fontSize = 13.sp, fontFamily = JetBrainsMono)
+                }
+            } else {
+                LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) {
+                    items(commits.size) { idx ->
+                        val c = commits[idx]
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)
+                                .clip(RoundedCornerShape(4.dp)).background(palette.surface)
+                                .clickable { onCommitClick(c.sha) }
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (c.avatarUrl.isNotBlank()) {
+                                AsyncImage(
+                                    model = c.avatarUrl,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(24.dp).clip(CircleShape)
+                                )
+                            }
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    c.message.lineSequence().firstOrNull() ?: c.message,
+                                    fontSize = 12.sp, fontFamily = JetBrainsMono,
+                                    color = palette.textPrimary,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis
+                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text(c.author, fontSize = 10.sp, fontFamily = JetBrainsMono, color = palette.textSecondary)
+                                    Text(c.date.take(10), fontSize = 10.sp, fontFamily = JetBrainsMono, color = palette.textMuted)
+                                }
+                            }
+                            Text(
+                                c.sha,
+                                fontSize = 11.sp, fontFamily = JetBrainsMono,
+                                color = palette.accent, fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

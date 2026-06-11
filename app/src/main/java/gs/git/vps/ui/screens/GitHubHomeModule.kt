@@ -426,6 +426,7 @@ internal fun ReposScreen(user: GHUser?, onBack: () -> Unit, onMinimize: () -> Un
 
     var repoTags by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
     var selectedTagFilter by remember { mutableStateOf<String?>(null) }
+    var sortBy by remember { mutableStateOf("updated") }
     var editingRepoTags by remember { mutableStateOf<GHRepo?>(null) }
 
     var quickGlanceStats by remember { mutableStateOf(QuickGlanceStats()) }
@@ -498,15 +499,21 @@ internal fun ReposScreen(user: GHUser?, onBack: () -> Unit, onMinimize: () -> Un
     }
     LaunchedEffect(Unit) { val r = GitHubManager.getRepos(context, 1); repos = r; reposHasMore = r.size >= 30; loading = false }
     LaunchedEffect(query, searchPublic) { if (searchPublic && query.length >= 2) publicResults = GitHubManager.searchRepos(context, query) }
-    val filtered = remember(repos, query, searchPublic, repoTags, selectedTagFilter) {
+    val filtered = remember(repos, query, searchPublic, repoTags, selectedTagFilter, sortBy) {
         val baseList = if (searchPublic) publicResults else if (query.isNotBlank()) repos.filter { it.name.contains(query, true) || it.description.contains(query, true) } else repos
-        if (selectedTagFilter != null) {
+        val tagFiltered = if (selectedTagFilter != null) {
             baseList.filter { repo ->
                 val tags = repoTags[repo.fullName] ?: emptyList()
                 tags.contains(selectedTagFilter)
             }
         } else {
             baseList
+        }
+        when (sortBy) {
+            "stars" -> tagFiltered.sortedByDescending { it.stars }
+            "forks" -> tagFiltered.sortedByDescending { it.forks }
+            "name" -> tagFiltered.sortedBy { it.name.lowercase() }
+            else -> tagFiltered
         }
     }
     if (showStarred) { StarredScreen(onBack = { showStarred = false }, onRepoClick = { showStarred = false; onRepoClick(it) }); return }
@@ -761,6 +768,28 @@ internal fun ReposScreen(user: GHUser?, onBack: () -> Unit, onMinimize: () -> Un
                                         ) {
                                             Text(tag, color = if (selectedTagFilter == tag) palette.background else palette.textSecondary, fontFamily = JetBrainsMono, fontSize = 9.sp)
                                         }
+                                    }
+                                }
+                            }
+                        }
+
+                        item {
+                            Row(
+                                Modifier.fillMaxWidth().padding(vertical = 4.dp).horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("sort:", color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                                listOf("updated" to "updated", "stars" to "★", "forks" to "forks", "name" to "a-z").forEach { (key, label) ->
+                                    Box(
+                                        Modifier
+                                            .clip(RoundedCornerShape(3.dp))
+                                            .background(if (sortBy == key) palette.accent else palette.surface)
+                                            .border(1.dp, if (sortBy == key) palette.accent else palette.border, RoundedCornerShape(3.dp))
+                                            .clickable { sortBy = key }
+                                            .padding(horizontal = 6.dp, vertical = 3.dp)
+                                    ) {
+                                        Text(label, color = if (sortBy == key) palette.background else palette.textSecondary, fontFamily = JetBrainsMono, fontSize = 9.sp)
                                     }
                                 }
                             }

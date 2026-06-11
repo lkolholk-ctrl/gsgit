@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import gs.git.vps.data.github.GHFollowerEntry
 import gs.git.vps.data.github.GHRepo
+import gs.git.vps.data.github.GHRepoEvent
 import gs.git.vps.data.github.GHUserProfile
 import gs.git.vps.data.github.GitHubManager
 import gs.git.vps.ui.components.AiModuleHairline
@@ -110,6 +111,7 @@ fun ProfileScreen(
     var following by remember { mutableStateOf<List<GHFollowerEntry>?>(null) }
     var showEdit by remember { mutableStateOf(false) }
     var contributions by remember { mutableStateOf<List<GHContributionDay>>(emptyList()) }
+    var userEvents by remember { mutableStateOf<List<GHRepoEvent>>(emptyList()) }
     
     val topLanguages = remember(repos) {
         repos.filter { it.language.isNotBlank() }
@@ -160,19 +162,26 @@ fun ProfileScreen(
         StreakData(currentStreak, maxStreak, totalContribs)
     }
 
-    val activityBreakdown = remember(profile) {
-        val login = profile?.login ?: ""
-        val hash = login.hashCode().absoluteValue
-        val commits = 60 + (hash % 25)
-        val prs = 10 + ((hash / 3) % 15)
-        val issues = 5 + ((hash / 5) % 10)
-        val reviews = 100 - commits - prs - issues
-        listOf(
-            ActivitySlice("commits", commits.toFloat(), Color(0xFF2EA043)),
-            ActivitySlice("PRs", prs.toFloat(), Color(0xFF58A6FF)),
-            ActivitySlice("issues", issues.toFloat(), Color(0xFFD29922)),
-            ActivitySlice("reviews", reviews.toFloat(), Color(0xFFBC8CFF))
-        )
+    val activityBreakdown = remember(userEvents) {
+        if (userEvents.isEmpty()) {
+            listOf(
+                ActivitySlice("commits", 1f, Color(0xFF2EA043)),
+                ActivitySlice("PRs", 1f, Color(0xFF58A6FF)),
+                ActivitySlice("issues", 1f, Color(0xFFD29922)),
+                ActivitySlice("reviews", 1f, Color(0xFFBC8CFF))
+            )
+        } else {
+            val commits = userEvents.count { it.type == "PushEvent" }.coerceAtLeast(1).toFloat()
+            val prs = userEvents.count { it.type == "PullRequestEvent" }.coerceAtLeast(1).toFloat()
+            val issues = userEvents.count { it.type == "IssuesEvent" }.coerceAtLeast(1).toFloat()
+            val reviews = userEvents.count { it.type == "PullRequestReviewEvent" }.coerceAtLeast(1).toFloat()
+            listOf(
+                ActivitySlice("commits", commits, Color(0xFF2EA043)),
+                ActivitySlice("PRs", prs, Color(0xFF58A6FF)),
+                ActivitySlice("issues", issues, Color(0xFFD29922)),
+                ActivitySlice("reviews", reviews, Color(0xFFBC8CFF))
+            )
+        }
     }
     val listState = rememberSaveable(username, saver = LazyListState.Saver) { LazyListState(0, 0) }
     val cachedSelf = GitHubManager.getCachedUser(context)?.login
@@ -182,6 +191,7 @@ fun ProfileScreen(
         repos = GitHubManager.getUserRepos(context, username)
         isFollowing = GitHubManager.isFollowing(context, username)
         contributions = GitHubManager.getUserContributions(context, username)
+        userEvents = GitHubManager.getUserPublicEvents(context, username)
         loading = false
     }
 
