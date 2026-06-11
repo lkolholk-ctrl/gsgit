@@ -2924,7 +2924,12 @@ private suspend fun generateCommitMessage(
     path: String,
     oldText: String,
     newText: String,
-): String {
+): String = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+    val prefs = context.getSharedPreferences("github_prefs", android.content.Context.MODE_PRIVATE)
+    val model = prefs.getString("ai_model", "Anthropic Fable 5") ?: "Anthropic Fable 5"
+    val apiKey = prefs.getString("ai_api_key", "") ?: ""
+    val customEndpoint = prefs.getString("ai_custom_endpoint", "") ?: ""
+
     val systemPrompt =
         "You are a Conventional Commits assistant. Given the path of a file and a diff " +
         "of an edit, produce a single-line commit message in Conventional Commits style " +
@@ -2935,11 +2940,201 @@ private suspend fun generateCommitMessage(
         appendLine()
         append(coarseDiff(oldText, newText))
     }
-    val raw = ""
-    // Strip surrounding quotes / trailing punctuation that smaller
-    // models love to emit despite the explicit instruction.
-    return raw
-        .lineSequence()
+
+    val isAnthropic = model.startsWith("Anthropic") || model.startsWith("Claude")
+    val isGemini = model.startsWith("Gemini")
+    val isOllama = model.startsWith("Ollama")
+
+    val urlStr = when {
+        customEndpoint.isNotBlank() -> {
+            if (isGemini && !customEndpoint.contains("key=") && apiKey.isNotBlank()) {
+                val modelId = when (model) {
+                    "Gemini 3.5 Pro" -> "gemini-3.5-pro"
+                    else -> "gemini-2.0-pro"
+                }
+                if (customEndpoint.contains("generateContent")) customEndpoint else "$customEndpoint/v1beta/models/$modelId:generateContent?key=$apiKey"
+            } else {
+                customEndpoint
+            }
+        }
+        isAnthropic -> "https://api.anthropic.com/v1/messages"
+        isGemini -> {
+            val modelId = when (model) {
+                "Gemini 3.5 Pro" -> "gemini-3.5-pro"
+                else -> "gemini-2.0-pro"
+            }
+            "https://generativelanguage.googleapis.com/v1beta/models/$modelId:generateContent?key=$apiKey"
+        }
+        isOllama -> "http://10.0.2.2:11434/api/chat"
+        else -> "https://api.openai.com/v1/chat/completions"
+    }
+
+    val requestBody = when {
+        isAnthropic -> {
+            val modelId = when (model) {
+                "Anthropic Fable 5" -> "claude-5-fable"
+                "Claude 3.5 Sonnet" -> "claude-3-5-sonnet-20241022"
+                "Claude 4 Sonnet" -> "claude-4-sonnet-20260215"
+                else -> "claude-5-fable"
+            }
+            JSONObject().apply {
+                put("model", modelId)
+                put("max_tokens", 150)
+                put("system", systemPrompt)
+                put("messages", JSONArray().apply {
+                    put(JSONObject().apply {
+                        put("role", "user")
+                        put("content", userPrompt)
+                    })
+                })
+            }.toString()
+        }
+        isGemini -> {
+            JSONObject().apply {
+                put("contents", JSONArray().apply {
+                    put(JSONObject().apply {
+                        put("role", "user")
+                        put("parts", JSONArray().apply {
+                            put(JSONObject().apply { put("text", userPrompt) })
+                        })
+                    })
+                })
+                put("systemInstruction", JSONObject().apply {
+                    put("parts", JSONArray().apply {
+                        put(JSONObject().apply { put("text", systemPrompt) })
+                    })
+                })
+                put("generationConfig", JSONObject().apply {
+                    put("maxOutputTokens", 150)
+                })
+            }.toString()
+        }
+        isOllama -> {
+            JSONObject().apply {
+                put("model", if (model == "Ollama Local") "fable-5" else model)
+                put("messages", JSONArray().apply {
+                    put(JSONObject().apply {
+                        put("role", "system")
+                        put("content", systemPrompt)
+                    })
+                    put(JSONObject().apply {
+                        put("role", "user")
+                        put("content", userPrompt)
+                    })
+                })
+                put("stream", false)
+            }.toString()
+        }
+        else -> {
+            val modelId = when (model) {
+                "GPT-5 Omni" -> "gpt-5-omni"
+                else -> "gpt-5-omni"
+            }
+            JSONObject().apply {
+                put("model", modelId)
+                put("max_tokens", 150)
+                put("messages", JSONArray().apply {
+                    put(JSONObject().apply {
+                        put("role", "system")
+                        put("content", systemPrompt)
+                    })
+                    put(JSONObject().apply {
+                        put("role", "user")
+                        put("content", userPrompt)
+                    })
+                })
+            }.toString()
+        }
+    }
+
+    var connection: java.net.HttpURLConnection? = null
+    val raw = try {
+        val proxyEnabled = prefs.getBoolean("network_proxy_enabled", false)
+        val proxyHost = prefs.getString("network_proxy_host", "") ?: ""
+        val proxyPort = prefs.getInt("network_proxy_port", 8080)
+        val sslBypass = prefs.getBoolean("network_ssl_bypass", false)
+
+        val url = java.net.URL(urlStr)
+        val connRaw = if (proxyEnabled && proxyHost.isNotBlank()) {
+            val proxy = java.net.Proxy(java.net.Proxy.Type.HTTP, java.net.InetSocketAddress(proxyHost, proxyPort))
+            url.openConnection(proxy)
+        } else {
+            url.openConnection()
+        }
+
+        connection = (connRaw as java.net.HttpURLConnection).apply {
+            requestMethod = "POST"
+            connectTimeout = 15000
+            readTimeout = 15000
+            doOutput = true
+            
+            setRequestProperty("Content-Type", "application/json")
+            when {
+                isAnthropic -> {
+                    setRequestProperty("x-api-key", apiKey)
+                    setRequestProperty("anthropic-version", "2023-06-01")
+                }
+                isGemini -> {
+                }
+                else -> {
+                    if (apiKey.isNotBlank()) {
+                        setRequestProperty("Authorization", "Bearer $apiKey")
+                    }
+                }
+            }
+        }
+
+        if (sslBypass && connection is javax.net.ssl.HttpsURLConnection) {
+            try {
+                val trustAllCerts = arrayOf<javax.net.ssl.TrustManager>(
+                    object : javax.net.ssl.X509TrustManager {
+                        override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate>? = null
+                        override fun checkClientTrusted(certs: Array<java.security.cert.X509Certificate>?, authType: String?) {}
+                        override fun checkServerTrusted(certs: Array<java.security.cert.X509Certificate>?, authType: String?) {}
+                    }
+                )
+                val sc = javax.net.ssl.SSLContext.getInstance("SSL")
+                sc.init(null, trustAllCerts, java.security.SecureRandom())
+                connection.sslSocketFactory = sc.socketFactory
+                connection.hostnameVerifier = javax.net.ssl.HostnameVerifier { _, _ -> true }
+            } catch (e: Exception) {
+                android.util.Log.e("AI_SUGGEST", "SSL bypass error: ${e.message}")
+            }
+        }
+
+        java.io.OutputStreamWriter(connection.outputStream).use { it.write(requestBody) }
+        val code = connection.responseCode
+        if (code in 200..299) {
+            val responseText = connection.inputStream.bufferedReader().use { it.readText() }
+            
+            when {
+                isAnthropic -> {
+                    JSONObject(responseText).getJSONArray("content").getJSONObject(0).getString("text")
+                }
+                isGemini -> {
+                    JSONObject(responseText).getJSONArray("candidates").getJSONObject(0)
+                        .getJSONObject("content").getJSONArray("parts").getJSONObject(0).getString("text")
+                }
+                isOllama -> {
+                    JSONObject(responseText).getJSONObject("message").getString("content")
+                }
+                else -> {
+                    JSONObject(responseText).getJSONArray("choices").getJSONObject(0)
+                        .getJSONObject("message").getString("content")
+                }
+            }
+        } else {
+            val errorText = connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+            throw java.io.IOException("HTTP error $code: $errorText")
+        }
+    } catch (e: Exception) {
+        android.util.Log.e("AI_SUGGEST", "Error generating commit message: ${e.message}", e)
+        throw e
+    } finally {
+        connection?.disconnect()
+    }
+
+    raw.lineSequence()
         .firstOrNull { it.isNotBlank() }
         .orEmpty()
         .trim()
