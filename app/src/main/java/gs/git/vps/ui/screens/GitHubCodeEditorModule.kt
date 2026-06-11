@@ -3127,6 +3127,7 @@ private fun UpgradedEditorAccessoryBar(
                     .border(0.5.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
                     .clickable {
                         if (char == "\t") {
+                            val prefs = context.getSharedPreferences("github_prefs", android.content.Context.MODE_PRIVATE)
                             val tabSize = prefs.getInt("editor_tab_size", 4)
                             val useTabs = prefs.getBoolean("editor_use_tabs", false)
                             val tabStr = if (useTabs) "\t" else " ".repeat(tabSize)

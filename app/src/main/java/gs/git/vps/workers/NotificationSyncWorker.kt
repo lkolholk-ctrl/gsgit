@@ -78,7 +78,7 @@ class NotificationSyncWorker(
 
         if (notifications.isNotEmpty()) {
             val count = notifications.size
-            showNotification(count, notifications.first().repository.fullName, notifications.first().subject.title)
+            showNotification(count, notifications.first().repoName, notifications.first().title)
         }
 
         return Result.success()
