@@ -443,6 +443,7 @@ private fun parseDiffLines(patch: String): List<PatchDiffLine> {
     return result
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun DiffLineItem(line: PatchDiffLine, ext: String, viewMode: DiffViewMode, onAddComment: (() -> Unit)? = null) {
     val palette = AiModuleTheme.colors
