@@ -1762,6 +1762,8 @@ fun CodeEditorScreen(
         )
     }
 }
+}
+
 
 @Composable
 private fun GitHubEditorTopBar(
@@ -3140,7 +3142,14 @@ internal fun CopilotChatPanel(
             .fillMaxHeight()
             .width(if (LocalGHCompact.current) 320.dp else 400.dp)
             .background(palette.surfaceElevated)
-            .border(start = 1.dp, color = palette.border)
+            .drawBehind {
+                drawLine(
+                    color = palette.border,
+                    start = Offset(0f, 0f),
+                    end = Offset(0f, size.height),
+                    strokeWidth = 1.dp.toPx()
+                )
+            }
             .padding(12.dp)
     ) {
         Row(
@@ -3271,14 +3280,19 @@ internal fun CopilotChatPanel(
                                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                                             modifier = Modifier.padding(top = 4.dp)
                                         ) {
-                                            AiModuleTextAction("Apply Code") {
-                                                onApplyCode(code)
-                                            }
-                                            AiModuleTextAction("Copy", tint = palette.textSecondary) {
-                                                val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                                cm.setPrimaryClip(android.content.ClipData.newPlainText("Copilot Code", code))
-                                                Toast.makeText(context, "Copied code block", Toast.LENGTH_SHORT).show()
-                                            }
+                                            AiModuleTextAction(
+                                                label = "Apply Code",
+                                                onClick = { onApplyCode(code) }
+                                            )
+                                            AiModuleTextAction(
+                                                label = "Copy",
+                                                tint = palette.textSecondary,
+                                                onClick = {
+                                                    val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                                    cm.setPrimaryClip(android.content.ClipData.newPlainText("Copilot Code", code))
+                                                    Toast.makeText(context, "Copied code block", Toast.LENGTH_SHORT).show()
+                                                }
+                                            )
                                         }
                                     }
                                 }
