@@ -181,7 +181,7 @@ internal fun GitHubSettingsScreen(
     var securityPgpKeyAlgorithm by remember { mutableStateOf(prefs.getString("security_pgp_key_algorithm", "RSA-4096").orEmpty()) }
 
     // Category 3: GitHub Copilot
-    var copilotModel by remember { mutableStateOf(prefs.getString("copilot_model", "gpt-4o").orEmpty()) }
+    var copilotModel by remember { mutableStateOf(prefs.getString("copilot_model", "claude-3.7-sonnet").orEmpty()) }
     var copilotRouting by remember { mutableStateOf(prefs.getString("copilot_routing", "Auto").orEmpty()) }
     var aiSystemPrompt by remember { mutableStateOf(prefs.getString("ai_system_prompt", "You are a professional developer helping to review code, troubleshoot errors, and suggest fixes.").orEmpty()) }
 
@@ -1464,7 +1464,7 @@ internal fun GitHubSettingsScreen(
                                 modifier = Modifier.padding(bottom = 6.dp)
                             )
                             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                listOf("gpt-4o", "claude-3.5-sonnet", "o1-mini", "o1-preview").forEach { modelName ->
+                                listOf("claude-3.7-sonnet", "claude-3.5-sonnet", "o3-mini", "gpt-4o", "gemini-1.5-pro").forEach { modelName ->
                                     val isSelected = copilotModel == modelName
                                     Box(
                                         modifier = Modifier
