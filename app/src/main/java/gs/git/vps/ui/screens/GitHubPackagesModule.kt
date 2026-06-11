@@ -48,6 +48,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import gs.git.vps.data.github.GHOrg
 import gs.git.vps.ui.theme.AiModuleTheme
+import gs.git.vps.ui.theme.JetBrainsMono
+import androidx.compose.foundation.layout.Spacer
 import gs.git.vps.data.github.GHPackage
 import gs.git.vps.data.github.GHPackageVersion
 import gs.git.vps.data.github.GitHubManager
