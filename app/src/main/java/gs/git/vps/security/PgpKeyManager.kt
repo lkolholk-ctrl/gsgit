@@ -70,8 +70,12 @@ object PgpKeyManager {
 
     fun generateKeyPair(context: Context, userId: String, passphraseStr: String): Boolean {
         return try {
+            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val algo = prefs.getString("security_pgp_key_algorithm", "RSA-4096") ?: "RSA-4096"
+            val bits = if (algo == "RSA-2048") 2048 else 4096
+            
             val kpg = KeyPairGenerator.getInstance("RSA", BouncyCastleProvider.PROVIDER_NAME)
-            kpg.initialize(2048)
+            kpg.initialize(bits)
             val kp = kpg.generateKeyPair()
 
             val sha1Calc = JcaPGPDigestCalculatorProviderBuilder().build().get(HashAlgorithmTags.SHA1)

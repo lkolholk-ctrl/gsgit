@@ -83,10 +83,37 @@ object GitHubManager {
             var conn: HttpURLConnection? = null
             try {
                 val token = getToken(context)
-                val url = if (endpoint.startsWith("http")) endpoint else "${getApiUrl()}$endpoint"
+                val prefs = context.getSharedPreferences("github_prefs", Context.MODE_PRIVATE)
+                
+                // Diff whitespace ignore
+                var finalEndpoint = endpoint
+                if (method == "GET" && 
+                    (endpoint.contains("/commits/") || endpoint.contains("/compare/") || (endpoint.contains("/pulls/") && endpoint.contains("/files"))) && 
+                    !endpoint.contains("w=")
+                ) {
+                    if (prefs.getBoolean("editor_ignore_whitespace", false)) {
+                        finalEndpoint = if (endpoint.contains("?")) "$endpoint&w=1" else "$endpoint?w=1"
+                    }
+                }
+                
+                val url = if (finalEndpoint.startsWith("http")) finalEndpoint else "${getApiUrl()}$finalEndpoint"
                 val cacheKey = "$method:$url"
                 val cachedEtag = if (method == "GET") etagCache[cacheKey]?.let { (_, h) -> h["etag"] } else null
-                conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                
+                val proxyEnabled = prefs.getBoolean("network_proxy_enabled", false)
+                val proxyHost = prefs.getString("network_proxy_host", "") ?: ""
+                val proxyPort = prefs.getInt("network_proxy_port", 8080)
+                val sslBypass = prefs.getBoolean("network_ssl_bypass", false)
+                
+                val connectionUrl = URL(url)
+                val connRaw = if (proxyEnabled && proxyHost.isNotBlank()) {
+                    val proxy = java.net.Proxy(java.net.Proxy.Type.HTTP, java.net.InetSocketAddress(proxyHost, proxyPort))
+                    connectionUrl.openConnection(proxy)
+                } else {
+                    connectionUrl.openConnection()
+                }
+                
+                conn = (connRaw as HttpURLConnection).apply {
                     requestMethod = method
                     setRequestProperty("Accept", "application/vnd.github.v3+json")
                     setRequestProperty("User-Agent", "GlassFiles")
@@ -100,6 +127,24 @@ object GitHubManager {
                     }
                     connectTimeout = 15000
                     readTimeout = 15000
+                }
+                
+                if (sslBypass && conn is javax.net.ssl.HttpsURLConnection) {
+                    try {
+                        val trustAllCerts = arrayOf<javax.net.ssl.TrustManager>(
+                            object : javax.net.ssl.X509TrustManager {
+                                override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate>? = null
+                                override fun checkClientTrusted(certs: Array<java.security.cert.X509Certificate>?, authType: String?) {}
+                                override fun checkServerTrusted(certs: Array<java.security.cert.X509Certificate>?, authType: String?) {}
+                            }
+                        )
+                        val sc = javax.net.ssl.SSLContext.getInstance("SSL")
+                        sc.init(null, trustAllCerts, java.security.SecureRandom())
+                        conn.sslSocketFactory = sc.socketFactory
+                        conn.hostnameVerifier = javax.net.ssl.HostnameVerifier { _, _ -> true }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "SSL bypass error: ${e.message}")
+                    }
                 }
 
                 val code = conn.responseCode
@@ -184,9 +229,24 @@ object GitHubManager {
         withContext(Dispatchers.IO) {
             var conn: HttpURLConnection? = null
             try {
+                val prefs = App.instance.getSharedPreferences("github_prefs", Context.MODE_PRIVATE)
+                val proxyEnabled = prefs.getBoolean("network_proxy_enabled", false)
+                val proxyHost = prefs.getString("network_proxy_host", "") ?: ""
+                val proxyPort = prefs.getInt("network_proxy_port", 8080)
+                val sslBypass = prefs.getBoolean("network_ssl_bypass", false)
+                
                 val url = if (endpoint.startsWith("http")) endpoint else "${getApiUrl()}$endpoint"
                 val auth = android.util.Base64.encodeToString("$username:$password".toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
-                conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                
+                val connectionUrl = URL(url)
+                val connRaw = if (proxyEnabled && proxyHost.isNotBlank()) {
+                    val proxy = java.net.Proxy(java.net.Proxy.Type.HTTP, java.net.InetSocketAddress(proxyHost, proxyPort))
+                    connectionUrl.openConnection(proxy)
+                } else {
+                    connectionUrl.openConnection()
+                }
+                
+                conn = (connRaw as HttpURLConnection).apply {
                     requestMethod = method
                     setRequestProperty("Accept", "application/vnd.github+json")
                     setRequestProperty("User-Agent", "GlassFiles")
@@ -199,6 +259,25 @@ object GitHubManager {
                     connectTimeout = 15000
                     readTimeout = 15000
                 }
+                
+                if (sslBypass && conn is javax.net.ssl.HttpsURLConnection) {
+                    try {
+                        val trustAllCerts = arrayOf<javax.net.ssl.TrustManager>(
+                            object : javax.net.ssl.X509TrustManager {
+                                override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate>? = null
+                                override fun checkClientTrusted(certs: Array<java.security.cert.X509Certificate>?, authType: String?) {}
+                                override fun checkServerTrusted(certs: Array<java.security.cert.X509Certificate>?, authType: String?) {}
+                            }
+                        )
+                        val sc = javax.net.ssl.SSLContext.getInstance("SSL")
+                        sc.init(null, trustAllCerts, java.security.SecureRandom())
+                        conn.sslSocketFactory = sc.socketFactory
+                        conn.hostnameVerifier = javax.net.ssl.HostnameVerifier { _, _ -> true }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "SSL bypass error: ${e.message}")
+                    }
+                }
+                
                 val code = conn.responseCode
                 val stream = if (code in 200..299) conn.inputStream else conn.errorStream
                 val text = stream?.bufferedReader()?.use { it.readText() } ?: ""

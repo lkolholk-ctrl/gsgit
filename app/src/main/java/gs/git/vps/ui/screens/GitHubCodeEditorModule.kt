@@ -177,12 +177,13 @@ fun CodeEditorScreen(
         }
     }
 
+    val prefs = remember(context) { context.getSharedPreferences("github_prefs", Context.MODE_PRIVATE) }
     var textState by remember { mutableStateOf(TextFieldValue(initialContent)) }
     var savedContent by remember { mutableStateOf(initialContent) }
     var savedSha by remember { mutableStateOf(file.sha) }
     var mode by remember { mutableStateOf(GitHubEditorMode.EDIT) }
     var lineNumbers by rememberSaveable(file.path, branch) { mutableStateOf(true) }
-    var wrapLines by rememberSaveable(file.path, branch) { mutableStateOf(false) }
+    var wrapLines by rememberSaveable(file.path, branch) { mutableStateOf(prefs.getBoolean("editor_word_wrap", false)) }
     var showSearch by rememberSaveable(file.path, branch) { mutableStateOf(false) }
     var searchState by rememberSaveable(file.path, branch, stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue("")) }
     var replaceState by rememberSaveable(file.path, branch, stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue("")) }
@@ -196,7 +197,7 @@ fun CodeEditorScreen(
     var showCommitDialog by rememberSaveable(file.path, branch) { mutableStateOf(false) }
     var saving by rememberSaveable(file.path, branch) { mutableStateOf(false) }
     var currentMatchIndex by rememberSaveable(file.path, branch) { mutableIntStateOf(0) }
-    var fontSize by rememberSaveable(file.path, branch) { mutableIntStateOf(13) }
+    var fontSize by rememberSaveable(file.path, branch) { mutableIntStateOf(prefs.getInt("editor_font_size", 13)) }
     var zenMode by rememberSaveable(file.path, branch) { mutableStateOf(false) }
     var showConflictResolver by remember { mutableStateOf(false) }
     val hasConflictMarkers = remember(textState.text) {
@@ -357,6 +358,13 @@ fun CodeEditorScreen(
             snapshot()
             redoStack.clear()
             textState = newState
+            if (prefs.getBoolean("cosmetic_keyboard_sound", false)) {
+                try {
+                    (context.getSystemService(Context.AUDIO_SERVICE) as? android.media.AudioManager)?.let { am ->
+                        am.playSoundEffect(android.media.AudioManager.FX_KEYPRESS_STANDARD, -1f)
+                    }
+                } catch (_: Exception) {}
+            }
         }
     }
 
@@ -515,12 +523,14 @@ fun CodeEditorScreen(
         val currentText = textState.text
         val linesList = currentText.split("\n")
         var indentLevel = 0
+        val tabSize = prefs.getInt("editor_tab_size", 4)
+        val tabString = if (prefs.getBoolean("editor_use_tabs", false)) "\t" else " ".repeat(tabSize)
         val formatted = linesList.joinToString("\n") { line ->
             var trimmed = line.trim()
             if (trimmed.startsWith("}") || trimmed.startsWith("</") || trimmed.startsWith("]") || trimmed.startsWith(")")) {
                 indentLevel = maxOf(0, indentLevel - 1)
             }
-            val padded = "    ".repeat(indentLevel) + trimmed
+            val padded = tabString.repeat(indentLevel) + trimmed
             if ((trimmed.endsWith("{") || trimmed.endsWith("<") || trimmed.startsWith("<") && !trimmed.startsWith("</") && trimmed.endsWith(">") && !trimmed.endsWith("/>") || trimmed.endsWith("(")) && !trimmed.contains("</")) {
                 indentLevel++
             }
@@ -3116,7 +3126,12 @@ private fun UpgradedEditorAccessoryBar(
                     .background(palette.surface)
                     .border(0.5.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
                     .clickable {
-                        if (char in listOf("{", "[", "(", "\"", "'")) {
+                        if (char == "\t") {
+                            val tabSize = prefs.getInt("editor_tab_size", 4)
+                            val useTabs = prefs.getBoolean("editor_use_tabs", false)
+                            val tabStr = if (useTabs) "\t" else " ".repeat(tabSize)
+                            onInsert(tabStr)
+                        } else if (char in listOf("{", "[", "(", "\"", "'")) {
                             val closing = when (char) {
                                 "{" -> "}"
                                 "[" -> "]"

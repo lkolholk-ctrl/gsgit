@@ -68,7 +68,14 @@ import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Fingerprint
 import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material.icons.rounded.Security
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.SmartToy
+import androidx.compose.material.icons.rounded.Sync
+import androidx.compose.material.icons.rounded.Dns
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.VolumeUp
 import android.content.Context
+import gs.git.vps.workers.NotificationSyncWorker
 import gs.git.vps.security.BackupManager
 import gs.git.vps.security.BiometricHelper
 import java.io.File
@@ -116,7 +123,11 @@ private enum class SettingsSection(val title: String, val subtitle: String) {
     REPOSITORIES("Repositories", "Stars, watches and invitations"),
     DEVELOPER("Developer", "Token and cache"),
     THEMES("Themes", "Custom retro terminal color palettes"),
-    SECURITY("Security & Backups", "Biometric lock and secure backup configuration")
+    SECURITY("Security & Backups", "Biometric lock and secure backup configuration"),
+    EDITOR("Editor & Diff", "Font size, word wrap, tab size, whitespaces"),
+    AI_HELPER("AI Settings", "Provider, model, API key, system prompt"),
+    NETWORK("Network & Proxy", "HTTP/SOCKS5 proxy, SSL trust configuration"),
+    SYNC("Background Sync", "Notification polling interval and limits")
 }
 
 private enum class KeyMode { SSH, SSH_SIGNING, GPG }
@@ -152,6 +163,39 @@ internal fun GitHubSettingsScreen(
     var currentCacheSize by remember { mutableStateOf(getCacheSize(context)) }
     var cacheLimitMb by remember { mutableStateOf(prefs.getInt("cache_limit_mb", 100)) }
     var autoCleanLogs by remember { mutableStateOf(prefs.getBoolean("auto_clean_logs", true)) }
+
+    // Category 1: Editor & Diff
+    var editorTabSize by remember { mutableStateOf(prefs.getInt("editor_tab_size", 4)) }
+    var editorWordWrap by remember { mutableStateOf(prefs.getBoolean("editor_word_wrap", false)) }
+    var editorFontSize by remember { mutableStateOf(prefs.getInt("editor_font_size", 13)) }
+    var editorIgnoreWhitespace by remember { mutableStateOf(prefs.getBoolean("editor_ignore_whitespace", false)) }
+    var editorUseTabs by remember { mutableStateOf(prefs.getBoolean("editor_use_tabs", false)) }
+
+    // Category 2: Advanced Security
+    var securityAutolockTimeout by remember { mutableStateOf(prefs.getInt("security_autolock_timeout", 0)) }
+    var securityPinCode by remember { mutableStateOf(prefs.getString("security_pin_code", "").orEmpty()) }
+    var securityPgpKeyAlgorithm by remember { mutableStateOf(prefs.getString("security_pgp_key_algorithm", "RSA-4096").orEmpty()) }
+
+    // Category 3: AI Helper
+    var aiApiKey by remember { mutableStateOf(prefs.getString("ai_api_key", "").orEmpty()) }
+    var aiModel by remember { mutableStateOf(prefs.getString("ai_model", "Anthropic Fable 5").orEmpty()) }
+    var aiCustomEndpoint by remember { mutableStateOf(prefs.getString("ai_custom_endpoint", "").orEmpty()) }
+    var aiSystemPrompt by remember { mutableStateOf(prefs.getString("ai_system_prompt", "You are a professional developer helping to review code, troubleshoot errors, and suggest fixes.").orEmpty()) }
+
+    // Category 4: Network & Proxy
+    var networkProxyEnabled by remember { mutableStateOf(prefs.getBoolean("network_proxy_enabled", false)) }
+    var networkProxyHost by remember { mutableStateOf(prefs.getString("network_proxy_host", "").orEmpty()) }
+    var networkProxyPort by remember { mutableStateOf(prefs.getInt("network_proxy_port", 8080)) }
+    var networkSslBypass by remember { mutableStateOf(prefs.getBoolean("network_ssl_bypass", false)) }
+
+    // Category 5: Background Sync
+    var syncBackgroundEnabled by remember { mutableStateOf(prefs.getBoolean("sync_background_enabled", false)) }
+    var syncIntervalMins by remember { mutableStateOf(prefs.getInt("sync_interval_mins", 30)) }
+    var syncWifiOnly by remember { mutableStateOf(prefs.getBoolean("sync_wifi_only", false)) }
+
+    // Category 6: Cyberpunk Cosmetics
+    var cosmeticCrtEffect by remember { mutableStateOf(prefs.getBoolean("cosmetic_crt_effect", false)) }
+    var cosmeticKeyboardSound by remember { mutableStateOf(prefs.getBoolean("cosmetic_keyboard_sound", false)) }
 
 
     var profile by remember { mutableStateOf<GHUserProfile?>(null) }
@@ -291,6 +335,10 @@ internal fun GitHubSettingsScreen(
             SettingsSection.DEVELOPER -> rateLimitSummary = GitHubManager.getRateLimitSummaryNative(context)
             SettingsSection.THEMES -> {}
             SettingsSection.SECURITY -> {}
+            SettingsSection.EDITOR -> {}
+            SettingsSection.AI_HELPER -> {}
+            SettingsSection.NETWORK -> {}
+            SettingsSection.SYNC -> {}
         }
         loading = false
     }
@@ -523,6 +571,32 @@ internal fun GitHubSettingsScreen(
                                             )
                                             CompactField("User ID (Name <email>)", localPgpUser) { localPgpUser = it }
                                             CompactField("Passphrase", localPgpPass) { localPgpPass = it }
+
+                                            Spacer(Modifier.height(8.dp))
+                                            Text(
+                                                text = "PGP key algorithm size:",
+                                                color = palette.textSecondary,
+                                                fontSize = 11.sp,
+                                                fontFamily = JetBrainsMono
+                                            )
+                                            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                listOf("RSA-2048", "RSA-4096").forEach { algo ->
+                                                    val isSelected = securityPgpKeyAlgorithm == algo
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .clip(RoundedCornerShape(GitHubControlRadius))
+                                                            .background(if (isSelected) palette.accent.copy(alpha = 0.14f) else palette.border)
+                                                            .border(1.dp, if (isSelected) palette.accent else Color.Transparent, RoundedCornerShape(GitHubControlRadius))
+                                                            .clickable {
+                                                                securityPgpKeyAlgorithm = algo
+                                                                prefs.edit().putString("security_pgp_key_algorithm", algo).apply()
+                                                            }
+                                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                                    ) {
+                                                        Text(algo, fontSize = 11.sp, color = if (isSelected) palette.accent else palette.textPrimary, fontFamily = JetBrainsMono)
+                                                    }
+                                                }
+                                            }
 
                                             ActionRow(Icons.Rounded.Key, "Generate PGP Keypair") {
                                                 if (localPgpUser.isBlank()) {
@@ -1095,6 +1169,34 @@ internal fun GitHubSettingsScreen(
                                     }
                                 }
                             }
+                            
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                text = "// cyberpunk cosmetics",
+                                color = AiModuleTheme.colors.textMuted,
+                                fontSize = 11.sp,
+                                fontFamily = JetBrainsMono,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+                            ToggleRow(
+                                label = "CRT Screen Scanlines",
+                                checked = cosmeticCrtEffect,
+                                icon = Icons.Rounded.Palette
+                            ) {
+                                cosmeticCrtEffect = it
+                                prefs.edit().putBoolean("cosmetic_crt_effect", it).apply()
+                                addLog("CRT scanlines ${if (it) "enabled" else "disabled"}")
+                            }
+                            ToggleRow(
+                                label = "Mechanical Keyboard Click Sound",
+                                checked = cosmeticKeyboardSound,
+                                icon = Icons.Rounded.VolumeUp
+                            ) {
+                                cosmeticKeyboardSound = it
+                                prefs.edit().putBoolean("cosmetic_keyboard_sound", it).apply()
+                                addLog("Keyboard key click sound ${if (it) "enabled" else "disabled"}")
+                            }
                         }
                         
                         SettingsSection.SECURITY -> SectionCard("Security & Backups") {
@@ -1118,6 +1220,44 @@ internal fun GitHubSettingsScreen(
                                     prefs.edit().putBoolean("biometric_lock_enabled", it).apply()
                                     addLog("Biometric lock ${if (it) "enabled" else "disabled"}")
                                 }
+                            }
+                            
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                text = "// auto-lock timeout",
+                                color = AiModuleTheme.colors.textMuted,
+                                fontSize = 11.sp,
+                                fontFamily = JetBrainsMono,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(bottom = 6.dp)
+                            )
+                            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text("Inactivity Lock:", fontSize = 13.sp, color = AiModuleTheme.colors.textPrimary, modifier = Modifier.weight(1f))
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    listOf(0 to "Immediate", 1 to "1m", 5 to "5m", 15 to "15m").forEach { (mins, name) ->
+                                        val isSelected = securityAutolockTimeout == mins
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(GitHubControlRadius))
+                                                .background(if (isSelected) AiModuleTheme.colors.accent.copy(alpha = 0.14f) else AiModuleTheme.colors.border)
+                                                .border(1.dp, if (isSelected) AiModuleTheme.colors.accent else Color.Transparent, RoundedCornerShape(GitHubControlRadius))
+                                                .clickable {
+                                                    securityAutolockTimeout = mins
+                                                    prefs.edit().putInt("security_autolock_timeout", mins).apply()
+                                                    addLog("Auto-lock set to $name")
+                                                }
+                                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                        ) {
+                                            Text(name, fontSize = 11.sp, color = if (isSelected) AiModuleTheme.colors.accent else AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono)
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            Spacer(Modifier.height(8.dp))
+                            CompactField("Security PIN code (fallback)", securityPinCode) {
+                                securityPinCode = it
+                                prefs.edit().putString("security_pin_code", it).apply()
                             }
                             
                             Spacer(Modifier.height(12.dp))
@@ -1206,6 +1346,270 @@ internal fun GitHubSettingsScreen(
                                     currentCacheSize = getCacheSize(context)
                                     addLog("Cleared all cache files")
                                     Toast.makeText(context, "Cache files cleared", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                        SettingsSection.EDITOR -> SectionCard("Editor & Diff") {
+                            Text(
+                                text = "// code editor layout",
+                                color = AiModuleTheme.colors.textMuted,
+                                fontSize = 11.sp,
+                                fontFamily = JetBrainsMono,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(bottom = 6.dp)
+                            )
+                            ToggleRow(
+                                label = "Word Wrap",
+                                checked = editorWordWrap,
+                                icon = Icons.Rounded.Edit
+                            ) {
+                                editorWordWrap = it
+                                prefs.edit().putBoolean("editor_word_wrap", it).apply()
+                                addLog("Word wrap ${if (it) "enabled" else "disabled"}")
+                            }
+                            ToggleRow(
+                                label = "Ignore Whitespace in Diffs",
+                                checked = editorIgnoreWhitespace,
+                                icon = Icons.Rounded.Check
+                            ) {
+                                editorIgnoreWhitespace = it
+                                prefs.edit().putBoolean("editor_ignore_whitespace", it).apply()
+                                addLog("Ignore whitespace in diffs ${if (it) "enabled" else "disabled"}")
+                            }
+                            
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                text = "// font size scaling",
+                                color = AiModuleTheme.colors.textMuted,
+                                fontSize = 11.sp,
+                                fontFamily = JetBrainsMono,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(bottom = 6.dp)
+                            )
+                            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text("Font Size:", fontSize = 13.sp, color = AiModuleTheme.colors.textPrimary, modifier = Modifier.weight(1f))
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    listOf(10, 12, 13, 14, 16, 18).forEach { size ->
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(GitHubControlRadius))
+                                                .background(if (editorFontSize == size) AiModuleTheme.colors.accent.copy(alpha = 0.14f) else AiModuleTheme.colors.border)
+                                                .border(1.dp, if (editorFontSize == size) AiModuleTheme.colors.accent else Color.Transparent, RoundedCornerShape(GitHubControlRadius))
+                                                .clickable {
+                                                    editorFontSize = size
+                                                    prefs.edit().putInt("editor_font_size", size).apply()
+                                                    addLog("Editor font size set to ${size}sp")
+                                                }
+                                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                        ) {
+                                            Text("${size}px", fontSize = 11.sp, color = if (editorFontSize == size) AiModuleTheme.colors.accent else AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono)
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                text = "// indentation style",
+                                color = AiModuleTheme.colors.textMuted,
+                                fontSize = 11.sp,
+                                fontFamily = JetBrainsMono,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(bottom = 6.dp)
+                            )
+                            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text("Tab Indent:", fontSize = 13.sp, color = AiModuleTheme.colors.textPrimary, modifier = Modifier.weight(1f))
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    listOf("2 spaces", "4 spaces", "8 spaces", "tabs").forEach { style ->
+                                        val isSelected = when (style) {
+                                            "2 spaces" -> editorTabSize == 2 && !editorUseTabs
+                                            "4 spaces" -> editorTabSize == 4 && !editorUseTabs
+                                            "8 spaces" -> editorTabSize == 8 && !editorUseTabs
+                                            "tabs" -> editorUseTabs
+                                            else -> false
+                                        }
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(GitHubControlRadius))
+                                                .background(if (isSelected) AiModuleTheme.colors.accent.copy(alpha = 0.14f) else AiModuleTheme.colors.border)
+                                                .border(1.dp, if (isSelected) AiModuleTheme.colors.accent else Color.Transparent, RoundedCornerShape(GitHubControlRadius))
+                                                .clickable {
+                                                    when (style) {
+                                                        "2 spaces" -> { editorTabSize = 2; editorUseTabs = false }
+                                                        "4 spaces" -> { editorTabSize = 4; editorUseTabs = false }
+                                                        "8 spaces" -> { editorTabSize = 8; editorUseTabs = false }
+                                                        "tabs" -> { editorUseTabs = true }
+                                                    }
+                                                    prefs.edit().putInt("editor_tab_size", editorTabSize).putBoolean("editor_use_tabs", editorUseTabs).apply()
+                                                    addLog("Tab style set to $style")
+                                                }
+                                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                        ) {
+                                            Text(style, fontSize = 11.sp, color = if (isSelected) AiModuleTheme.colors.accent else AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        SettingsSection.AI_HELPER -> SectionCard("AI Settings") {
+                            Text(
+                                text = "// modern language model",
+                                color = AiModuleTheme.colors.textMuted,
+                                fontSize = 11.sp,
+                                fontFamily = JetBrainsMono,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(bottom = 6.dp)
+                            )
+                            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                listOf("Anthropic Fable 5", "Claude 3.5 Sonnet", "Claude 4 Sonnet", "Gemini 2.0 Pro", "Gemini 3.5 Pro", "GPT-5 Omni", "Ollama Local").forEach { modelName ->
+                                    val isSelected = aiModel == modelName
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(GitHubControlRadius))
+                                            .background(if (isSelected) AiModuleTheme.colors.accent.copy(alpha = 0.14f) else AiModuleTheme.colors.border)
+                                            .border(1.dp, if (isSelected) AiModuleTheme.colors.accent else Color.Transparent, RoundedCornerShape(GitHubControlRadius))
+                                            .clickable {
+                                                aiModel = modelName
+                                                prefs.edit().putString("ai_model", modelName).apply()
+                                                addLog("AI model set to $modelName")
+                                            }
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(modelName, fontSize = 11.sp, color = if (isSelected) AiModuleTheme.colors.accent else AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono)
+                                    }
+                                }
+                            }
+                            
+                            Spacer(Modifier.height(12.dp))
+                            CompactField("AI API Key", aiApiKey, password = true) {
+                                aiApiKey = it
+                                prefs.edit().putString("ai_api_key", it).apply()
+                            }
+                            CompactField("Custom Endpoint (optional)", aiCustomEndpoint) {
+                                aiCustomEndpoint = it
+                                prefs.edit().putString("ai_custom_endpoint", it).apply()
+                            }
+                            CompactField("System Instructions", aiSystemPrompt, singleLine = false, minLines = 3) {
+                                aiSystemPrompt = it
+                                prefs.edit().putString("ai_system_prompt", it).apply()
+                            }
+                        }
+                        SettingsSection.NETWORK -> SectionCard("Network & Proxy") {
+                            Text(
+                                text = "// proxy options",
+                                color = AiModuleTheme.colors.textMuted,
+                                fontSize = 11.sp,
+                                fontFamily = JetBrainsMono,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(bottom = 6.dp)
+                            )
+                            ToggleRow(
+                                label = "Enable HTTP Proxy",
+                                checked = networkProxyEnabled,
+                                icon = Icons.Rounded.Dns
+                            ) {
+                                networkProxyEnabled = it
+                                prefs.edit().putBoolean("network_proxy_enabled", it).apply()
+                                addLog("HTTP Proxy ${if (it) "enabled" else "disabled"}")
+                            }
+                            
+                            Spacer(Modifier.height(8.dp))
+                            CompactField("Proxy Host / IP", networkProxyHost) {
+                                networkProxyHost = it
+                                prefs.edit().putString("network_proxy_host", it).apply()
+                            }
+                            
+                            val portStr = if (networkProxyPort == 0) "" else networkProxyPort.toString()
+                            CompactField("Proxy Port", portStr) {
+                                val port = it.toIntOrNull() ?: 8080
+                                networkProxyPort = port
+                                prefs.edit().putInt("network_proxy_port", port).apply()
+                            }
+                            
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                text = "// ssl certificate settings",
+                                color = AiModuleTheme.colors.textMuted,
+                                fontSize = 11.sp,
+                                fontFamily = JetBrainsMono,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(bottom = 6.dp)
+                            )
+                            ToggleRow(
+                                label = "Bypass SSL Verification",
+                                checked = networkSslBypass,
+                                icon = Icons.Rounded.Warning
+                            ) {
+                                networkSslBypass = it
+                                prefs.edit().putBoolean("network_ssl_bypass", it).apply()
+                                addLog("SSL verification bypass ${if (it) "enabled" else "disabled"}")
+                            }
+                        }
+                        SettingsSection.SYNC -> SectionCard("Background Sync") {
+                            Text(
+                                text = "// background service",
+                                color = AiModuleTheme.colors.textMuted,
+                                fontSize = 11.sp,
+                                fontFamily = JetBrainsMono,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(bottom = 6.dp)
+                            )
+                            ToggleRow(
+                                label = "Background Notification Sync",
+                                checked = syncBackgroundEnabled,
+                                icon = Icons.Rounded.Sync
+                            ) {
+                                syncBackgroundEnabled = it
+                                prefs.edit().putBoolean("sync_background_enabled", it).apply()
+                                if (it) {
+                                    NotificationSyncWorker.schedule(context, syncIntervalMins)
+                                } else {
+                                    NotificationSyncWorker.cancel(context)
+                                }
+                                addLog("Background sync ${if (it) "enabled" else "disabled"}")
+                            }
+                            
+                            ToggleRow(
+                                label = "Only Sync on Wi-Fi",
+                                checked = syncWifiOnly,
+                                icon = Icons.Rounded.Sync
+                            ) {
+                                syncWifiOnly = it
+                                prefs.edit().putBoolean("sync_wifi_only", it).apply()
+                                addLog("Sync Wi-Fi only limit ${if (it) "enabled" else "disabled"}")
+                            }
+                            
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                text = "// polling check interval",
+                                color = AiModuleTheme.colors.textMuted,
+                                fontSize = 11.sp,
+                                fontFamily = JetBrainsMono,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(bottom = 6.dp)
+                            )
+                            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text("Interval:", fontSize = 13.sp, color = AiModuleTheme.colors.textPrimary, modifier = Modifier.weight(1f))
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    listOf(15, 30, 60, 120).forEach { mins ->
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(GitHubControlRadius))
+                                                .background(if (syncIntervalMins == mins) AiModuleTheme.colors.accent.copy(alpha = 0.14f) else AiModuleTheme.colors.border)
+                                                .border(1.dp, if (syncIntervalMins == mins) AiModuleTheme.colors.accent else Color.Transparent, RoundedCornerShape(GitHubControlRadius))
+                                                .clickable {
+                                                    syncIntervalMins = mins
+                                                    prefs.edit().putInt("sync_interval_mins", mins).apply()
+                                                    if (syncBackgroundEnabled) {
+                                                        NotificationSyncWorker.schedule(context, mins)
+                                                    }
+                                                    addLog("Sync interval set to ${mins}m")
+                                                }
+                                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                        ) {
+                                            Text("${mins}m", fontSize = 11.sp, color = if (syncIntervalMins == mins) AiModuleTheme.colors.accent else AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono)
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1536,10 +1940,14 @@ private fun HomeSettingsMenu(user: GHUser?, onOpen: (SettingsSection) -> Unit) {
         item { MenuRow(Icons.Rounded.Description, SettingsSection.REPOSITORIES, onOpen); AiModuleHairline() }
         item { TerminalSectionHeader("developer") }
         item { MenuRow(Icons.Rounded.Code, SettingsSection.DEVELOPER, onOpen); AiModuleHairline() }
+        item { MenuRow(Icons.Rounded.SmartToy, SettingsSection.AI_HELPER, onOpen); AiModuleHairline() }
+        item { MenuRow(Icons.Rounded.Sync, SettingsSection.SYNC, onOpen); AiModuleHairline() }
         item { TerminalSectionHeader("customization") }
+        item { MenuRow(Icons.Rounded.Edit, SettingsSection.EDITOR, onOpen); AiModuleHairline() }
         item { MenuRow(Icons.Rounded.Palette, SettingsSection.THEMES, onOpen); AiModuleHairline() }
         item { TerminalSectionHeader("security") }
         item { MenuRow(Icons.Rounded.Security, SettingsSection.SECURITY, onOpen); AiModuleHairline() }
+        item { MenuRow(Icons.Rounded.Dns, SettingsSection.NETWORK, onOpen); AiModuleHairline() }
     }
 }
 

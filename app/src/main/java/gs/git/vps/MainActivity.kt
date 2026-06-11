@@ -31,14 +31,24 @@ import gs.git.vps.ui.screens.GitHubTerminalButton
 import gs.git.vps.ui.theme.AiModuleSurface
 import gs.git.vps.ui.theme.AiModuleTheme
 import gs.git.vps.ui.theme.JetBrainsMono
+import gs.git.vps.workers.NotificationSyncWorker
 
 class MainActivity : FragmentActivity() {
     var deepLinkTarget by mutableStateOf<GitHubNotificationTarget?>(null)
     var isAppLocked by mutableStateOf(false)
+    private var lastPauseTime = 0L
 
-    private fun isBiometricLockEnabled(): Boolean {
+    private fun isLockEnabled(): Boolean {
         val prefs = getSharedPreferences("github_prefs", MODE_PRIVATE)
-        return prefs.getBoolean("biometric_lock_enabled", false)
+        val biometric = prefs.getBoolean("biometric_lock_enabled", false)
+        val pin = prefs.getString("security_pin_code", "").orEmpty()
+        return biometric || pin.isNotBlank()
+    }
+
+    private fun getAutolockTimeoutMs(): Long {
+        val prefs = getSharedPreferences("github_prefs", MODE_PRIVATE)
+        val minutes = prefs.getInt("security_autolock_timeout", 0)
+        return minutes * 60 * 1000L
     }
 
     private fun triggerBiometricUnlock() {
@@ -53,7 +63,11 @@ class MainActivity : FragmentActivity() {
                 }
             )
         } else {
-            isAppLocked = false
+            val prefs = getSharedPreferences("github_prefs", MODE_PRIVATE)
+            val pin = prefs.getString("security_pin_code", "").orEmpty()
+            if (pin.isBlank()) {
+                isAppLocked = false
+            }
         }
     }
 
@@ -68,7 +82,13 @@ class MainActivity : FragmentActivity() {
 
         gs.git.vps.ui.theme.ThemeState.initialize(this)
 
-        if (isBiometricLockEnabled()) {
+        val prefs = getSharedPreferences("github_prefs", MODE_PRIVATE)
+        if (prefs.getBoolean("sync_background_enabled", false)) {
+            val interval = prefs.getInt("sync_interval_mins", 30)
+            NotificationSyncWorker.schedule(this, interval)
+        }
+
+        if (isLockEnabled()) {
             isAppLocked = true
             triggerBiometricUnlock()
         }
@@ -76,10 +96,29 @@ class MainActivity : FragmentActivity() {
         handleDeepLink(intent)
 
         setContent {
-            AiModuleSurface {
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val sharedPrefs = remember { context.getSharedPreferences("github_prefs", Context.MODE_PRIVATE) }
+            var crtEnabled by remember { mutableStateOf(sharedPrefs.getBoolean("cosmetic_crt_effect", false)) }
+
+            DisposableEffect(sharedPrefs) {
+                val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+                    if (key == "cosmetic_crt_effect") {
+                        crtEnabled = sharedPrefs.getBoolean("cosmetic_crt_effect", false)
+                    }
+                }
+                sharedPrefs.registerOnSharedPreferenceChangeListener(listener)
+                onDispose {
+                    sharedPrefs.unregisterOnSharedPreferenceChangeListener(listener)
+                }
+            }
+
+            AiModuleSurface(
+                modifier = Modifier.fillMaxSize().crtEffect(crtEnabled)
+            ) {
                 if (isAppLocked) {
                     AppLockedScreen(
-                        onUnlock = { triggerBiometricUnlock() }
+                        onUnlock = { triggerBiometricUnlock() },
+                        onPinCorrect = { isAppLocked = false }
                     )
                 } else {
                     GitHubScreen(
@@ -94,15 +133,27 @@ class MainActivity : FragmentActivity() {
 
     override fun onStop() {
         super.onStop()
-        if (isBiometricLockEnabled()) {
+        lastPauseTime = System.currentTimeMillis()
+        if (isLockEnabled() && getAutolockTimeoutMs() == 0L) {
             isAppLocked = true
         }
     }
 
     override fun onStart() {
         super.onStart()
-        if (isBiometricLockEnabled() && isAppLocked) {
-            triggerBiometricUnlock()
+        if (isLockEnabled()) {
+            val timeout = getAutolockTimeoutMs()
+            if (timeout > 0L) {
+                val elapsed = System.currentTimeMillis() - lastPauseTime
+                if (elapsed > timeout) {
+                    isAppLocked = true
+                }
+            } else {
+                isAppLocked = true
+            }
+            if (isAppLocked) {
+                triggerBiometricUnlock()
+            }
         }
     }
 
@@ -149,6 +200,7 @@ class MainActivity : FragmentActivity() {
             segments.size >= 3 && segments[2] == "releases" -> GitHubNotificationTarget(
                 repoFullName = repoFullName,
                 subjectType = "Release",
+                number = null
             )
             segments.size >= 3 && segments[2] == "discussions" -> GitHubNotificationTarget(
                 repoFullName = repoFullName,
@@ -172,8 +224,15 @@ class MainActivity : FragmentActivity() {
 }
 
 @Composable
-private fun AppLockedScreen(onUnlock: () -> Unit) {
+private fun AppLockedScreen(onUnlock: () -> Unit, onPinCorrect: () -> Unit) {
     val palette = AiModuleTheme.colors
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember { context.getSharedPreferences("github_prefs", Context.MODE_PRIVATE) }
+    val savedPin = remember { prefs.getString("security_pin_code", "").orEmpty() }
+
+    var enteredPin by remember { mutableStateOf("") }
+    var pinError by remember { mutableStateOf(false) }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -200,22 +259,95 @@ private fun AppLockedScreen(onUnlock: () -> Unit) {
                 fontWeight = FontWeight.Bold
             )
 
-            Text(
-                text = "Application access is locked.\nPlease authenticate to proceed.",
-                color = palette.textMuted,
-                fontSize = 12.sp,
-                fontFamily = JetBrainsMono,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 16.dp)
-            )
+            if (savedPin.isNotBlank()) {
+                Text(
+                    text = "Enter security PIN code:",
+                    color = palette.textSecondary,
+                    fontSize = 12.sp,
+                    fontFamily = JetBrainsMono
+                )
+
+                BasicTextField(
+                    value = enteredPin,
+                    onValueChange = { input ->
+                        if (input.all { it.isDigit() } && input.length <= savedPin.length) {
+                            enteredPin = input
+                            pinError = false
+                            if (input == savedPin) {
+                                onPinCorrect()
+                            } else if (input.length == savedPin.length) {
+                                pinError = true
+                                enteredPin = ""
+                            }
+                        }
+                    },
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.NumberPassword
+                    ),
+                    visualTransformation = PasswordVisualTransformation(),
+                    textStyle = TextStyle(
+                        color = if (pinError) palette.error else palette.textPrimary,
+                        fontSize = 20.sp,
+                        fontFamily = JetBrainsMono,
+                        textAlign = TextAlign.Center,
+                        letterSpacing = 8.sp
+                    ),
+                    modifier = Modifier
+                        .width(140.dp)
+                        .background(palette.surfaceElevated, RoundedCornerShape(4.dp))
+                        .padding(horizontal = 8.dp, vertical = 8.dp)
+                )
+
+                if (pinError) {
+                    Text(
+                        text = "Invalid PIN code",
+                        color = palette.error,
+                        fontSize = 11.sp,
+                        fontFamily = JetBrainsMono
+                    )
+                }
+            } else {
+                Text(
+                    text = "Application access is locked.\nPlease authenticate to proceed.",
+                    color = palette.textMuted,
+                    fontSize = 12.sp,
+                    fontFamily = JetBrainsMono,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+            }
 
             Spacer(Modifier.height(8.dp))
 
-            GitHubTerminalButton(
-                label = "Unlock",
-                onClick = onUnlock,
-                color = palette.accent
-            )
+            if (BiometricHelper.isBiometricAvailable(context) && prefs.getBoolean("biometric_lock_enabled", false)) {
+                GitHubTerminalButton(
+                    label = "Biometric Unlock",
+                    onClick = onUnlock,
+                    color = palette.accent
+                )
+            }
         }
     }
+}
+
+private fun Modifier.crtEffect(enabled: Boolean): Modifier = if (!enabled) this else this.drawWithContent {
+    drawContent()
+    val scanlineSpacing = 6.dp.toPx()
+    val lineCount = (size.height / scanlineSpacing).toInt()
+    for (i in 0 until lineCount) {
+        val y = i * scanlineSpacing
+        drawLine(
+            color = Color.Black.copy(alpha = 0.15f),
+            start = Offset(0f, y),
+            end = Offset(size.width, y),
+            strokeWidth = 1.5.dp.toPx()
+        )
+    }
+    drawRect(
+        brush = Brush.radialGradient(
+            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.25f)),
+            center = Offset(size.width / 2f, size.height / 2f),
+            radius = size.minDimension * 0.9f
+        )
+    )
 }
