@@ -1544,8 +1544,9 @@ fun CodeEditorScreen(
                 onBranchClick = { showBranchSwitcher = true }
             )
         }
+    }
 
-        AnimatedVisibility(
+    AnimatedVisibility(
             visible = showCopilotChat,
             enter = slideInHorizontally(initialOffsetX = { it }),
             exit = slideOutHorizontally(targetOffsetX = { it }),
@@ -1761,7 +1762,6 @@ fun CodeEditorScreen(
             dismissButton = { AiModuleTextAction(label = Strings.cancel.lowercase(), onClick = { showCommitDialog = false }, tint = AiModuleTheme.colors.textSecondary) }
         )
     }
-}
 }
 
 
