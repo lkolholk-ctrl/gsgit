@@ -85,6 +85,9 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.MenuDefaults
 import coil.compose.AsyncImage
 import gs.git.vps.R
 import gs.git.vps.data.Strings
@@ -2467,12 +2470,13 @@ private fun DynamicDispatchInputs(
     onValueChange: (String, String) -> Unit
 ) {
     val inputs = schema?.inputs.orEmpty()
+    val palette = AiModuleTheme.colors
     if (schema == null) {
-        Text("This workflow has no workflow_dispatch trigger", fontSize = 11.sp, color = TextTertiary)
+        Text("This workflow has no workflow_dispatch trigger", fontSize = 11.sp, color = palette.textMuted, fontFamily = JetBrainsMono)
         return
     }
     if (inputs.isEmpty()) {
-        Text("This workflow has no workflow_dispatch inputs", fontSize = 11.sp, color = TextTertiary)
+        Text("This workflow has no workflow_dispatch inputs", fontSize = 11.sp, color = palette.textMuted, fontFamily = JetBrainsMono)
         return
     }
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2480,7 +2484,8 @@ private fun DynamicDispatchInputs(
             Text(
                 "Required inputs missing: ${missingRequiredInputs.joinToString(", ")}",
                 fontSize = 11.sp,
-                color = Orange
+                color = palette.warning,
+                fontFamily = JetBrainsMono
             )
         }
         inputs.forEach { input ->
@@ -2501,22 +2506,120 @@ private fun WorkflowDispatchInputField(
 ) {
     val choices = dispatchInputChoices(input)
     val missingRequired = input.required && dispatchInputValue(input, mapOf(input.key to value)).isBlank()
+    val palette = AiModuleTheme.colors
+    val isDefault = value == input.defaultValue
+    
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(input.key, fontSize = 12.sp, color = TextPrimary, fontWeight = FontWeight.SemiBold)
-            if (input.required) MiniActionsBadge("required", Orange)
-            if (input.type.isNotBlank()) MiniActionsBadge(input.type, TextSecondary)
+            Text(input.key, fontSize = 12.sp, color = palette.textPrimary, fontWeight = FontWeight.SemiBold)
+            if (input.required) MiniActionsBadge("required", palette.warning)
+            if (input.type.isNotBlank()) MiniActionsBadge(input.type, palette.textSecondary)
+            Spacer(modifier = Modifier.weight(1f))
+            if (!isDefault) {
+                Text(
+                    text = "reset to default",
+                    fontSize = 10.sp,
+                    color = palette.accent,
+                    fontFamily = JetBrainsMono,
+                    modifier = Modifier.clickable { onValueChange(input.defaultValue) }
+                )
+            }
         }
         if (input.description.isNotBlank()) {
-            Text(input.description, fontSize = 10.sp, color = TextTertiary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(input.description, fontSize = 10.sp, color = palette.textMuted, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
-        if (choices.isNotEmpty()) {
+        
+        if (input.type.lowercase() == "boolean") {
+            val isTrue = value.lowercase() == "true"
             Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(GitHubControlRadius))
+                    .background(palette.surfaceElevated)
+                    .border(1.dp, if (isTrue) palette.accent.copy(alpha = 0.5f) else palette.border, RoundedCornerShape(GitHubControlRadius))
+                    .clickable { onValueChange((!isTrue).toString()) }
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                choices.forEach { option ->
-                    ActionsFilterChip(option, value == option) { onValueChange(option) }
+                Text(
+                    text = if (isTrue) "Enabled (true)" else "Disabled (false)",
+                    fontSize = 12.sp,
+                    fontFamily = JetBrainsMono,
+                    color = if (isTrue) palette.accent else palette.textSecondary
+                )
+                Box(
+                    modifier = Modifier
+                        .size(width = 36.dp, height = 20.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(if (isTrue) palette.accent.copy(alpha = 0.2f) else palette.border.copy(alpha = 0.3f))
+                        .border(1.dp, if (isTrue) palette.accent else palette.border, RoundedCornerShape(10.dp))
+                        .padding(2.dp),
+                    contentAlignment = if (isTrue) Alignment.CenterEnd else Alignment.CenterStart
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(14.dp)
+                            .clip(CircleShape)
+                            .background(if (isTrue) palette.accent else palette.textMuted)
+                    )
+                }
+            }
+        } else if (choices.isNotEmpty()) {
+            var expanded by remember { mutableStateOf(false) }
+            Box(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(GitHubControlRadius))
+                        .background(palette.surfaceElevated)
+                        .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
+                        .clickable { expanded = true }
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = value.ifBlank { "Select option..." },
+                        fontSize = 12.sp,
+                        fontFamily = JetBrainsMono,
+                        color = if (value.isNotBlank()) palette.textPrimary else palette.textMuted
+                    )
+                    Text(
+                        text = "▼",
+                        fontSize = 8.sp,
+                        color = palette.textMuted,
+                        fontFamily = JetBrainsMono
+                    )
+                }
+                
+                DropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false },
+                    modifier = Modifier
+                        .background(palette.surface)
+                        .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
+                ) {
+                    choices.forEach { choice ->
+                        DropdownMenuItem(
+                            text = { 
+                                Text(
+                                    choice, 
+                                    fontFamily = JetBrainsMono, 
+                                    fontSize = 12.sp, 
+                                    color = if (value == choice) palette.accent else palette.textPrimary 
+                                ) 
+                            },
+                            onClick = {
+                                onValueChange(choice)
+                                expanded = false
+                            },
+                            colors = MenuDefaults.itemColors(
+                                textColor = palette.textPrimary,
+                                leadingIconColor = palette.accent
+                            )
+                        )
+                    }
                 }
             }
         } else {
@@ -2529,7 +2632,7 @@ private fun WorkflowDispatchInputField(
             )
         }
         if (missingRequired) {
-            Text("Required value", fontSize = 10.sp, color = Orange)
+            Text("Required value", fontSize = 10.sp, color = palette.warning)
         }
     }
 }
