@@ -2963,6 +2963,7 @@ private fun UpgradedEditorAccessoryBar(
     canRedo: Boolean,
     ext: String
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val dynamicSnippets = remember(ext) {
         when (ext) {
             "kt", "java" -> listOf("fun ", "class ", "val ", "var ", "when ", "private ")
