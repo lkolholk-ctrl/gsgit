@@ -79,6 +79,10 @@ import gs.git.vps.workers.NotificationSyncWorker
 import gs.git.vps.security.BackupManager
 import gs.git.vps.security.BiometricHelper
 import java.io.File
+import java.net.URL
+import java.net.HttpURLConnection
+import org.json.JSONObject
+import org.json.JSONArray
 import gs.git.vps.ui.screens.ToggleRow
 
 import gs.git.vps.ui.theme.AiModuleTheme
@@ -1512,50 +1516,53 @@ internal fun GitHubSettingsScreen(
                             var testingState by remember { mutableStateOf<String?>(null) }
                             val testScope = rememberCoroutineScope()
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                AiModuleTextAction("Test Copilot Connection") {
-                                    testingState = "Fetching Copilot Token..."
-                                    testScope.launch {
-                                        try {
-                                            val token = GitHubManager.getCopilotToken(context)
-                                            if (token.isNotBlank()) {
-                                                testingState = "Token Ok. Testing Chat endpoint..."
-                                                // Make a simple ping request
-                                                val routeHost = when (copilotRouting) {
-                                                    "Individual" -> "api.individual.githubcopilot.com"
-                                                    "Business" -> "api.business.githubcopilot.com"
-                                                    "Enterprise" -> "api.enterprise.githubcopilot.com"
-                                                    else -> "api.githubcopilot.com"
-                                                }
-                                                val success = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                                                    val url = URL("https://$routeHost/chat/completions")
-                                                    val conn = url.openConnection() as HttpURLConnection
-                                                    conn.requestMethod = "POST"
-                                                    conn.setRequestProperty("Authorization", "Bearer $token")
-                                                    conn.setRequestProperty("Content-Type", "application/json")
-                                                    conn.setRequestProperty("User-Agent", "GitHubCopilotChat/0.11.0")
-                                                    conn.doOutput = true
-                                                    val requestBody = JSONObject().apply {
-                                                        put("model", copilotModel)
-                                                        put("messages", JSONArray().apply {
-                                                            put(JSONObject().apply {
-                                                                put("role", "user")
-                                                                put("content", "ping")
+                                AiModuleTextAction(
+                                    label = "Test Copilot Connection",
+                                    onClick = {
+                                        testingState = "Fetching Copilot Token..."
+                                        testScope.launch {
+                                            try {
+                                                val token = GitHubManager.getCopilotToken(context)
+                                                if (token.isNotBlank()) {
+                                                    testingState = "Token Ok. Testing Chat endpoint..."
+                                                    // Make a simple ping request
+                                                    val routeHost = when (copilotRouting) {
+                                                        "Individual" -> "api.individual.githubcopilot.com"
+                                                        "Business" -> "api.business.githubcopilot.com"
+                                                        "Enterprise" -> "api.enterprise.githubcopilot.com"
+                                                        else -> "api.githubcopilot.com"
+                                                    }
+                                                    val success = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                                        val url = URL("https://$routeHost/chat/completions")
+                                                        val conn = url.openConnection() as HttpURLConnection
+                                                        conn.requestMethod = "POST"
+                                                        conn.setRequestProperty("Authorization", "Bearer $token")
+                                                        conn.setRequestProperty("Content-Type", "application/json")
+                                                        conn.setRequestProperty("User-Agent", "GitHubCopilotChat/0.11.0")
+                                                        conn.doOutput = true
+                                                        val requestBody = JSONObject().apply {
+                                                            put("model", copilotModel)
+                                                            put("messages", JSONArray().apply {
+                                                                put(JSONObject().apply {
+                                                                    put("role", "user")
+                                                                    put("content", "ping")
+                                                                })
                                                             })
-                                                        })
-                                                        put("max_tokens", 5)
-                                                    }.toString()
-                                                    conn.outputStream.use { it.write(requestBody.toByteArray()) }
-                                                    conn.responseCode in 200..299
+                                                            put("max_tokens", 5)
+                                                        }.toString()
+                                                        conn.outputStream.use { it.write(requestBody.toByteArray()) }
+                                                        conn.responseCode in 200..299
+                                                    }
+                                                    testingState = if (success) "Connection successful! Copilot is active." else "Chat API request failed."
+                                                } else {
+                                                    testingState = "Token request returned empty."
                                                 }
-                                                testingState = if (success) "Connection successful! Copilot is active." else "Chat API request failed."
-                                            } else {
-                                                testingState = "Token request returned empty."
+                                            } catch (e: Exception) {
+                                                testingState = "Error: ${e.message ?: e.javaClass.simpleName}"
                                             }
-                                        } catch (e: Exception) {
-                                            testingState = "Error: ${e.message ?: e.javaClass.simpleName}"
                                         }
                                     }
-                                }
+                                )
                                 testingState?.let {
                                     Spacer(Modifier.width(12.dp))
                                     Text(it, fontSize = 11.sp, color = if (it.contains("successful")) AiModuleTheme.colors.accent else AiModuleTheme.colors.error, fontFamily = JetBrainsMono)

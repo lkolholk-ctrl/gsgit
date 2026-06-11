@@ -1269,6 +1269,7 @@ internal fun RepoDetailScreen(
             )
             RepoTab.TELEMETRY -> TelemetryTab(repo, commits)
         }
+    }
 
         AnimatedVisibility(
             visible = showCopilotChat,
