@@ -312,6 +312,33 @@ object GitHubManager {
         } catch (e: Exception) { GHRepoCreateResult(success = false, repo = null) }
     }
 
+    suspend fun createRepoFromTemplateWithResult(
+        context: Context, templateOwner: String, templateRepo: String,
+        name: String, description: String, isPrivate: Boolean,
+        includeAllBranches: Boolean = false
+    ): GHRepoCreateResult {
+        val body = JSONObject().apply {
+            put("name", name); put("description", description); put("private", isPrivate)
+            put("owner", templateOwner)
+            put("include_all_branches", includeAllBranches)
+        }.toString()
+        val r = request(context, "/repos/$templateOwner/$templateRepo/generate", "POST", body)
+        if (!r.success) return GHRepoCreateResult(success = false, repo = null)
+        return try {
+            val j = JSONObject(r.body)
+            val repo = GHRepo(
+                name = j.optString("name", ""), fullName = j.optString("full_name", ""),
+                description = j.optString("description", ""), language = j.optString("language", ""),
+                stars = j.optInt("stargazers_count", 0), forks = j.optInt("forks_count", 0),
+                isPrivate = j.optBoolean("private", false), isFork = j.optBoolean("fork", false),
+                defaultBranch = j.optString("default_branch", "main"), updatedAt = j.optString("updated_at", ""),
+                owner = j.optJSONObject("owner")?.optString("login") ?: "",
+                htmlUrl = j.optString("html_url", ""), id = j.optLong("id", 0L)
+            )
+            GHRepoCreateResult(success = true, repo = repo, cloneUrl = j.optString("clone_url", ""), sshUrl = j.optString("ssh_url", ""), autoInit = false)
+        } catch (e: Exception) { GHRepoCreateResult(success = false, repo = null) }
+    }
+
     suspend fun deleteRepo(context: Context, owner: String, repo: String): Boolean =
         request(context, "/repos/$owner/$repo", "DELETE").success
 
@@ -8722,7 +8749,9 @@ data class GHRepoCreateParams(
     val name: String, val description: String, val isPrivate: Boolean,
     val autoInit: Boolean = false, val gitignoreTemplate: String = "",
     val licenseTemplate: String = "", val hasIssues: Boolean = true,
-    val hasProjects: Boolean = true, val hasWiki: Boolean = true
+    val hasProjects: Boolean = true, val hasWiki: Boolean = true,
+    val templateOwner: String = "", val templateRepo: String = "",
+    val includeAllBranches: Boolean = false
 )
 
 data class GHTeamDiscussion(

@@ -521,7 +521,50 @@ internal fun ReposScreen(user: GHUser?, onBack: () -> Unit, onMinimize: () -> Un
     if (showTopics) { TopicsScreen(onBack = { showTopics = false }); return }
     if (showGitignore) { GitignoreScreen(onBack = { showGitignore = false }); return }
     if (showMeta) { GitHubMetaScreen(onBack = { showMeta = false }); return }
-    if (showCreate && user != null) { RepoCreateScreen(userLogin = user.login, onBack = { showCreate = false }, onCreate = { params -> scope.launch { val r = GitHubManager.createRepoWithResult(context, params.name, params.description, params.isPrivate, params.autoInit, params.gitignoreTemplate, params.licenseTemplate, params.hasIssues, params.hasProjects, params.hasWiki); if (r.success) { showCreate = false; reposPage = 1; repos = GitHubManager.getRepos(context, 1); reposHasMore = repos.size >= 30; quickStartResult = r } else { Toast.makeText(context, Strings.error, Toast.LENGTH_SHORT).show() } } }); return }
+    if (showCreate && user != null) {
+        RepoCreateScreen(
+            userLogin = user.login,
+            onBack = { showCreate = false },
+            onCreate = { params ->
+                scope.launch {
+                    val r = if (params.templateRepo.isNotBlank() && params.templateOwner.isNotBlank()) {
+                        GitHubManager.createRepoFromTemplateWithResult(
+                            context,
+                            params.templateOwner,
+                            params.templateRepo,
+                            params.name,
+                            params.description,
+                            params.isPrivate,
+                            params.includeAllBranches
+                        )
+                    } else {
+                        GitHubManager.createRepoWithResult(
+                            context,
+                            params.name,
+                            params.description,
+                            params.isPrivate,
+                            params.autoInit,
+                            params.gitignoreTemplate,
+                            params.licenseTemplate,
+                            params.hasIssues,
+                            params.hasProjects,
+                            params.hasWiki
+                        )
+                    }
+                    if (r.success) {
+                        showCreate = false
+                        reposPage = 1
+                        repos = GitHubManager.getRepos(context, 1)
+                        reposHasMore = repos.size >= 30
+                        quickStartResult = r
+                    } else {
+                        Toast.makeText(context, Strings.error, Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        )
+        return
+    }
     if (quickStartResult != null) { RepoQuickStartScreen(result = quickStartResult!!, onBack = { quickStartResult = null }, onOpenRepo = { quickStartResult = null; onRepoClick(it) }); return }
     
     AiModuleSurface {

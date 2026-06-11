@@ -265,6 +265,10 @@ private fun PackageDetailScreen(owner: PackageOwner, pkg: GHPackage, onBack: () 
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             item { PackageHeaderCard(detail, owner) }
+            if (versions.isNotEmpty()) {
+                val latestVer = versions.firstOrNull()?.displayName() ?: "latest"
+                item { ImportSnippetsPanel(detail, latestVer) }
+            }
             item {
                 Text("Versions", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = AiModuleTheme.colors.textPrimary)
             }
@@ -344,6 +348,115 @@ private fun PackageDetailScreen(owner: PackageOwner, pkg: GHPackage, onBack: () 
                 AiModuleTextAction(label = "cancel", onClick = { deleteVersionConfirm = null }, tint = AiModuleTheme.colors.textSecondary)
             },
         )
+    }
+}
+
+@Composable
+private fun ImportSnippetsPanel(pkg: GHPackage, version: String) {
+    val palette = AiModuleTheme.colors
+    val context = LocalContext.current
+    val name = pkg.name
+    val type = pkg.packageType.lowercase()
+
+    val tools = when (type) {
+        "npm" -> listOf("npm", "yarn", "pnpm")
+        "maven" -> listOf("gradle", "maven")
+        "nuget" -> listOf("dotnet", "nuget pm")
+        "rubygems" -> listOf("gem", "bundler")
+        "container", "docker" -> listOf("docker", "dockerfile")
+        else -> listOf("npm", "gradle", "dotnet", "docker")
+    }
+
+    var activeTool by remember(type) { mutableStateOf(tools.firstOrNull() ?: "npm") }
+
+    val snippet = when (activeTool) {
+        "npm" -> "npm install $name@$version"
+        "yarn" -> "yarn add $name@$version"
+        "pnpm" -> "pnpm add $name@$version"
+        "gradle" -> "implementation(\"gh:${pkg.repositoryName}:$version\")"
+        "maven" -> """
+            <dependency>
+              <groupId>gh.repo</groupId>
+              <artifactId>$name</artifactId>
+              <version>$version</version>
+            </dependency>
+        """.trimIndent()
+        "dotnet" -> "dotnet add package $name --version $version"
+        "nuget pm" -> "Install-Package $name -Version $version"
+        "gem" -> "gem install $name -v $version"
+        "bundler" -> "gem '$name', '~> $version'"
+        "docker" -> "docker pull ghcr.io/${pkg.repositoryName.lowercase()}:$version"
+        "dockerfile" -> "FROM ghcr.io/${pkg.repositoryName.lowercase()}:$version"
+        else -> "install $name version $version"
+    }
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(GitHubControlRadius))
+            .background(palette.surface)
+            .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "install instructions",
+                fontFamily = JetBrainsMono,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = palette.accent
+            )
+            Spacer(Modifier.weight(1f))
+            Box(
+                Modifier.clickable {
+                    val clip = android.content.ClipData.newPlainText("snippet", snippet)
+                    (context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(clip)
+                    Toast.makeText(context, "copied to clipboard", Toast.LENGTH_SHORT).show()
+                }.padding(horizontal = 4.dp, vertical = 2.dp)
+            ) {
+                Text("[ copy ]", fontFamily = JetBrainsMono, fontSize = 11.sp, color = palette.accent)
+            }
+        }
+
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            tools.forEach { tool ->
+                val sel = activeTool == tool
+                Box(
+                    Modifier
+                        .clickable { activeTool = tool }
+                        .background(if (sel) palette.accent.copy(alpha = 0.12f) else palette.background, RoundedCornerShape(4.dp))
+                        .border(1.dp, if (sel) palette.accent else palette.border, RoundedCornerShape(4.dp))
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        tool,
+                        fontFamily = JetBrainsMono,
+                        fontSize = 10.sp,
+                        color = if (sel) palette.accent else palette.textSecondary
+                    )
+                }
+            }
+        }
+
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .background(palette.background, RoundedCornerShape(4.dp))
+                .border(1.dp, palette.border, RoundedCornerShape(4.dp))
+                .padding(8.dp)
+        ) {
+            Text(
+                snippet,
+                fontFamily = JetBrainsMono,
+                fontSize = 10.sp,
+                color = palette.textPrimary,
+                lineHeight = 15.sp
+            )
+        }
     }
 }
 

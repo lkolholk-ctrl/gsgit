@@ -81,6 +81,9 @@ internal fun RepoQuickStartScreen(
     // COMMANDS expand
     var showCommands by remember { mutableStateOf(false) }
 
+    // starter presets
+    var showPresetsDialog by remember { mutableStateOf(false) }
+
     // scanning
     var scanning by remember { mutableStateOf(false) }
 
@@ -163,6 +166,119 @@ internal fun RepoQuickStartScreen(
             } catch (_: Exception) {}
             scanning = false
         }
+    }
+
+    fun generateStarter(templateName: String, projectName: String) {
+        val filesList = mutableListOf<Pair<String, ByteArray>>()
+        val cleanProjectName = projectName.lowercase().replace("[^a-z0-9_-]".toRegex(), "")
+        when (templateName) {
+            "Node.js" -> {
+                val packageJson = """
+                    {
+                      "name": "$cleanProjectName",
+                      "version": "1.0.0",
+                      "main": "index.js",
+                      "scripts": {
+                        "start": "node index.js"
+                      },
+                      "dependencies": {}
+                    }
+                """.trimIndent()
+                val indexJs = """
+                    console.log("Hello from GsGit Node.js template!");
+                """.trimIndent()
+                val gitignore = """
+                    node_modules/
+                    npm-debug.log
+                    .env
+                """.trimIndent()
+                filesList.add("package.json" to packageJson.toByteArray(Charsets.UTF_8))
+                filesList.add("index.js" to indexJs.toByteArray(Charsets.UTF_8))
+                filesList.add(".gitignore" to gitignore.toByteArray(Charsets.UTF_8))
+            }
+            "Python" -> {
+                val mainPy = """
+                    if __name__ == "__main__":
+                        print("Hello from GsGit Python template!")
+                """.trimIndent()
+                val requirements = """
+                    # Add dependencies here
+                """.trimIndent()
+                val gitignore = """
+                    __pycache__/
+                    *.py[cod]
+                    .env
+                    venv/
+                """.trimIndent()
+                filesList.add("main.py" to mainPy.toByteArray(Charsets.UTF_8))
+                filesList.add("requirements.txt" to requirements.toByteArray(Charsets.UTF_8))
+                filesList.add(".gitignore" to gitignore.toByteArray(Charsets.UTF_8))
+            }
+            "HTML5 Static" -> {
+                val indexHtml = """
+                    <!DOCTYPE html>
+                    <html lang="en">
+                    <head>
+                        <meta charset="UTF-8">
+                        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                        <title>$projectName</title>
+                        <link rel="stylesheet" href="style.css">
+                    </head>
+                    <body>
+                        <h1>Welcome to $projectName</h1>
+                        <p>Created with GsGit</p>
+                        <script src="app.js"></script>
+                    </body>
+                    </html>
+                """.trimIndent()
+                val styleCss = """
+                    body {
+                        background: #0d1117;
+                        color: #c9d1d9;
+                        font-family: sans-serif;
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                        justify-content: center;
+                        height: 100vh;
+                        margin: 0;
+                    }
+                    h1 {
+                        color: #58a6ff;
+                    }
+                """.trimIndent()
+                val appJs = """
+                    console.log("Hello from GsGit Static HTML template!");
+                """.trimIndent()
+                filesList.add("index.html" to indexHtml.toByteArray(Charsets.UTF_8))
+                filesList.add("style.css" to styleCss.toByteArray(Charsets.UTF_8))
+                filesList.add("app.js" to appJs.toByteArray(Charsets.UTF_8))
+            }
+            "Rust" -> {
+                val cargoToml = """
+                    [package]
+                    name = "$cleanProjectName"
+                    version = "0.1.0"
+                    edition = "2021"
+
+                    [dependencies]
+                """.trimIndent()
+                val mainRs = """
+                    fn main() {
+                        println!("Hello from GsGit Rust template!");
+                    }
+                """.trimIndent()
+                val gitignore = """
+                    /target
+                    **/*.rs.bk
+                """.trimIndent()
+                filesList.add("Cargo.toml" to cargoToml.toByteArray(Charsets.UTF_8))
+                filesList.add("src/main.rs" to mainRs.toByteArray(Charsets.UTF_8))
+                filesList.add(".gitignore" to gitignore.toByteArray(Charsets.UTF_8))
+            }
+        }
+        val totalSize = filesList.sumOf { it.second.size }
+        stagedItems.add(StagedItem("Starter Preset: $templateName (${totalSize.formatBytes()})", totalSize, true, filesList))
     }
 
     val folderLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
@@ -258,9 +374,44 @@ internal fun RepoQuickStartScreen(
 
                 // ═══ UPLOAD ═══
                 SectionHeader("> UPLOAD")
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ActionChip(Icons.Default.Folder, "Upload Folder") { folderLauncher.launch(null) }
                     ActionChip(Icons.Default.Description, "Upload Files") { filesLauncher.launch(arrayOf("*/*")) }
+                    ActionChip(Icons.Default.Info, "Add Starter Preset") { showPresetsDialog = !showPresetsDialog }
+                }
+                if (showPresetsDialog) {
+                    CardBox {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            androidx.compose.material3.Text("Select a Starter Preset:", fontFamily = JetBrainsMono, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = palette.accent)
+                            Spacer(Modifier.weight(1f))
+                            Box(Modifier.clickable { showPresetsDialog = false }.padding(4.dp)) {
+                                androidx.compose.material3.Icon(Icons.Default.Close, null, Modifier.size(12.dp), tint = palette.error)
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        val templatesList = listOf("Node.js", "Python", "HTML5 Static", "Rust")
+                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            templatesList.forEach { name ->
+                                Box(
+                                    Modifier
+                                        .clickable {
+                                            generateStarter(name, repo.name)
+                                            showPresetsDialog = false
+                                        }
+                                        .background(palette.surface, RoundedCornerShape(4.dp))
+                                        .border(1.dp, palette.border, RoundedCornerShape(4.dp))
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    androidx.compose.material3.Text(
+                                        name,
+                                        fontFamily = JetBrainsMono,
+                                        fontSize = 10.sp,
+                                        color = palette.textSecondary
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // commit msg
