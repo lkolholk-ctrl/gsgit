@@ -2970,7 +2970,7 @@ internal suspend fun askCopilot(
     messages: List<Pair<String, String>>,
 ): String = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
     val prefs = context.getSharedPreferences("github_prefs", android.content.Context.MODE_PRIVATE)
-    val copilotModel = prefs.getString("copilot_model", "claude-3.7-sonnet") ?: "claude-3.7-sonnet"
+    val copilotModel = prefs.getString("copilot_model", "gpt-5.5") ?: "gpt-5.5"
     val copilotRouting = prefs.getString("copilot_routing", "Auto") ?: "Auto"
     val routeHost = when (copilotRouting) {
         "Individual" -> "api.individual.githubcopilot.com"
