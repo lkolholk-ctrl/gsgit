@@ -39,6 +39,7 @@ internal fun RepoCreateScreen(
     var hasProjects by remember { mutableStateOf(true) }
     var hasWiki by remember { mutableStateOf(true) }
     var gitignoreTemplate by remember { mutableStateOf("") }
+    var gitignoreSearch by remember { mutableStateOf("") }
     var licenseTemplate by remember { mutableStateOf("") }
     var creating by remember { mutableStateOf(false) }
     var gitignoreTemplates by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -183,7 +184,10 @@ internal fun RepoCreateScreen(
                         "octocat/hello-world",
                         "android/architecture-samples",
                         "actions/typescript-action",
-                        "github/gitignore"
+                        "github/gitignore",
+                        "facebook/react",
+                        "vercel/next.js",
+                        "kotlin/kotlinx.coroutines"
                     )
                     presets.forEach { preset ->
                         val parts = preset.split("/")
@@ -234,6 +238,12 @@ internal fun RepoCreateScreen(
                         color = palette.textSecondary
                     )
                     Spacer(Modifier.height(4.dp))
+                    AiModuleSearchField(
+                        value = gitignoreSearch,
+                        onValueChange = { gitignoreSearch = it },
+                        placeholder = "filter gitignore..."
+                    )
+                    Spacer(Modifier.height(6.dp))
                     Row(
                         Modifier
                             .fillMaxWidth()
@@ -241,7 +251,7 @@ internal fun RepoCreateScreen(
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         ChipOption("none", gitignoreTemplate.isEmpty()) { gitignoreTemplate = "" }
-                        gitignoreTemplates.forEach { t ->
+                        gitignoreTemplates.filter { it.contains(gitignoreSearch, ignoreCase = true) }.forEach { t ->
                             ChipOption(t, gitignoreTemplate == t) { gitignoreTemplate = t }
                         }
                     }

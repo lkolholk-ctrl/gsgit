@@ -1372,11 +1372,29 @@ internal fun FilesTab(
     val sizeFontSize = 12.sp
     var menuFor by remember { mutableStateOf<String?>(null) }
     var expandedFile by remember { mutableStateOf<String?>(null) }
+    var searchQuery by remember { mutableStateOf("") }
 
-    val visibleNodes = remember(rootContents, childCache.toMap(), expandedPaths, loadingPaths) {
+    val visibleNodes = remember(rootContents, childCache.toMap(), expandedPaths, loadingPaths, searchQuery) {
         val out = mutableListOf<FilesTreeRow>()
+        
+        fun hasMatchingChild(path: String): Boolean {
+            val children = childCache[path] ?: return false
+            return children.any { child ->
+                child.name.contains(searchQuery, ignoreCase = true) || 
+                (child.type == "dir" && hasMatchingChild(child.path))
+            }
+        }
+        
         fun build(items: List<GHContent>, depth: Int, parentLines: List<Boolean>) {
-            val sorted = items.sortedWith(compareBy({ it.type != "dir" }, { it.name.lowercase() }))
+            val filtered = if (searchQuery.isEmpty()) {
+                items
+            } else {
+                items.filter { item ->
+                    item.name.contains(searchQuery, ignoreCase = true) || 
+                    (item.type == "dir" && hasMatchingChild(item.path))
+                }
+            }
+            val sorted = filtered.sortedWith(compareBy({ it.type != "dir" }, { it.name.lowercase() }))
             sorted.forEachIndexed { i, item ->
                 val isLast = i == sorted.lastIndex
                 out.add(FilesTreeRow(
@@ -1387,7 +1405,12 @@ internal fun FilesTab(
                     isLastInParent = isLast,
                     isLoading = false,
                 ))
-                if (item.type == "dir" && item.path in expandedPaths) {
+                val shouldExpand = if (searchQuery.isEmpty()) {
+                    item.path in expandedPaths
+                } else {
+                    item.type == "dir" && hasMatchingChild(item.path)
+                }
+                if (item.type == "dir" && shouldExpand) {
                     val nextLines = parentLines + !isLast
                     val children = childCache[item.path]
                     if (children == null) {
@@ -1409,11 +1432,19 @@ internal fun FilesTab(
         out.toList()
     }
 
-    LazyColumn(
-        Modifier.fillMaxSize(),
-        state = listState,
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-    ) {
+    Column(Modifier.fillMaxSize()) {
+        AiModuleSearchField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+            placeholder = "Filter files..."
+        )
+
+        LazyColumn(
+            Modifier.fillMaxSize().weight(1f),
+            state = listState,
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+        ) {
         items(visibleNodes, key = { it.key }) { row ->
             val prefix = buildString {
                 row.parentLines.forEach { hasMore -> append(if (hasMore) "\u2502  " else "   ") }
@@ -1431,7 +1462,7 @@ internal fun FilesTab(
             }
             val item = row.item ?: return@items
             val isDir = item.type == "dir"
-            val isExpanded = isDir && item.path in expandedPaths
+            val isExpanded = isDir && (item.path in expandedPaths || searchQuery.isNotEmpty())
             val toggleGlyph = when {
                 isDir && isExpanded -> "\u25BE "
                 isDir -> "\u25B8 "
@@ -1559,6 +1590,7 @@ internal fun FilesTab(
             }
         }
     }
+}
 }
 
 @Composable internal fun Chip(icon: ImageVector, label: String, tint: Color? = null, onClick: () -> Unit) { val chipTint = tint ?: AiModuleTheme.colors.accent; Row(Modifier.clip(RoundedCornerShape(GitHubControlRadius)).background(chipTint.copy(0.08f)).clickable(onClick = onClick).padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) { Icon(icon, null, Modifier.size(12.dp), tint = chipTint); Text(label, fontSize = 10.sp, color = chipTint, fontWeight = FontWeight.Medium, fontFamily = JetBrainsMono) } }
@@ -3982,7 +4014,7 @@ private fun ReadmeHtmlDocument(
                     isVerticalScrollBarEnabled = false
                     isHorizontalScrollBarEnabled = false
                     
-                    addJavascriptInterface(ToCInterface { parsedHeadings ->
+                    addJavascriptInterface(ToCInterface(context) { parsedHeadings ->
                         headings = parsedHeadings
                     }, "ToCInterface")
                     
@@ -4142,6 +4174,28 @@ private fun buildGitHubReadmeHtmlPage(
     if (window.ToCInterface) {
       ToCInterface.sendHeadings(JSON.stringify(headings));
     }
+    document.querySelectorAll('pre').forEach(function(preBlock) {
+      preBlock.style.position = 'relative';
+      var button = document.createElement('button');
+      button.className = 'copy-button';
+      button.textContent = 'Copy';
+      button.addEventListener('click', function() {
+        var codeText = preBlock.querySelector('code')?.textContent || preBlock.textContent;
+        if (window.ToCInterface && window.ToCInterface.copyToClipboard) {
+          window.ToCInterface.copyToClipboard(codeText);
+          button.textContent = 'Copied!';
+          setTimeout(function() { button.textContent = 'Copy'; }, 2000);
+        } else {
+          navigator.clipboard.writeText(codeText).then(function() {
+            button.textContent = 'Copied!';
+            setTimeout(function() { button.textContent = 'Copy'; }, 2000);
+          }).catch(function() {
+            button.textContent = 'Error';
+          });
+        }
+      });
+      preBlock.appendChild(button);
+    });
   });
 
   function scrollToElement(id) {
@@ -4152,6 +4206,28 @@ private fun buildGitHubReadmeHtmlPage(
   }
 </script>
 <style>
+  .copy-button {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    padding: 4px 8px;
+    font-size: 11px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    color: var(--muted);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.2s, background 0.2s;
+  }
+  pre:hover .copy-button {
+    opacity: 1;
+  }
+  .copy-button:hover {
+    background: var(--surface);
+    color: var(--text);
+  }
   :root {
     color-scheme: dark;
     --bg: $bg;
@@ -6842,7 +6918,10 @@ private fun IssueTimelineDialog(repo: GHRepo, issueNumber: Int, onDismiss: () ->
 
 data class HeadingItem(val id: String, val title: String, val level: Int)
 
-class ToCInterface(private val onHeadingsParsed: (List<HeadingItem>) -> Unit) {
+class ToCInterface(
+    private val context: android.content.Context,
+    private val onHeadingsParsed: (List<HeadingItem>) -> Unit
+) {
     @android.webkit.JavascriptInterface
     fun sendHeadings(jsonStr: String) {
         try {
@@ -6859,6 +6938,21 @@ class ToCInterface(private val onHeadingsParsed: (List<HeadingItem>) -> Unit) {
             onHeadingsParsed(list)
         } catch (e: Exception) {
             android.util.Log.e("ToCInterface", "Error parsing headings", e)
+        }
+    }
+
+    @android.webkit.JavascriptInterface
+    fun copyToClipboard(text: String) {
+        try {
+            val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            val clip = android.content.ClipData.newPlainText("Code Block", text)
+            clipboard.setPrimaryClip(clip)
+            val handler = android.os.Handler(android.os.Looper.getMainLooper())
+            handler.post {
+                android.widget.Toast.makeText(context, "Code copied to clipboard", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("ToCInterface", "Error copying to clipboard", e)
         }
     }
 }

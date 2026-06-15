@@ -52,6 +52,7 @@ fun DiffViewerScreen(
     repoOwner: String? = null,
     repoName: String? = null,
     pullNumber: Int? = null,
+    commitSha: String? = null,
     comments: List<GHReviewComment> = emptyList(),
     onCommentAdded: () -> Unit = {},
     onBack: () -> Unit
@@ -69,6 +70,7 @@ fun DiffViewerScreen(
             repoOwner = repoOwner,
             repoName = repoName,
             pullNumber = pullNumber,
+            commitSha = commitSha,
             comments = comments.filter { it.path == selectedFile!!.filename },
             onCommentAdded = onCommentAdded,
             onBack = { selectedFile = null },
@@ -77,11 +79,12 @@ fun DiffViewerScreen(
         return
     }
 
-    if (showComments && pullNumber != null) {
+    if (showComments && (pullNumber != null || commitSha != null)) {
         PRReviewCommentsScreen(
             repoOwner = repoOwner!!,
             repoName = repoName!!,
-            pullNumber = pullNumber,
+            pullNumber = pullNumber ?: 0,
+            commitSha = commitSha,
             comments = comments,
             onCommentChanged = onCommentAdded,
             onBack = { showComments = false }
@@ -99,7 +102,7 @@ fun DiffViewerScreen(
                         Text("+$totalAdditions", color = Color(0xFF34C759), fontSize = 12.sp, fontWeight = FontWeight.Medium, fontFamily = JetBrainsMono)
                         Text("-$totalDeletions", color = Color(0xFFFF3B30), fontSize = 12.sp, fontWeight = FontWeight.Medium, fontFamily = JetBrainsMono)
                     }
-                    if (pullNumber != null) {
+                    if (pullNumber != null || commitSha != null) {
                         GitHubTopBarAction(
                             glyph = GhGlyphs.REACT,
                             onClick = { showComments = true },
@@ -179,6 +182,7 @@ private fun FileDiffScreen(
     repoOwner: String? = null,
     repoName: String? = null,
     pullNumber: Int? = null,
+    commitSha: String? = null,
     comments: List<GHReviewComment> = emptyList(),
     onCommentAdded: () -> Unit = {},
     onBack: () -> Unit,
@@ -193,7 +197,7 @@ private fun FileDiffScreen(
     var editComment by remember { mutableStateOf<GHReviewComment?>(null) }
     var deleteComment by remember { mutableStateOf<GHReviewComment?>(null) }
     var commentActionInFlight by remember { mutableStateOf(false) }
-    val canMutateComments = repoOwner != null && repoName != null && pullNumber != null
+    val canMutateComments = repoOwner != null && repoName != null && (pullNumber != null || commitSha != null)
 
     fun handleFileDiffBack() {
         when {
@@ -240,7 +244,7 @@ private fun FileDiffScreen(
                             line = line,
                             ext = ext,
                             viewMode = viewMode,
-                            onAddComment = if (pullNumber != null && lineNum > 0) {
+                            onAddComment = if ((pullNumber != null || commitSha != null) && lineNum > 0) {
                                 {
                                     commentLine = lineNum
                                     commentPath = file.filename
@@ -286,7 +290,7 @@ private fun FileDiffScreen(
                             SplitDiffLineRow(
                                 pair = pair,
                                 ext = ext,
-                                onAddCommentRight = if (pullNumber != null && lineNum > 0) {
+                                onAddCommentRight = if ((pullNumber != null || commitSha != null) && lineNum > 0) {
                                     {
                                         commentLine = lineNum
                                         commentPath = file.filename
@@ -312,7 +316,7 @@ private fun FileDiffScreen(
     }
 
     // Add comment dialog
-    if (showCommentDialog && pullNumber != null) {
+    if (showCommentDialog && (pullNumber != null || commitSha != null)) {
         var commentBody by remember { mutableStateOf("") }
         AiModuleAlertDialog(
             onDismissRequest = { showCommentDialog = false },
@@ -332,10 +336,17 @@ private fun FileDiffScreen(
                     enabled = commentBody.isNotBlank(),
                     onClick = {
                         scope.launch {
-                            val ok = GitHubManager.createPullRequestReviewComment(
-                                context, repoOwner!!, repoName!!, pullNumber,
-                                commentBody, commentPath, commentLine!!
-                            )
+                            val ok = if (pullNumber != null) {
+                                GitHubManager.createPullRequestReviewComment(
+                                    context, repoOwner!!, repoName!!, pullNumber,
+                                    commentBody, commentPath, commentLine!!
+                                )
+                            } else {
+                                GitHubManager.createCommitComment(
+                                    context, repoOwner!!, repoName!!, commitSha!!,
+                                    commentBody, commentPath, commentLine!!
+                                )
+                            }
                             Toast.makeText(context, if (ok) "Comment added" else "Failed", Toast.LENGTH_SHORT).show()
                             if (ok) {
                                 showCommentDialog = false
@@ -360,7 +371,11 @@ private fun FileDiffScreen(
             onSave = { body ->
                 commentActionInFlight = true
                 scope.launch {
-                    val ok = GitHubManager.updatePullRequestReviewComment(context, repoOwner!!, repoName!!, comment.id, body)
+                    val ok = if (pullNumber != null) {
+                        GitHubManager.updatePullRequestReviewComment(context, repoOwner!!, repoName!!, comment.id, body)
+                    } else {
+                        GitHubManager.updateCommitComment(context, repoOwner!!, repoName!!, comment.id, body)
+                    }
                     commentActionInFlight = false
                     Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
                     if (ok) {
@@ -380,7 +395,11 @@ private fun FileDiffScreen(
             onDelete = {
                 commentActionInFlight = true
                 scope.launch {
-                    val ok = GitHubManager.deletePullRequestReviewComment(context, repoOwner!!, repoName!!, comment.id)
+                    val ok = if (pullNumber != null) {
+                        GitHubManager.deletePullRequestReviewComment(context, repoOwner!!, repoName!!, comment.id)
+                    } else {
+                        GitHubManager.deleteCommitComment(context, repoOwner!!, repoName!!, comment.id)
+                    }
                     commentActionInFlight = false
                     Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
                     if (ok) {
@@ -567,6 +586,7 @@ fun PRReviewCommentsScreen(
     repoOwner: String,
     repoName: String,
     pullNumber: Int,
+    commitSha: String? = null,
     comments: List<GHReviewComment>,
     onCommentChanged: () -> Unit = {},
     onBack: () -> Unit
@@ -585,9 +605,15 @@ fun PRReviewCommentsScreen(
         }
     }
 
+    val subtitleText = if (commitSha != null) {
+        "${commitSha.take(7)} · ${comments.size} comments"
+    } else {
+        "#$pullNumber · ${comments.size} comments"
+    }
+
     GitHubScreenFrame(
         title = "> review comments",
-        subtitle = "#$pullNumber · ${comments.size} comments",
+        subtitle = subtitleText,
         onBack = ::handleReviewCommentsBack,
     ) {
 
@@ -685,7 +711,11 @@ fun PRReviewCommentsScreen(
             onSave = { body ->
                 commentActionInFlight = true
                 scope.launch {
-                    val ok = GitHubManager.updatePullRequestReviewComment(context, repoOwner, repoName, comment.id, body)
+                    val ok = if (commitSha != null) {
+                        GitHubManager.updateCommitComment(context, repoOwner, repoName, comment.id, body)
+                    } else {
+                        GitHubManager.updatePullRequestReviewComment(context, repoOwner, repoName, comment.id, body)
+                    }
                     commentActionInFlight = false
                     Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
                     if (ok) {
@@ -705,7 +735,11 @@ fun PRReviewCommentsScreen(
             onDelete = {
                 commentActionInFlight = true
                 scope.launch {
-                    val ok = GitHubManager.deletePullRequestReviewComment(context, repoOwner, repoName, comment.id)
+                    val ok = if (commitSha != null) {
+                        GitHubManager.deleteCommitComment(context, repoOwner, repoName, comment.id)
+                    } else {
+                        GitHubManager.deletePullRequestReviewComment(context, repoOwner, repoName, comment.id)
+                    }
                     commentActionInFlight = false
                     Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
                     if (ok) {
@@ -858,12 +892,26 @@ fun CommitDiffScreen(
         return
     }
 
+    var comments by remember { mutableStateOf<List<GHReviewComment>>(emptyList()) }
+    LaunchedEffect(Unit) {
+        comments = GitHubManager.getCommitComments(context, repoOwner, repoName, sha)
+    }
+
     DiffViewerScreen(
         title = detail!!.sha.take(7),
         subtitle = detail!!.message.lines().firstOrNull() ?: "",
         files = detail!!.files,
         totalAdditions = detail!!.totalAdditions,
         totalDeletions = detail!!.totalDeletions,
+        repoOwner = repoOwner,
+        repoName = repoName,
+        commitSha = sha,
+        comments = comments,
+        onCommentAdded = {
+            scope.launch {
+                comments = GitHubManager.getCommitComments(context, repoOwner, repoName, sha)
+            }
+        },
         onBack = onBack
     )
 }

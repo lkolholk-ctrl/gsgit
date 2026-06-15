@@ -5420,6 +5420,56 @@ object GitHubManager {
 
 
     // ═══════════════════════════════════
+    // Commit Comments
+    // ═══════════════════════════════════
+
+    suspend fun getCommitComments(context: Context, owner: String, repo: String, sha: String, page: Int = 1): List<GHReviewComment> {
+        val r = request(context, "/repos/$owner/$repo/commits/$sha/comments?per_page=100&page=$page")
+        if (!r.success) return emptyList()
+        val comments = try {
+            val arr = JSONArray(r.body)
+            (0 until arr.length()).map { i ->
+                val j = arr.getJSONObject(i)
+                GHReviewComment(
+                    id = j.optLong("id"),
+                    body = j.optString("body"),
+                    path = j.optString("path", ""),
+                    line = j.optInt("line", 0),
+                    originalLine = j.optInt("position", 0),
+                    diffHunk = j.optString("diff_hunk", ""),
+                    author = j.optJSONObject("user")?.optString("login") ?: "",
+                    avatarUrl = j.optJSONObject("user")?.optString("avatar_url") ?: "",
+                    createdAt = j.optString("created_at", ""),
+                    inReplyToId = null
+                )
+            }
+        } catch (e: Exception) { emptyList() }
+        val nextPage = parseNextPage(r.headers) ?: return comments
+        return comments + getCommitComments(context, owner, repo, sha, nextPage)
+    }
+
+    suspend fun createCommitComment(
+        context: Context, owner: String, repo: String, sha: String,
+        body: String, path: String, line: Int
+    ): Boolean {
+        val json = JSONObject().apply {
+            put("body", body)
+            put("path", path)
+            put("line", line)
+        }.toString()
+        return request(context, "/repos/$owner/$repo/commits/$sha/comments", "POST", json).success
+    }
+
+    suspend fun updateCommitComment(context: Context, owner: String, repo: String, commentId: Long, body: String): Boolean {
+        val json = JSONObject().apply { put("body", body) }.toString()
+        return request(context, "/repos/$owner/$repo/comments/$commentId", "PATCH", json).success
+    }
+
+    suspend fun deleteCommitComment(context: Context, owner: String, repo: String, commentId: Long): Boolean =
+        request(context, "/repos/$owner/$repo/comments/$commentId", "DELETE").let { it.code == 204 || it.success }
+
+
+    // ═══════════════════════════════════
     // PR Check Runs
     // ═══════════════════════════════════
 
