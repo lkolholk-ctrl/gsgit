@@ -60,6 +60,7 @@ internal fun GitHubActionsTroubleshootScreen(
     repo: GHRepo,
     onBack: () -> Unit,
     onOpenRun: (Long) -> Unit,
+    onSuggestFix: ((String) -> Unit)? = null,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
@@ -183,7 +184,8 @@ internal fun GitHubActionsTroubleshootScreen(
                     repoName = repo.name,
                     run = run,
                     jobs = failedJobsByRun[run.id].orEmpty(),
-                    onOpenRun = { onOpenRun(run.id) }
+                    onOpenRun = { onOpenRun(run.id) },
+                    onSuggestFix = onSuggestFix
                 )
             }
 
@@ -235,7 +237,8 @@ private fun GitHubProblemRunCard(
     repoName: String,
     run: GHWorkflowRun,
     jobs: List<GHJob>,
-    onOpenRun: () -> Unit
+    onOpenRun: () -> Unit,
+    onSuggestFix: ((String) -> Unit)? = null
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
@@ -334,6 +337,42 @@ private fun GitHubProblemRunCard(
                         isScanning = false
                     }
                 }, color = palette.accent)
+            }
+            
+            var isAnalyzing by remember { mutableStateOf(false) }
+            if (onSuggestFix != null) {
+                Spacer(Modifier.height(8.dp))
+                GitHubTerminalButton(
+                    label = if (isAnalyzing) "🤖 analyzing..." else "🤖 Analyze Failure with AI",
+                    onClick = {
+                        isAnalyzing = true
+                        scope.launch {
+                            try {
+                                val logBuilders = java.lang.StringBuilder()
+                                failedJobs.forEach { job ->
+                                    val log = runCatching {
+                                        GitHubManager.getJobLogs(context, repoOwner, repoName, job.id)
+                                    }.getOrNull() ?: ""
+                                    if (log.isNotBlank()) {
+                                        logBuilders.append("Job: ${job.name}\nLog:\n${log.take(15000)}\n\n")
+                                    }
+                                }
+                                val prompt = "I'm troubleshooting a failed GitHub Action run #${run.runNumber} for repo $repoOwner/$repoName on branch ${run.branch}.\n" +
+                                        "Event: ${run.event}, Actor: ${run.actor}\n\n" +
+                                        "Logs of failed jobs:\n" +
+                                        logBuilders.toString() +
+                                        "\nPlease analyze this failure, explain the root cause, and provide a code fix or pull request suggestion to resolve it."
+                                onSuggestFix(prompt)
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "AI analysis error: ${e.message}", Toast.LENGTH_SHORT).show()
+                            } finally {
+                                isAnalyzing = false
+                            }
+                        }
+                    },
+                    color = gs.git.vps.ui.theme.Purple,
+                    enabled = !isAnalyzing
+                )
             }
         } else if (jobs.isNotEmpty()) {
             Spacer(Modifier.height(8.dp))

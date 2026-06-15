@@ -549,6 +549,7 @@ internal fun RepoDetailScreen(
                 showCopilotChat = true
             },
             onBack = { selectedRunId = null },
+            onNavigateToCode = navigateToCode
         )
         return
     }
@@ -595,6 +596,10 @@ internal fun RepoDetailScreen(
                 selectedRunId = it
                 showActionsTroubleshoot = false
             },
+            onSuggestFix = { prompt ->
+                copilotPrompt = prompt
+                showCopilotChat = true
+            }
         )
         return
     }

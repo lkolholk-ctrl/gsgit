@@ -39,6 +39,8 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Article
+import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Cancel
 import androidx.compose.material.icons.rounded.Check
@@ -165,7 +167,7 @@ import java.util.TimeZone
 
 private enum class ActionsRunFilter { ALL, ACTIVE, QUEUED, FAILED, SUCCESS, CANCELLED, SKIPPED }
 
-private enum class RunDetailSection { SUMMARY, JOBS, ARTIFACTS, CHECKS }
+private enum class RunDetailSection { SUMMARY, JOBS, PIPELINE, ARTIFACTS, CHECKS }
 
 private const val ACTIONS_INPUT_PREFS = "github_actions_dispatch_inputs"
 private const val ACTIONS_JOB_LOG_TAG = "ActionsJobLog"
@@ -2907,6 +2909,7 @@ internal fun WorkflowRunDetailScreen(
     runId: Long,
     onSuggestFix: ((prompt: String) -> Unit)? = null,
     onBack: () -> Unit,
+    onNavigateToCode: ((path: String, line: Int) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -3001,6 +3004,7 @@ internal fun WorkflowRunDetailScreen(
                     RunDetailSection.ARTIFACTS -> loadArtifacts(force = true)
                     RunDetailSection.CHECKS -> loadChecks(force = true)
                     RunDetailSection.JOBS -> {}
+                    RunDetailSection.PIPELINE -> {}
                 }
             }
             detailNotice = null
@@ -3024,6 +3028,7 @@ internal fun WorkflowRunDetailScreen(
                 RunDetailSection.ARTIFACTS -> loadArtifacts()
                 RunDetailSection.CHECKS -> loadChecks()
                 RunDetailSection.JOBS -> {}
+                RunDetailSection.PIPELINE -> {}
             }
         }
     }
@@ -3217,6 +3222,7 @@ internal fun WorkflowRunDetailScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 ActionsFilterChip("Jobs", selectedSection == RunDetailSection.JOBS) { selectedSection = RunDetailSection.JOBS }
+                ActionsFilterChip("Pipeline", selectedSection == RunDetailSection.PIPELINE) { selectedSection = RunDetailSection.PIPELINE }
                 ActionsFilterChip("Summary", selectedSection == RunDetailSection.SUMMARY) { selectedSection = RunDetailSection.SUMMARY }
                 ActionsFilterChip(
                     if (artifactsLoaded) "Artifacts ${artifacts.size}" else "Artifacts",
@@ -3469,10 +3475,33 @@ internal fun WorkflowRunDetailScreen(
                                                 annotation.path.isNotBlank()
                                         }
                                 }
-                            }
+                            },
+                            onNavigateToCode = onNavigateToCode
                         )
                         Spacer(Modifier.height(8.dp))
                     }
+                    }
+                }
+
+                if (selectedSection == RunDetailSection.PIPELINE) {
+                    item {
+                        PipelineView(
+                            jobs = jobs,
+                            expandedJobId = expandedJobId,
+                            onJobClick = { clickedJob ->
+                                selectedSection = RunDetailSection.JOBS
+                                expandedJobId = clickedJob.id
+                                val indexInGroup = groupedJobItems.indexOfFirst {
+                                    it is JobListItem.JobRow && it.job.id == clickedJob.id
+                                }
+                                if (indexInGroup != -1) {
+                                    scope.launch {
+                                        jobListState.animateScrollToItem(jobItemsStartIndex + indexInGroup)
+                                    }
+                                }
+                            }
+                        )
+                        Spacer(Modifier.height(8.dp))
                     }
                 }
 
@@ -4035,11 +4064,160 @@ private fun ReviewHistoryCard(reviews: List<GHWorkflowRunReview>) {
     }
 }
 
+private fun getJobStage(jobName: String): String {
+    val lower = jobName.lowercase()
+    return when {
+        lower.contains("build") || lower.contains("compile") || lower.contains("package") || lower.contains("assemble") -> "Build"
+        lower.contains("test") || lower.contains("check") || lower.contains("lint") || lower.contains("detekt") || lower.contains("verify") || lower.contains("spec") || lower.contains("unit") || lower.contains("ui-test") -> "Test"
+        lower.contains("deploy") || lower.contains("publish") || lower.contains("release") || lower.contains("upload") || lower.contains("distribute") -> "Deploy"
+        else -> "Other"
+    }
+}
+
+@Composable
+private fun PipelineJobNode(
+    job: GHJob,
+    nowMs: Long,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    val palette = AiModuleTheme.colors
+    val status = displayJobStatus(job)
+    val statusColor = jobStatusColor(status)
+    val statusIcon = jobStatusIcon(status)
+    val jobElapsed = calcJobDuration(job, nowMs)
+    
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(6.dp))
+            .background(if (isSelected) palette.surfaceElevated else palette.background)
+            .border(
+                1.dp,
+                if (isSelected) palette.accent else palette.border.copy(alpha = 0.5f),
+                RoundedCornerShape(6.dp)
+            )
+            .clickable { onClick() }
+            .padding(10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = statusIcon,
+            contentDescription = status,
+            tint = statusColor,
+            modifier = Modifier.size(16.dp)
+        )
+        Spacer(Modifier.width(8.dp))
+        
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = job.name,
+                fontFamily = JetBrainsMono,
+                fontSize = 11.sp,
+                color = palette.textPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (jobElapsed.isNotBlank()) {
+                Text(
+                    text = jobElapsed,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 9.sp,
+                    color = palette.textMuted
+                )
+            }
+        }
+        
+        Icon(
+            imageVector = Icons.Rounded.ChevronRight,
+            contentDescription = "go to details",
+            tint = palette.textMuted,
+            modifier = Modifier.size(14.dp)
+        )
+    }
+}
+
+@Composable
+private fun PipelineView(
+    jobs: List<GHJob>,
+    expandedJobId: Long?,
+    onJobClick: (GHJob) -> Unit
+) {
+    val palette = AiModuleTheme.colors
+    val nowMs = remember { System.currentTimeMillis() }
+    val stageNames = listOf("Build", "Test", "Deploy", "Other")
+    
+    val grouped = remember(jobs) {
+        val map = jobs.groupBy { getJobStage(it.name) }
+        map.mapValues { (_, jobList) ->
+            jobList.sortedWith(compareBy<GHJob> { it.startedAt }.thenBy { it.name })
+        }
+    }
+    
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        stageNames.forEachIndexed { index, stage ->
+            val stageJobs = grouped[stage].orEmpty()
+            if (stageJobs.isNotEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(GitHubControlRadius))
+                        .background(palette.surface)
+                        .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
+                        .padding(12.dp)
+                ) {
+                    Text(
+                        text = "▸ ${stage.uppercase()}",
+                        fontFamily = JetBrainsMono,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = palette.accent,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    stageJobs.forEach { job ->
+                        PipelineJobNode(
+                            job = job,
+                            nowMs = nowMs,
+                            isSelected = expandedJobId == job.id,
+                            onClick = { onJobClick(job) }
+                        )
+                        if (job != stageJobs.last()) {
+                            Spacer(Modifier.height(6.dp))
+                        }
+                    }
+                }
+                
+                val hasMoreStages = stageNames.subList(index + 1, stageNames.size).any { grouped[it]?.isNotEmpty() == true }
+                if (hasMoreStages) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.KeyboardArrowDown,
+                            contentDescription = "next stage connector",
+                            tint = palette.textMuted.copy(alpha = 0.5f),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun CheckRunsCard(
     checkRuns: List<GHCheckRun>,
     annotations: Map<Long, List<GHCheckAnnotation>>,
-    onLoadAnnotations: (GHCheckRun) -> Unit
+    onLoadAnnotations: (GHCheckRun) -> Unit,
+    onNavigateToCode: ((path: String, line: Int) -> Unit)? = null
 ) {
     val palette = AiModuleTheme.colors
     Column(Modifier.fillMaxWidth().border(1.dp, palette.border).background(palette.surface).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -4064,9 +4242,30 @@ private fun CheckRunsCard(
                         cleanGithubText(annotation.title).isNotBlank() ||
                         cleanGithubText(annotation.path).isNotBlank()
                 }.take(10).forEach { annotation ->
-                    Column(Modifier.fillMaxWidth().padding(start = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(start = 8.dp)
+                            .then(
+                                if (onNavigateToCode != null && annotation.path.isNotBlank()) {
+                                    Modifier.clickable {
+                                        onNavigateToCode(annotation.path, annotation.startLine.coerceAtLeast(1))
+                                    }
+                                } else Modifier
+                            ),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
                         val location = buildAnnotationLocation(annotation)
-                        if (location.isNotBlank()) Text(location, fontSize = 11.sp, color = TextTertiary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (location.isNotBlank()) {
+                            Text(
+                                text = location,
+                                fontSize = 11.sp,
+                                color = if (onNavigateToCode != null && annotation.path.isNotBlank()) palette.accent else TextTertiary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                textDecoration = if (onNavigateToCode != null && annotation.path.isNotBlank()) androidx.compose.ui.text.style.TextDecoration.Underline else null
+                            )
+                        }
                         val body = cleanGithubText(annotation.message).ifBlank { cleanGithubText(annotation.title) }
                         if (body.isNotBlank()) Text(body, fontSize = 11.sp, color = if (annotation.annotationLevel == "failure") Red else TextSecondary, maxLines = 3, overflow = TextOverflow.Ellipsis)
                     }
@@ -4386,6 +4585,20 @@ private fun LogLinesView(log: String, modifier: Modifier = Modifier) {
                 }
             }
             filtered
+        }
+    }
+    
+    LaunchedEffect(displayLines.size) {
+        if (displayLines.isNotEmpty()) {
+            val layoutInfo = lazyListState.layoutInfo
+            val totalItems = layoutInfo.totalItemsCount
+            if (totalItems > 0) {
+                val lastVisibleItem = layoutInfo.visibleItemsInfo.lastOrNull()
+                val isAtBottom = lastVisibleItem == null || lastVisibleItem.index >= totalItems - 5
+                if (isAtBottom) {
+                    lazyListState.scrollToItem(displayLines.size - 1)
+                }
+            }
         }
     }
     
