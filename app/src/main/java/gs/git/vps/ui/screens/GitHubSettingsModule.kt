@@ -976,7 +976,7 @@ internal fun GitHubSettingsScreen(
                                 newApiUrl = GitHubManager.getApiUrl()
                                 showChangeApiUrl = true
                             }
-                            ActionRow(Icons.Rounded.Add, "Device login") { showDeviceLogin = true }
+                            ActionRow(Icons.Rounded.Add, "Device login (recommended for Copilot)") { showDeviceLogin = true }
                             ActionRow(Icons.Rounded.Delete, "Clear GitHub cache") {
                                 confirmAction(
                                     title = "clear github cache",
@@ -1464,7 +1464,7 @@ internal fun GitHubSettingsScreen(
                                 modifier = Modifier.padding(bottom = 6.dp)
                             )
                             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                listOf("gpt-5.5", "gpt-5.4", "gpt-5-mini", "claude-sonnet-4.6", "claude-opus-4.7", "claude-fable-5", "mai-code-1", "mai-code-1-flash").forEach { modelName ->
+                                listOf("gpt-5.5", "gpt-5.4", "gpt-5-mini", "claude-sonnet-4.6", "claude-opus-4.7", "claude-fable-5", "claude-haiku-4.5", "claude-3-5-haiku", "gpt-4o-mini", "mai-code-1", "mai-code-1-flash").forEach { modelName ->
                                     val isSelected = copilotModel == modelName
                                     Box(
                                         modifier = Modifier
@@ -1909,7 +1909,7 @@ internal fun GitHubSettingsScreen(
     }
 
     if (showDeviceLogin) {
-        var deviceClientId by remember { mutableStateOf("") }
+        var deviceClientId by remember { mutableStateOf("Iv1.b507a08c87ecfe98") }
         var deviceCode by remember { mutableStateOf<GHDeviceCode?>(null) }
         var devicePolling by remember { mutableStateOf(false) }
         var deviceError by remember { mutableStateOf<String?>(null) }
@@ -1950,6 +1950,13 @@ internal fun GitHubSettingsScreen(
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (deviceCode == null) {
+                    Text(
+                        text = "To authorize GitHub Copilot (including Free plan), use the pre-filled official Copilot Client ID. Or enter a custom Client ID.",
+                        fontSize = 11.sp,
+                        color = AiModuleTheme.colors.textMuted,
+                        lineHeight = 14.sp
+                    )
+                    Spacer(Modifier.height(4.dp))
                     CompactField("Client ID", deviceClientId) { deviceClientId = it }
                 } else {
                     Text("Enter this code on GitHub:", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted)

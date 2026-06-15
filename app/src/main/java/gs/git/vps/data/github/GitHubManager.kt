@@ -21,6 +21,14 @@ object GitHubManager {
     private const val TAG = "GH"
     @Volatile private var cachedApiUrl: String = "https://api.github.com"
     fun getApiUrl(): String = cachedApiUrl
+    fun getWebUrl(): String {
+        val api = getApiUrl()
+        return if (api == "https://api.github.com") {
+            "https://github.com"
+        } else {
+            api.replace("/api/v3", "").replace("/api", "")
+        }
+    }
     fun setApiUrl(context: Context, url: String) {
         val clean = url.trim().trimEnd('/')
         val resolved = clean.ifBlank { "https://api.github.com" }
@@ -63,9 +71,9 @@ object GitHubManager {
     }
 
     suspend fun getCopilotToken(context: Context): String {
-        val res = request(
+        var res = request(
             context = context,
-            endpoint = "https://api.github.com/copilot_user/token",
+            endpoint = "https://api.github.com/copilot_internal/v2/token",
             method = "GET",
             extraHeaders = mapOf(
                 "User-Agent" to "GitHubCopilotChat/0.11.0",
@@ -73,6 +81,18 @@ object GitHubManager {
             ),
             trackErrors = false
         )
+        if (!res.success) {
+            res = request(
+                context = context,
+                endpoint = "https://api.github.com/copilot_user/token",
+                method = "GET",
+                extraHeaders = mapOf(
+                    "User-Agent" to "GitHubCopilotChat/0.11.0",
+                    "Accept" to "application/json"
+                ),
+                trackErrors = false
+            )
+        }
         if (res.success) {
             return JSONObject(res.body).optString("token", "")
         } else {
@@ -267,7 +287,11 @@ object GitHubManager {
                 
                 conn = (connRaw as HttpURLConnection).apply {
                     requestMethod = method
-                    setRequestProperty("Accept", "application/vnd.github+json")
+                    if (url.contains("/login/")) {
+                        setRequestProperty("Accept", "application/json")
+                    } else {
+                        setRequestProperty("Accept", "application/vnd.github+json")
+                    }
                     setRequestProperty("User-Agent", "GlassFiles")
                     setRequestProperty("Authorization", "Basic $auth")
                     if (body != null) {
@@ -3353,8 +3377,12 @@ object GitHubManager {
     }
 
     suspend fun initiateDeviceFlow(clientId: String): GHDeviceCode? {
-        val body = JSONObject().apply { put("client_id", clientId) }.toString()
-        val r = requestBasic("/login/device/code", "POST", body, clientId, "")
+        val body = JSONObject().apply {
+            put("client_id", clientId)
+            put("scope", "read:user,repo,write:repo_hook,admin:repo_hook,copilot")
+        }.toString()
+        val webUrl = getWebUrl()
+        val r = requestBasic("$webUrl/login/device/code", "POST", body, clientId, "")
         if (!r.success) return null
         return try {
             val j = JSONObject(r.body)
@@ -3374,7 +3402,8 @@ object GitHubManager {
             put("device_code", deviceCode)
             put("grant_type", "urn:ietf:params:oauth:grant-type:device_code")
         }.toString()
-        val r = requestBasic("/login/oauth/access_token", "POST", body, clientId, "")
+        val webUrl = getWebUrl()
+        val r = requestBasic("$webUrl/login/oauth/access_token", "POST", body, clientId, "")
         return try {
             val j = JSONObject(r.body)
             val error = j.optString("error", "")
