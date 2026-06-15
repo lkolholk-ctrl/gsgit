@@ -18,8 +18,20 @@ def resolveGitSha = {
 
 def gsGitGitSha = resolveGitSha()
 def gsGitRunNumber = System.getenv("GITHUB_RUN_NUMBER")?.trim() ?: "local"
-def gsGitVersionCode = 1
-def gsGitVersionName = "1.0.0"
+
+def resolveGitCommitCount = {
+    try {
+        def proc = ["git", "rev-list", "--count", "HEAD"].execute(null, rootDir)
+        proc.waitFor()
+        def count = proc.in.text.trim().toInteger()
+        if (count > 0) return count
+    } catch (ignored) {}
+    return 1
+}
+
+def gsGitVersionCode = resolveGitCommitCount()
+def gsGitVersionName = "1.0.${gsGitVersionCode}"
+
 
 android {
     namespace 'gs.git.vps'
@@ -31,6 +43,12 @@ android {
             storePassword 'android'
             keyAlias 'androiddebugkey'
             keyPassword 'android'
+        }
+        release {
+            storeFile file('../release.keystore')
+            storePassword providers.gradleProperty("GSGIT_RELEASE_STORE_PASSWORD").getOrElse("")
+            keyAlias providers.gradleProperty("GSGIT_RELEASE_KEY_ALIAS").getOrElse("")
+            keyPassword providers.gradleProperty("GSGIT_RELEASE_KEY_PASSWORD").getOrElse("")
         }
     }
 
@@ -53,7 +71,7 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.release
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
@@ -139,6 +157,9 @@ dependencies {
 
     // Coroutines
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1'
+
+    // EncryptedSharedPreferences
+    implementation 'androidx.security:security-crypto:1.1.0-alpha06'
 
     debugImplementation 'androidx.compose.ui:ui-tooling'
     debugImplementation 'androidx.compose.ui:ui-test-manifest'

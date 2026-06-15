@@ -3002,7 +3002,6 @@ internal suspend fun askCopilot(
         val proxyEnabled = prefs.getBoolean("network_proxy_enabled", false)
         val proxyHost = prefs.getString("network_proxy_host", "") ?: ""
         val proxyPort = prefs.getInt("network_proxy_port", 8080)
-        val sslBypass = prefs.getBoolean("network_ssl_bypass", false)
 
         val url = java.net.URL("https://$routeHost/chat/completions")
         val connRaw = if (proxyEnabled && proxyHost.isNotBlank()) {
@@ -3023,24 +3022,6 @@ internal suspend fun askCopilot(
             setRequestProperty("Editor-Version", "vscode/1.85.0")
             setRequestProperty("Editor-Plugin-Version", "copilot-chat/0.11.0")
             setRequestProperty("User-Agent", "GitHubCopilotChat/0.11.0")
-        }
-
-        if (sslBypass && connection is javax.net.ssl.HttpsURLConnection) {
-            try {
-                val trustAllCerts = arrayOf<javax.net.ssl.TrustManager>(
-                    object : javax.net.ssl.X509TrustManager {
-                        override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate>? = null
-                        override fun checkClientTrusted(certs: Array<java.security.cert.X509Certificate>?, authType: String?) {}
-                        override fun checkServerTrusted(certs: Array<java.security.cert.X509Certificate>?, authType: String?) {}
-                    }
-                )
-                val sc = javax.net.ssl.SSLContext.getInstance("SSL")
-                sc.init(null, trustAllCerts, java.security.SecureRandom())
-                connection.sslSocketFactory = sc.socketFactory
-                connection.hostnameVerifier = javax.net.ssl.HostnameVerifier { _, _ -> true }
-            } catch (e: Exception) {
-                android.util.Log.e("COPILOT_CHAT", "SSL bypass error: ${e.message}")
-            }
         }
 
         java.io.OutputStreamWriter(connection.outputStream).use { it.write(requestBody) }

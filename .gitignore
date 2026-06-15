@@ -1,4 +1,7 @@
 app-release.apk
+app-release*.apk
+*.apk
+release.keystore
 .gradle/
 build/
 local.properties

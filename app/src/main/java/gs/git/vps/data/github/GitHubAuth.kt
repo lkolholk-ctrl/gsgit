@@ -3,6 +3,7 @@ package gs.git.vps.data.github
 import android.content.Context
 import android.util.Base64
 import android.util.Log
+import gs.git.vps.data.security.TokenRepository
 import gs.git.vps.security.NativeSecurity
 import org.json.JSONArray
 import org.json.JSONObject
@@ -15,38 +16,45 @@ object GitHubAuth {
     private const val MAX_API_ERROR_LOG = 30
 
     fun saveToken(context: Context, token: String) {
-        try {
-            val encrypted = NativeSecurity.encryptToken(token)
-            val encoded = Base64.encodeToString(encrypted, Base64.NO_WRAP)
-            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .edit()
-                .putString(KEY_TOKEN_ENC, encoded)
-                .apply()
-        } catch (e: Exception) {
-            Log.e(TAG, "encryptToken failed, falling back to plain: ${e.message}")
-            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .edit()
-                .putString(KEY_TOKEN_ENC, token)
-                .apply()
-        }
+        TokenRepository(context).saveToken(token)
+        // Clear any legacy encrypted token once the new secure storage is populated.
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .remove(KEY_TOKEN_ENC)
+            .apply()
     }
 
     fun getToken(context: Context): String {
+        val repo = TokenRepository(context)
+        val token = repo.getToken()
+        if (token.isNotBlank()) return token
+
+        // Migration: try to load legacy token encrypted by NativeSecurity.
         val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(KEY_TOKEN_ENC, "") ?: ""
         if (raw.isBlank()) return ""
+
         return try {
             val bytes = Base64.decode(raw, Base64.NO_WRAP)
-            NativeSecurity.decryptToken(bytes)
+            val legacy = NativeSecurity.decryptToken(bytes)
+            if (legacy.isNotBlank()) {
+                repo.saveToken(legacy)
+                context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    .edit()
+                    .remove(KEY_TOKEN_ENC)
+                    .apply()
+            }
+            legacy
         } catch (e: Exception) {
-            Log.w(TAG, "decryptToken failed, returning raw: ${e.message}")
-            raw
+            Log.w(TAG, "Legacy token migration failed: ${e.message}")
+            ""
         }
     }
 
     fun isLoggedIn(context: Context): Boolean = getToken(context).isNotBlank()
 
     fun logout(context: Context) {
+        TokenRepository(context).clearToken()
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
     }
 

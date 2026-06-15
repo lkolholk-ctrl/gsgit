@@ -23,6 +23,7 @@ import androidx.fragment.app.FragmentActivity
 import gs.git.vps.logging.CrashHandler
 import gs.git.vps.notifications.GitHubNotificationTarget
 import gs.git.vps.security.BiometricHelper
+import gs.git.vps.security.PinSecurity
 import gs.git.vps.ui.components.AiModuleIcon as Icon
 import gs.git.vps.ui.components.AiModuleText as Text
 import gs.git.vps.ui.screens.CrashActivity
@@ -54,8 +55,7 @@ class MainActivity : FragmentActivity() {
     private fun isLockEnabled(): Boolean {
         val prefs = getSharedPreferences("github_prefs", MODE_PRIVATE)
         val biometric = prefs.getBoolean("biometric_lock_enabled", false)
-        val pin = prefs.getString("security_pin_code", "").orEmpty()
-        return biometric || pin.isNotBlank()
+        return biometric || PinSecurity.isPinSet(this)
     }
 
     private fun getAutolockTimeoutMs(): Long {
@@ -76,9 +76,7 @@ class MainActivity : FragmentActivity() {
                 }
             )
         } else {
-            val prefs = getSharedPreferences("github_prefs", MODE_PRIVATE)
-            val pin = prefs.getString("security_pin_code", "").orEmpty()
-            if (pin.isBlank()) {
+            if (!PinSecurity.isPinSet(this)) {
                 isAppLocked = false
             }
         }
@@ -94,6 +92,8 @@ class MainActivity : FragmentActivity() {
         }
 
         gs.git.vps.ui.theme.ThemeState.initialize(this)
+
+        PinSecurity.migrateLegacyPin(this)
 
         val prefs = getSharedPreferences("github_prefs", MODE_PRIVATE)
         if (prefs.getBoolean("sync_background_enabled", false)) {
@@ -241,7 +241,8 @@ private fun AppLockedScreen(onUnlock: () -> Unit, onPinCorrect: () -> Unit) {
     val palette = AiModuleTheme.colors
     val context = androidx.compose.ui.platform.LocalContext.current
     val prefs = remember { context.getSharedPreferences("github_prefs", Context.MODE_PRIVATE) }
-    val savedPin = remember { prefs.getString("security_pin_code", "").orEmpty() }
+    val pinSet = remember { PinSecurity.isPinSet(context) }
+    val pinMaxLength = 6
 
     var enteredPin by remember { mutableStateOf("") }
     var pinError by remember { mutableStateOf(false) }
@@ -272,7 +273,7 @@ private fun AppLockedScreen(onUnlock: () -> Unit, onPinCorrect: () -> Unit) {
                 fontWeight = FontWeight.Bold
             )
 
-            if (savedPin.isNotBlank()) {
+            if (pinSet) {
                 Text(
                     text = "Enter security PIN code:",
                     color = palette.textSecondary,
@@ -283,14 +284,16 @@ private fun AppLockedScreen(onUnlock: () -> Unit, onPinCorrect: () -> Unit) {
                 BasicTextField(
                     value = enteredPin,
                     onValueChange = { input ->
-                        if (input.all { it.isDigit() } && input.length <= savedPin.length) {
+                        if (input.all { it.isDigit() } && input.length <= pinMaxLength) {
                             enteredPin = input
                             pinError = false
-                            if (input == savedPin) {
-                                onPinCorrect()
-                            } else if (input.length == savedPin.length) {
-                                pinError = true
-                                enteredPin = ""
+                            if (input.length >= 4) {
+                                if (PinSecurity.verifyPin(context, input)) {
+                                    onPinCorrect()
+                                } else if (input.length == pinMaxLength) {
+                                    pinError = true
+                                    enteredPin = ""
+                                }
                             }
                         }
                     },

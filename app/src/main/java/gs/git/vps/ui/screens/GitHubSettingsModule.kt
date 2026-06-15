@@ -78,6 +78,7 @@ import android.content.Context
 import gs.git.vps.workers.NotificationSyncWorker
 import gs.git.vps.security.BackupManager
 import gs.git.vps.security.BiometricHelper
+import gs.git.vps.security.PinSecurity
 import java.io.File
 import java.net.URL
 import java.net.HttpURLConnection
@@ -177,7 +178,7 @@ internal fun GitHubSettingsScreen(
 
     // Category 2: Advanced Security
     var securityAutolockTimeout by remember { mutableStateOf(prefs.getInt("security_autolock_timeout", 0)) }
-    var securityPinCode by remember { mutableStateOf(prefs.getString("security_pin_code", "").orEmpty()) }
+    var securityPinInput by remember { mutableStateOf("") }
     var securityPgpKeyAlgorithm by remember { mutableStateOf(prefs.getString("security_pgp_key_algorithm", "RSA-4096").orEmpty()) }
 
     // Category 3: GitHub Copilot
@@ -189,7 +190,6 @@ internal fun GitHubSettingsScreen(
     var networkProxyEnabled by remember { mutableStateOf(prefs.getBoolean("network_proxy_enabled", false)) }
     var networkProxyHost by remember { mutableStateOf(prefs.getString("network_proxy_host", "").orEmpty()) }
     var networkProxyPort by remember { mutableStateOf(prefs.getInt("network_proxy_port", 8080)) }
-    var networkSslBypass by remember { mutableStateOf(prefs.getBoolean("network_ssl_bypass", false)) }
 
     // Category 5: Background Sync
     var syncBackgroundEnabled by remember { mutableStateOf(prefs.getBoolean("sync_background_enabled", false)) }
@@ -1258,9 +1258,18 @@ internal fun GitHubSettingsScreen(
                             }
                             
                             Spacer(Modifier.height(8.dp))
-                            CompactField("Security PIN code (fallback)", securityPinCode) {
-                                securityPinCode = it
-                                prefs.edit().putString("security_pin_code", it).apply()
+                            CompactField(
+                                label = "Security PIN code (fallback, 4-6 digits)",
+                                value = securityPinInput,
+                                password = true
+                            ) {
+                                val digitsOnly = it.filter { ch -> ch.isDigit() }.take(6)
+                                securityPinInput = digitsOnly
+                                if (digitsOnly.isBlank()) {
+                                    PinSecurity.clearPin(context)
+                                } else if (digitsOnly.length in 4..6) {
+                                    PinSecurity.setPin(context, digitsOnly)
+                                }
                             }
                             
                             Spacer(Modifier.height(12.dp))
@@ -1607,24 +1616,6 @@ internal fun GitHubSettingsScreen(
                                 prefs.edit().putInt("network_proxy_port", port).apply()
                             }
                             
-                            Spacer(Modifier.height(12.dp))
-                            Text(
-                                text = "// ssl certificate settings",
-                                color = AiModuleTheme.colors.textMuted,
-                                fontSize = 11.sp,
-                                fontFamily = JetBrainsMono,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(bottom = 6.dp)
-                            )
-                            ToggleRow(
-                                label = "Bypass SSL Verification",
-                                checked = networkSslBypass,
-                                icon = Icons.Rounded.Warning
-                            ) {
-                                networkSslBypass = it
-                                prefs.edit().putBoolean("network_ssl_bypass", it).apply()
-                                addLog("SSL verification bypass ${if (it) "enabled" else "disabled"}")
-                            }
                         }
                         SettingsSection.SYNC -> SectionCard("Background Sync") {
                             Text(
