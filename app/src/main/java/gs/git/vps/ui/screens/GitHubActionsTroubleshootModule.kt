@@ -318,7 +318,7 @@ private fun GitHubProblemRunCard(
                 }
             } else {
                 Spacer(Modifier.height(8.dp))
-                GitHubTerminalButton("🔍 scan logs for patterns", onClick = {
+                GitHubTerminalButton("scan logs for patterns", onClick = {
                     isScanning = true
                     scope.launch {
                         val catalog = KernelErrorPatterns.load(context)
@@ -343,7 +343,7 @@ private fun GitHubProblemRunCard(
             if (onSuggestFix != null) {
                 Spacer(Modifier.height(8.dp))
                 GitHubTerminalButton(
-                    label = if (isAnalyzing) "🤖 analyzing..." else "🤖 Analyze Failure with AI",
+                    label = if (isAnalyzing) "analyzing..." else "Analyze Failure with AI",
                     onClick = {
                         isAnalyzing = true
                         scope.launch {

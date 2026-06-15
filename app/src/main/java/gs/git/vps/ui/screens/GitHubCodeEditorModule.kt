@@ -3140,6 +3140,7 @@ internal fun CopilotChatPanel(
     Column(
         modifier = Modifier
             .fillMaxHeight()
+            .statusBarsPadding()
             .width(if (LocalGHCompact.current) 320.dp else 400.dp)
             .background(palette.surfaceElevated)
             .drawBehind {
