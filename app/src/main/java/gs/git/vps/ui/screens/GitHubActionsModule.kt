@@ -4261,9 +4261,9 @@ private fun CheckRunsCard(
                                 text = location,
                                 fontSize = 11.sp,
                                 color = if (onNavigateToCode != null && annotation.path.isNotBlank()) palette.accent else TextTertiary,
+                                fontFamily = JetBrainsMono,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                textDecoration = if (onNavigateToCode != null && annotation.path.isNotBlank()) androidx.compose.ui.text.style.TextDecoration.Underline else null
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                         val body = cleanGithubText(annotation.message).ifBlank { cleanGithubText(annotation.title) }
