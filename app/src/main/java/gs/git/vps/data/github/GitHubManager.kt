@@ -1099,85 +1099,6 @@ object GitHubManager {
     }
 
     // ═══════════════════════════════════
-    // Issue Reactions
-    // ═══════════════════════════════════
-
-    suspend fun getIssueReactions(context: Context, owner: String, repo: String, issueNumber: Int): List<GHReaction> {
-        val r = request(context, "/repos/$owner/$repo/issues/$issueNumber/reactions?per_page=100")
-        if (!r.success) return emptyList()
-        return try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                GHReaction(
-                    id = j.optLong("id"),
-                    content = j.optString("content"),
-                    user = j.optJSONObject("user")?.optString("login") ?: ""
-                )
-            }
-        } catch (e: Exception) { emptyList() }
-    }
-
-    suspend fun addIssueReaction(context: Context, owner: String, repo: String, issueNumber: Int, content: String): Boolean {
-        val body = JSONObject().apply { put("content", content) }.toString()
-        val r = request(context, "/repos/$owner/$repo/issues/$issueNumber/reactions", "POST", body)
-        return r.success
-    }
-
-    suspend fun deleteIssueReaction(context: Context, owner: String, repo: String, reactionId: Long): Boolean {
-        val r = request(context, "/repos/$owner/$repo/reactions/$reactionId", "DELETE")
-        return r.code == 204 || r.success
-    }
-
-    suspend fun getIssueCommentReactions(context: Context, owner: String, repo: String, commentId: Long): List<GHReaction> {
-        val r = request(context, "/repos/$owner/$repo/issues/comments/$commentId/reactions?per_page=100")
-        if (!r.success) return emptyList()
-        return try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                GHReaction(
-                    id = j.optLong("id"),
-                    content = j.optString("content"),
-                    user = j.optJSONObject("user")?.optString("login") ?: ""
-                )
-            }
-        } catch (e: Exception) { emptyList() }
-    }
-
-    suspend fun addIssueCommentReaction(context: Context, owner: String, repo: String, commentId: Long, content: String): Boolean {
-        val body = JSONObject().apply { put("content", content) }.toString()
-        return request(context, "/repos/$owner/$repo/issues/comments/$commentId/reactions", "POST", body).success
-    }
-
-    suspend fun deleteIssueCommentReaction(context: Context, owner: String, repo: String, reactionId: Long): Boolean {
-        val r = request(context, "/repos/$owner/$repo/reactions/$reactionId", "DELETE")
-        return r.code == 204 || r.success
-    }
-
-    suspend fun getPullRequestReviewCommentReactions(context: Context, owner: String, repo: String, commentId: Long): List<GHReaction> {
-        val r = request(context, "/repos/$owner/$repo/pulls/comments/$commentId/reactions?per_page=100")
-        if (!r.success) return emptyList()
-        return try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                GHReaction(id = j.optLong("id"), content = j.optString("content"), user = j.optJSONObject("user")?.optString("login") ?: "")
-            }
-        } catch (e: Exception) { emptyList() }
-    }
-
-    suspend fun addPullRequestReviewCommentReaction(context: Context, owner: String, repo: String, commentId: Long, content: String): Boolean {
-        val body = JSONObject().apply { put("content", content) }.toString()
-        return request(context, "/repos/$owner/$repo/pulls/comments/$commentId/reactions", "POST", body).success
-    }
-
-    suspend fun deletePullRequestReviewCommentReaction(context: Context, owner: String, repo: String, reactionId: Long): Boolean {
-        val r = request(context, "/repos/$owner/$repo/reactions/$reactionId", "DELETE")
-        return r.code == 204 || r.success
-    }
-
-    // ═══════════════════════════════════
     // Discussions
     // ═══════════════════════════════════
 
@@ -2290,12 +2211,6 @@ data class GHCollaborator(
     val login: String,
     val avatarUrl: String,
     val role: String
-)
-
-data class GHReaction(
-    val id: Long,
-    val content: String,
-    val user: String
 )
 
 data class GHDiscussion(

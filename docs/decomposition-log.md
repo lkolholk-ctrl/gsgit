@@ -541,3 +541,16 @@ Packages, Collaborators, Auth, Repo-settings/Autolinks/LFS/Codespaces, Diagnosti
 
 ### Итог (17 доменов) ✅
 … + GitData, **Contents**. `GitHubManager.kt`: 9008 → 2571 (−71%).
+
+## РЕАЛИЗОВАНО: домен Reactions ✅
+
+`GitHubManager.kt`: 2571 → 2486 строк (−85). 9 функций + parseGHReaction в один файл.
+
+1. **`GitHubManager+Reactions.kt`** (~95 строк) — реакции на issues (get/add/delete),
+   на комментарии issues (get/add/delete), на комментарии ревью PR (get/add/delete).
+   Inline-парсинг → `parseGHReaction`. Удаление у всех видов — общий DELETE /reactions/{id}.
+2. **Модель → `model/GHReaction.kt`** (GHReaction). Потребитель — GitHubRepoModule (wildcard,
+   добавлен `import …model.GHReaction`).
+3. **Чистая сборка `clean compileDebugKotlin` — BUILD SUCCESSFUL (42s), exit 0.**
+
+### Итог (18 доменов) ✅ — `GitHubManager.kt`: 9008 → 2486.
