@@ -17,3 +17,24 @@
 
 - [x] **Доставка сборки на телефон**
   - APK-файл успешно скачан с VPS на телефон в папку загрузок под именем `gsgit-release-fixed.apk`.
+
+## Известные баги (найдены при декомпозиции data-слоя, НЕ исправлены)
+
+Это предсуществующие баги в логике — при нарезке доменов сохранены «как было» (рефактор,
+не переписывание). Чинить отдельным behavioural-коммитом, проверив на реальном API.
+
+- [ ] **Teams: литеральный `$encodedOrg` в URL** — `data/github/GitHubManager+Teams.kt`
+  - Функции: `getTeamMembers`, `addTeamMember`, `removeTeamMember`, `getTeamDiscussions`,
+    `createTeamDiscussion`.
+  - Симптом: URL собирается через `"/orgs/${'$'}encodedOrg/teams/${'$'}encodedTeam/..."`.
+    `${'$'}` даёт ЛИТЕРАЛЬНЫЙ символ `$`, поэтому в путь уходит текст `$encodedOrg`/`$encodedTeam`,
+    а вычисленные `val encodedOrg`/`encodedTeam`/`encodedUser` по факту не подставляются →
+    эндпоинт битый (управление участниками/обсуждениями команд не работает).
+  - Фикс: заменить `${'$'}encodedOrg` → `$encodedOrg` (и аналогично team/user). После — собрать
+    и проверить экран Teams. (Замечание: компилятор предупреждает «variable never used» на этих val.)
+
+- [ ] **createCommitStatus: пишет android `Context` вместо `statusContext`** —
+  `data/github/GitHubManager+Commits.kt`
+  - Симптом: тело запроса `put("context", context)` кладёт объект android `Context`, а параметр
+    `statusContext` игнорируется → у создаваемого commit-status поле `context` неверное.
+  - Фикс: `put("context", statusContext)`. После — проверить создание commit-status.
