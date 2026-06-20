@@ -76,6 +76,11 @@ import coil.request.ImageRequest
 import androidx.compose.material.icons.outlined.Link
 import gs.git.vps.data.Strings
 import gs.git.vps.data.github.*
+import gs.git.vps.data.github.model.GHGitCommit
+import gs.git.vps.data.github.model.GHGitTagDetail
+import gs.git.vps.data.github.model.GHGitBlob
+import gs.git.vps.data.github.model.GHGitTree
+import gs.git.vps.data.github.model.GHGitRef
 import gs.git.vps.data.github.model.GHCommitStatus
 import gs.git.vps.data.github.model.GHCommitDetail
 import gs.git.vps.data.github.model.GHCommit

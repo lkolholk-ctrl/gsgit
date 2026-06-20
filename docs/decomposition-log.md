@@ -497,3 +497,25 @@ Releases, Gists, Webhooks, Notifications, Search, Secrets, Repos, Workflows, Act
 Issues, PullRequests, Users, Orgs, Teams, **Commits, Branches**. `GitHubManager.kt`: 9008 → 3494.
 Следующие домены: GitData (refs/trees/blobs/git-objects)+Contents, Discussions, Reactions, Events,
 Packages, Collaborators, Auth, Repo-settings/Autolinks/LFS/Codespaces, Diagnostics/RateLimit.
+
+## РЕАЛИЗОВАНО: домен GitData ✅
+
+Низкоуровневый Git Data API. `GitHubManager.kt`: 3494 → 3078 строк (−416). Вынесено 13 функций
++ 4 чистых парсера в один файл.
+
+1. **`GitHubManager+GitData.kt`** (~330 строк, 13 функций) — refs (getGitRef, getMatchingGitRefs,
+   createGitRef, updateGitRef, deleteGitRef), trees (getGitTree, createGitTree), blobs (getGitBlob,
+   createGitBlob), tag-объекты (getGitTag, createGitTag), commit-объекты (getGitCommit,
+   createGitCommit). Inline-парсинг сведён к `parseGitRef`/`parseGitTree`/`parseGitTagDetail`/
+   `parseGitCommit`. createGitCommit/updateGitRef сохраняют PGP-подпись (PgpKeyManager) и reflog
+   (LocalTimeTravelManager) как было.
+2. **Модели → `model/GHGitObjects.kt`**: GHGitRef, GHGitTree, GHGitTreeItem, GHGitBlob,
+   GHGitTagDetail, GHGitCommit (только потребитель — GitHubRepoModule).
+3. **Ядро не трогали** — `request` уже internal; PREFS/KEY_USER (PGP-подпись) уже internal.
+4. **Contents оставлены в core** (getFileContent/upload*/commitWorkspaceChanges/clone/uploadProjectFolder)
+   — отдельный домен следующим; они зовут эти GitData-функции из того же пакета без импорта.
+5. **Потребитель** GitHubRepoModule (wildcard) — добавлены 5 явных `.model`-импортов гит-объектов.
+6. **Чистая сборка `clean compileDebugKotlin` — BUILD SUCCESSFUL (43s), exit 0.**
+
+### Итог (16 доменов) ✅
+… + **GitData**. `GitHubManager.kt`: 9008 → 3078.
