@@ -54,8 +54,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
-import gs.git.vps.data.github.GHNotification
-import gs.git.vps.data.github.GHThreadSubscription
+import gs.git.vps.data.github.*
+import gs.git.vps.data.github.model.GHNotification
+import gs.git.vps.data.github.model.GHThreadSubscription
 import gs.git.vps.data.github.GitHubManager
 import gs.git.vps.ui.components.AiModuleAlertDialog
 import gs.git.vps.ui.components.AiModuleHairline

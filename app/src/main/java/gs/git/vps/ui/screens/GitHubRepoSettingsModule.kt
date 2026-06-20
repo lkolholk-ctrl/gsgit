@@ -38,6 +38,7 @@ import gs.git.vps.ui.components.AiModuleSpinner
 import gs.git.vps.ui.components.AiModuleText as Text
 import gs.git.vps.ui.components.AiModuleTextAction
 import gs.git.vps.ui.components.AiModuleTextField
+import gs.git.vps.data.github.*
 import gs.git.vps.data.github.GHAutolink
 import gs.git.vps.data.github.GHDeployKey
 import gs.git.vps.data.github.GHInteractionLimitEntry

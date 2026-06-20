@@ -10,6 +10,7 @@ import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import gs.git.vps.MainActivity
+import gs.git.vps.data.github.*
 import gs.git.vps.data.github.GitHubManager
 
 class NotificationSyncWorker(

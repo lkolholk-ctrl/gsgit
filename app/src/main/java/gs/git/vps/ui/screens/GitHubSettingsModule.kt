@@ -93,7 +93,7 @@ import gs.git.vps.data.github.GHBlockedEntry
 import gs.git.vps.data.github.GHEmailEntry
 import gs.git.vps.data.github.GHFollowerEntry
 import gs.git.vps.data.github.GHInteractionLimitEntry
-import gs.git.vps.data.github.GHNotification
+import gs.git.vps.data.github.model.GHNotification
 import gs.git.vps.data.github.GHOrg
 import gs.git.vps.data.github.GHDeviceCode
 import gs.git.vps.data.github.GHOrgMembership

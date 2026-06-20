@@ -127,3 +127,28 @@ GitHubActionsModule, GitHubReleasesModule, ReleaseDownloadWorker.
   Это первый честный (без инкрементального кэша) зелёный после всех трёх доменов.
 - `GitHubManager.kt`: 9008 → 8399 строк (−609 за три домена). Вынесено: Releases (13),
   Gists (12), Webhooks (14) = 39 функций, 7 моделей, 3 файла домена + 3 файла моделей.
+
+Коммит: `c3aad45 refactor(data): extract Webhooks domain + fix extension-fn imports`.
+
+## Домен Notifications (по эталону Releases)
+
+- `GitHubManager+Notifications.kt`: 15 `internal`-extension-функций (getNotifications,
+  listNotifications, markNotificationRead, markThreadRead, markAllNotificationsRead,
+  markRepoNotificationsRead, getThreadSubscription, setThreadSubscription,
+  deleteThreadSubscription, markThreadDone, getNotification, isWatching, isWatchingRepo,
+  watchRepo, unwatchRepo) + private extension `fetchNotifications`.
+- Inline-парсинг → чистые `parseGHNotification`/`parseGHThreadSubscription`. Приватный хелпер
+  `githubApiUrlToWebUrl` использовался только тут — перенесён (остался private в файле).
+- Модели `model/GHNotification.kt`: GHNotification (с computed-алиасами), GHThreadSubscription.
+- Из `GitHubManager.kt` удалены функции и модели. Файл: 8399 → 8201 строк.
+- Wildcard добавлен потребителям функций: GitHubNotificationsModule, GitHubRepoSettingsModule,
+  NotificationSyncWorker. Явные импорты моделей переключены на `.model` в GitHubSettingsModule,
+  GitHubNotificationsModule.
+- Контрольная компиляция `compileDebugKotlin` — **BUILD SUCCESSFUL (24s), exit 0**.
+  Все потребители функций (wildcard) и типов (model-import) проверены grep'ом заранее.
+
+### Промежуточный итог (4 домена) ✅
+
+`GitHubManager.kt`: 9008 → 8201 строк (−807). Вынесено 4 домена: Releases(13), Gists(12),
+Webhooks(14), Notifications(15+1) = 55 функций, 9 моделей. 4 файла домена + 4 файла моделей.
+Конвенция стабильна и задокументирована.
