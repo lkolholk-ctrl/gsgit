@@ -295,3 +295,35 @@ GHDeployKey, GHRepoSettings, GHRepoInvitation, GHUserRepositoryInvitation, GHInt
 ### Итог (9 доменов, 2 файла Actions) ✅
 Releases, Gists, Webhooks, Notifications, Search, Secrets, Repos, **Workflows, Actions**.
 `GitHubManager.kt`: 9008 → 6196.
+
+## РЕАЛИЗОВАНО: домен Projects ✅
+
+Нарезан по эталону, разбит по под-доменам в ДВА файла (как Actions+Workflows).
+`GitHubManager.kt`: 6196 → 5418 строк (−778). Вынесено 27 функций + 9 парсеров + 1 private-helper.
+
+1. **`GitHubManager+Projects.kt`** (156 строк) — classic Projects (REST): getRepoProjects,
+   getProject, createRepoProject, getOrgProjects, createOrgProject, updateProject, deleteProject,
+   getProjectColumns, createProjectColumn, getProjectCards, createProjectCard, moveProjectCard,
+   deleteProjectCard (13 функций) + парсеры parseProject/parseProjectColumn/parseProjectCard.
+2. **`GitHubManager+ProjectsV2.kt`** (539 строк) — Projects V2 (GraphQL): getRepoProjectsV2,
+   getProjectV2Detail, updateProjectV2, create/update/deleteProjectV2Field,
+   add/updateProjectV2DraftIssue, delete/archiveProjectV2Item, update/clearProjectV2ItemFieldValue,
+   moveProjectV2Item (14 функций) + private-helper projectV2SingleSelectOptionsJson + парсеры
+   parseProjectV2Detail/Field/View/Workflow/Item/ItemFieldValue. Объём раздут GraphQL-литералами
+   (один getProjectV2Detail — ~120 строк query); разбиение classic/V2 удержало оба файла < 600.
+3. **Модели → `model/GHProject.kt`** (11 data class): GHProject, GHProjectColumn, GHProjectCard,
+   GHProjectV2, GHProjectV2Detail, GHProjectV2Field, GHProjectV2FieldOption, GHProjectV2View,
+   GHProjectV2Workflow, GHProjectV2Item, GHProjectV2ItemFieldValue.
+4. **Ядро: `graphql` помечен `internal`** (был private) — его зовут все V2-функции. `request`/
+   `encPath` уже internal. Helper `projectV2SingleSelectOptionsJson` (не использует this) →
+   top-level private в V2-файле.
+5. **Потребитель один** — GitHubProjectsModule.kt (проверено grep'ом): 10 импортов моделей
+   переключены на `.model`, добавлены явные импорты 24 перенесённых extension-функций
+   (экран без wildcard). Других вызывающих файлов нет — риск ловушки инкрементальной сборки нулевой.
+6. **Чистая сборка `./gradlew clean compileDebugKotlin` — BUILD SUCCESSFUL (44s), exit 0.**
+   Только предсуществующие deprecation-warnings про `Icons.*` (не связаны с декомпозицией).
+
+### Итог (10 доменов) ✅
+Releases, Gists, Webhooks, Notifications, Search, Secrets, Repos, Workflows, Actions, **Projects**.
+`GitHubManager.kt`: 9008 → 5418. Следующие крупные домены: Issues+Comments+Labels (~24),
+PullRequests+Reviews+Checks (~25), Users+Orgs+Teams, Commits+Branches+Tags, Discussions.
