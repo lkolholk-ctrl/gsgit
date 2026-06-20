@@ -84,6 +84,9 @@ import gs.git.vps.data.github.model.GHRepoPerson
 import gs.git.vps.data.github.model.GHTrafficPath
 import gs.git.vps.data.github.model.GHTrafficReferrer
 import gs.git.vps.data.github.model.GHTrafficSeries
+import gs.git.vps.data.github.model.GHCheckRun
+import gs.git.vps.data.github.model.GHWorkflow
+import gs.git.vps.data.github.model.GHWorkflowRun
 import gs.git.vps.notifications.GitHubNotificationTarget
 import gs.git.vps.ui.components.AiModuleAlertDialog
 import gs.git.vps.ui.components.AiModuleGlyph

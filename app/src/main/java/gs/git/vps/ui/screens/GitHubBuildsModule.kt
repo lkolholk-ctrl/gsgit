@@ -38,10 +38,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import gs.git.vps.data.github.GHWorkflow
-import gs.git.vps.data.github.GHWorkflowRun
 import gs.git.vps.data.github.GitHubManager
 import gs.git.vps.data.github.model.GHRepo
+import gs.git.vps.data.github.model.GHWorkflow
+import gs.git.vps.data.github.model.GHWorkflowRun
+import gs.git.vps.data.github.cancelWorkflowRun
+import gs.git.vps.data.github.getWorkflowRuns
+import gs.git.vps.data.github.rerunWorkflow
 import gs.git.vps.ui.components.AiModuleHairline
 import gs.git.vps.ui.components.AiModuleSpinner
 import gs.git.vps.ui.components.AiModuleText as Text

@@ -35,10 +35,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import gs.git.vps.data.github.GHCheckAnnotation
-import gs.git.vps.data.github.GHCheckRun
 import gs.git.vps.data.github.GHCheckSuite
 import gs.git.vps.data.github.GitHubManager
+import gs.git.vps.data.github.model.GHCheckAnnotation
+import gs.git.vps.data.github.model.GHCheckRun
+import gs.git.vps.data.github.getCheckRunAnnotations
+import gs.git.vps.data.github.rerunFailedJobs
 import gs.git.vps.ui.components.AiModuleHairline
 import gs.git.vps.ui.components.AiModuleSpinner
 import gs.git.vps.ui.components.AiModuleText as Text

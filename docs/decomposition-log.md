@@ -260,3 +260,38 @@ GHDeployKey, GHRepoSettings, GHRepoInvitation, GHUserRepositoryInvitation, GHInt
 
 ### Итог (7 доменов) ✅
 Вынесено: Releases, Gists, Webhooks, Notifications, Search, Secrets, **Repos**. `GitHubManager.kt`: 9008 → 7208.
+
+## РЕАЛИЗОВАНО: домен Actions+Workflows ✅
+
+Самый крупный домен, нарезан по под-доменам в ДВА файла, один коммит.
+`GitHubManager.kt`: 7208 → 6196 строк (−1012). Вынесено 60 функций + 12 парсеров.
+
+1. **`GitHubManager+Workflows.kt`** (585 строк) — CI-исполнение: workflows, runs, jobs,
+   dispatch(+schema/yaml-парсер), artifacts, check-runs, usage, review/approve. Парсеры
+   parseWorkflow/parseWorkflowRun/parseJobs/parseArtifact(s)/parseActionsUsage/
+   parseWorkflowDispatchSchema(+yaml*) перенесены как private. Приватный хелпер
+   `getRedirectLocationOrText` стал `private suspend fun GitHubManager.` (звал getToken).
+   Бинарные стримы (zip-логи/артефакты) остались на прямом openConnection() — законное
+   исключение (текстовое ядро request() их не обслуживает), помечено в шапке.
+2. **`GitHubManager+Actions.kt`** (361 строка) — инфраструктура: deployments, environments,
+   caches, self-hosted runners (repo/org/enterprise), actions-permissions/retention.
+   Парсеры parseEnvironment/parseActionRunner перенесены как private.
+3. **Модели → `model/`**: `GHWorkflow.kt` (GHActionResult, GHWorkflow, *DispatchInput/Schema,
+   GHWorkflowRun, GHJob, GHStep, GHArtifact, GHCheckRun, GHCheckAnnotation, GHActionsUsage,
+   GHWorkflowRunReview); `GHActions.kt` (GHPendingDeployment, GHDeployment, GHActionsCacheUsage/
+   Entry, GHActionRunner, GHActionRunnerGroup, GHRunnerToken, GHActionsPermissions,
+   GHWorkflowPermissions, GHActionsRetention, GHEnvironment, GHEnvironmentProtectionRule,
+   GHDeploymentBranchPolicy).
+4. **Шаренные хелперы → `internal`**: `apiErrorMessage` (звался из getCheckRunAnnotations).
+   `request`/`repoPath`/`encPath`/`parseNextPage`/getApiUrl/getToken — уже доступны.
+   НЕ тащили: getPullRequestCheckRuns (домен PR, тоже зовёт GHCheckRun → импорт в core),
+   интерливленные Org-audit/SCIM/SAML/OAuth/device-flow (чужие домены, между runner-функциями),
+   codespaces. В core добавлены импорты GHActionResult/GHCheckRun.
+5. **Потребители** (compiler-driven): 7 экранов — импорты моделей; 4 экрана без wildcard —
+   импорты перенесённых функций. Поймана ловушка: `model.GHEnvironmentSecret` как подстрока
+   ломала проверку наличия импорта `GHEnvironment` — поправлено вручную.
+6. `compileDebugKotlin` — **BUILD SUCCESSFUL, exit 0**. Поведение идентично (рефактор).
+
+### Итог (9 доменов, 2 файла Actions) ✅
+Releases, Gists, Webhooks, Notifications, Search, Secrets, Repos, **Workflows, Actions**.
+`GitHubManager.kt`: 9008 → 6196.
