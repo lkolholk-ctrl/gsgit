@@ -1,28 +1,58 @@
-# CLAUDE.md — GsGit Project Rules
+# GsGit — Claude Code project memory
 
-## Speed & Efficiency
-- **NEVER enter plan mode** — just find the bug and fix it immediately
-- **NEVER explore with subagents** — use grep/read directly on the specific file
-- **Minimize tool calls** — read only the file you're editing, don't read 10 files "for context"
-- **Fix, don't plan** — if you know what's wrong, edit the code. Don't write plans or ask questions first
-- **One commit, one push, one build** — no intermediate commits, no retry loops
+Полноценный GitHub-клиент под Android. ~60.8k строк Kotlin, один модуль, Jetpack Compose.
+Package root: `gs.git.vps`. HTTP — голый `HttpURLConnection` (Ktor НЕ используем, не предлагать).
 
-## Code Rules
-- .md file rendering MUST use `ReadmeHtmlDocument` (WebView) — same as README tab. NEVER use `MarkdownCanvas` or native Compose block rendering for .md files
-- When fixing UI issues, look at how the WORKING version does it and copy the same approach
-- All functions in `GitHubRepoModule.kt` marked `internal` are accessible from other screens in the same module
-- `GHRepo` requires all fields when constructing — use defaults for unused ones
+> Этот файл грузится каждую сессию. Держать кратким. Детали эталонов — в `.claude/rules/`.
 
-## Build & Deploy
-- `ssh myvps` connects to VPS
-- Repo on VPS: `/root/gsgit/gsgit`
-- Build: `./gradlew assembleRelease`
-- APK output: `app/build/outputs/apk/release/app-release.apk`
-- Download to phone: `scp myvps:/root/gsgit/gsgit/app/build/outputs/apk/release/app-release.apk /storage/emulated/0/Download/gsgit-latest.apk`
-- Screenshots from user: `/storage/emulated/0/Download/Screenshot/`
+## Карта (где что лежит)
 
-## Common Mistakes to Avoid
-- Don't use `MarkdownCanvas` from `GitHubMarkdownModule.kt` for .md file viewing — it's the old raw renderer
-- Don't use `Column(verticalScroll)` for long documents — use `LazyColumn` or `WebView`
-- Don't commit `app-release.apk` — it's in `.gitignore`
-- `git push` may fail if APK was accidentally staged — unstage it first
+- `data/github/` — слой GitHub API. Ядро: `GitHubManager.kt` (god-файл, 9k строк).
+- `ui/screens/` — Compose-экраны (тут god-классы: RepoModule 8.1k, ActionsModule 6k, CodeEditor 4.4k).
+- `ui/components/`, `ui/liquid/`, `ui/theme/` — переиспользуемые UI-примитивы, glassmorphism, тема.
+- `security/`, `data/security/` — нативная защита (XOR, hardware keys, O-MVLL, NDK r26).
+- `logging/`, `notifications/`, `workers/`, `util/` — инфраструктура.
+
+## Архитектурные инварианты (НЕ нарушать)
+
+1. **Единый сетевой слой.** Любой вызов GitHub API идёт через `GitHubManager.request()`.
+   Прямой `openConnection()` вне ядра ЗАПРЕЩЁН в новом коде. Ядро уже даёт: ETag-кэш,
+   retry на rate-limit с ожиданием reset, backoff на 5xx, retry на сетевых, proxy, error-tracking.
+2. **Единый тип возврата** — `ApiResult`. Ошибки — через `recordApiError`, не глотать молча.
+3. **Пагинация** — только через `parseNextPage(headers)`. Не парсить Link-заголовок руками заново.
+4. **Никаких секретов в коде/репо.** Токены/ключи — только через защищённое хранилище.
+5. **Обфускация — в самом конце**, на уже нарезанные модули. Не обфусцировать god-классы.
+
+## Известные протечки (чинить при касании этих файлов)
+
+Прямой `openConnection()` мимо ядра — завести в `GitHubManager.request()`:
+- `ui/screens/GitHubRepoModule.kt` — сырой README (нужен кастомный Accept → добавить параметр в ядро)
+- `ui/screens/GitHubCodeEditorModule.kt` — сырой файл (дублирует proxy-логику ядра)
+- `ui/screens/GitHubDiagnosticsModule.kt` — пинг `/zen`
+- `data/github/GitHubRepoSettingsManager.kt` — собственный мини-request (свести на ядро)
+- `ui/screens/GitHubSettingsModule.kt` — вызов LLM `chat/completions` (это НЕ GitHub; оставить, но вынести в отдельный AI-клиент, не в Composable)
+
+## Конвенция декомпозиции
+
+**Data-слой** (`GitHubManager`): резать по доменам GitHub API через **extension-функции объекта**
+в файлах `GitHubManager+<Domain>.kt` (Repos, Issues, PullRequests, Actions, Workflows, Projects,
+Users, Orgs, Teams, Gists, Releases, Webhooks, Commits, Branches, Search, Discussions, Secrets…).
+`request()` и хелперы → `internal`. **Сигнатуры вызовов не меняются** — `GitHubManager.x(...)` как было.
+См. `.claude/rules/data-service.md`.
+
+**UI-слой** (god-экраны): тонкий экран + стейт в state-holder/ViewModel, под-Composable'ы и диалоги
+в отдельные файлы, UDF, ноль сети/бизнес-логики в Composable. См. `.claude/rules/ui-screen.md`.
+
+## Порядок работ
+
+1. Data-слой по доменам (быстро, риск ноль) — `GitHubManager` + `GitHubRepoSettingsManager`.
+2. UI god-экраны (RepoModule → ActionsModule → CodeEditor).
+3. Тройная обфускация на готовые куски.
+
+## Правила сессии
+
+- **Один модуль за коммит.** Не трогать 60k за раз.
+- После каждого модуля — **собрать билд и убедиться, что поведение не изменилось** (рефактор, не переписывание).
+- Между разными модулями — `/clear`, чтобы контекст не засорялся.
+- Сначала доводим до идеала ДВА эталонных модуля (один data, один UI), фиксируем как конвенцию,
+  потом реплицируем на остальные строго по эталону.
