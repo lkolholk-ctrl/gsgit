@@ -51,7 +51,7 @@ import gs.git.vps.data.github.*
 import gs.git.vps.ui.theme.AiModuleTheme
 import gs.git.vps.ui.theme.JetBrainsMono
 import gs.git.vps.data.github.model.GHRepoTeam
-import gs.git.vps.data.github.GHCollaborator
+import gs.git.vps.data.github.model.GHCollaborator
 import gs.git.vps.data.github.model.GHTeamDiscussion
 import gs.git.vps.data.github.GitHubManager
 import gs.git.vps.ui.components.AiModuleAlertDialog

@@ -1055,49 +1055,6 @@ object GitHubManager {
         }
 
     // ═══════════════════════════════════
-    // Collaborators
-    // ═══════════════════════════════════
-
-    suspend fun getCollaborators(context: Context, owner: String, repo: String): List<GHCollaborator> {
-        val r = request(context, "/repos/$owner/$repo/collaborators?per_page=100")
-        if (!r.success) return emptyList()
-        return try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                val perms = j.optJSONObject("permissions")
-                GHCollaborator(
-                    login = j.optString("login"),
-                    avatarUrl = j.optString("avatar_url", ""),
-                    role = perms?.let {
-                        when {
-                            it.optBoolean("admin", false) -> "admin"
-                            it.optBoolean("maintain", false) -> "maintain"
-                            it.optBoolean("push", false) -> "push"
-                            it.optBoolean("triage", false) -> "triage"
-                            it.optBoolean("pull", false) -> "pull"
-                            else -> "pull"
-                        }
-                    } ?: "pull"
-                )
-            }
-        } catch (e: Exception) { emptyList() }
-    }
-
-    suspend fun addCollaborator(context: Context, owner: String, repo: String, username: String, permission: String = "push"): Boolean {
-        val body = JSONObject().apply { put("permission", permission) }.toString()
-        return request(context, "/repos/$owner/$repo/collaborators/${URLEncoder.encode(username, "UTF-8")}", "PUT", body).let { it.code == 201 || it.code == 204 || it.success }
-    }
-
-    suspend fun removeCollaborator(context: Context, owner: String, repo: String, username: String): Boolean =
-        request(context, "/repos/$owner/$repo/collaborators/${URLEncoder.encode(username, "UTF-8")}", "DELETE").let { it.code == 204 || it.success }
-
-    suspend fun updateCollaboratorPermission(context: Context, owner: String, repo: String, username: String, permission: String): Boolean {
-        val body = JSONObject().apply { put("permission", permission) }.toString()
-        return request(context, "/repos/$owner/$repo/collaborators/${URLEncoder.encode(username, "UTF-8")}", "PUT", body).success
-    }
-
-    // ═══════════════════════════════════
     // Repository Rulesets
     // ═══════════════════════════════════
 
@@ -1780,12 +1737,6 @@ data class GHDeviceTokenResult(
 
 
 data class GHUserLite(val login: String, val avatarUrl: String = "")
-
-data class GHCollaborator(
-    val login: String,
-    val avatarUrl: String,
-    val role: String
-)
 
 data class GHRuleset(
     val id: Int,

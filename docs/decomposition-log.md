@@ -588,3 +588,18 @@ helper'а/парсера в один файл.
 3. **Чистая сборка `clean compileDebugKotlin` — BUILD SUCCESSFUL (38s), exit 0.**
 
 ### Итог (20 доменов) ✅ — `GitHubManager.kt`: 9008 → 2002 (−78%).
+
+## РЕАЛИЗОВАНО: домен Collaborators ✅
+
+`GitHubManager.kt`: 2002 → 1953 строк (−49). 4 функции + parseGHCollaborator в один файл.
+
+1. **`GitHubManager+Collaborators.kt`** (~55 строк) — getCollaborators, addCollaborator,
+   removeCollaborator, updateCollaboratorPermission. Inline-парсинг (role из permissions) →
+   `parseGHCollaborator`.
+2. **Модель → `model/GHCollaborator.kt`**. Шарится: getTeamMembers (домен Teams) → в Teams-файл
+   добавлен `import …model.GHCollaborator` (раньше брал из core того же пакета).
+3. **Потребители**: GitHubCollaboratorsModule (без wildcard) — импорт модели → `.model` + добавлен
+   `import …github.*`; GitHubTeamsModule (wildcard) — импорт модели → `.model`.
+4. **Чистая сборка `clean compileDebugKotlin` — BUILD SUCCESSFUL (39s), exit 0.**
+
+### Итог (21 домен) ✅ — `GitHubManager.kt`: 9008 → 1953.

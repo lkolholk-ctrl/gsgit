@@ -4,6 +4,7 @@ import android.content.Context
 import gs.git.vps.data.github.model.GHOrgTeam
 import gs.git.vps.data.github.model.GHRepoTeam
 import gs.git.vps.data.github.model.GHTeamDiscussion
+import gs.git.vps.data.github.model.GHCollaborator
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
@@ -13,7 +14,7 @@ import java.net.URLEncoder
  * участники команд, обсуждения команд. Нарезан по эталону Releases (см. docs/decomposition-log.md).
  * Сеть — через ядро `request()`, парсинг — чистые `parseGHX`. Сигнатуры вызовов не менялись.
  *
- * GHCollaborator (возвращает getTeamMembers) — в core, импорт не нужен: тот же пакет.
+ * GHCollaborator (возвращает getTeamMembers) — домен Collaborators, импортируется из `.model`.
  *
  * ВНИМАНИЕ (предсуществующий баг, сохранён как есть — это рефактор, не фикс): в getTeamMembers/
  * addTeamMember/removeTeamMember/getTeamDiscussions/createTeamDiscussion URL собирается через
