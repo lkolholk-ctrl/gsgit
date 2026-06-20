@@ -554,3 +554,23 @@ Packages, Collaborators, Auth, Repo-settings/Autolinks/LFS/Codespaces, Diagnosti
 3. **Чистая сборка `clean compileDebugKotlin` — BUILD SUCCESSFUL (42s), exit 0.**
 
 ### Итог (18 доменов) ✅ — `GitHubManager.kt`: 9008 → 2486.
+
+## РЕАЛИЗОВАНО: домен Discussions ✅
+
+Целиком GraphQL. `GitHubManager.kt`: 2486 → 2144 строк (−342). 12 функций + 3 приватных
+helper'а/парсера в один файл.
+
+1. **`GitHubManager+Discussions.kt`** (~320 строк) — getDiscussions, getDiscussionCategories,
+   getDiscussionDetail, create/update/deleteDiscussion, getDiscussionComments, addDiscussionComment,
+   mark/unmarkDiscussionCommentAsAnswer, add/removeDiscussionUpvote. Приватные getRepositoryNodeId
+   (резолв node-id репо для createDiscussion), parseDiscussionNodes/parseDiscussion перенесены сюда.
+   GraphQL-литералы `${'$'}` сохранены как есть (корректный `$` GraphQL-переменных).
+2. **Модели → `model/GHDiscussion.kt`**: GHDiscussion, GHDiscussionCategory. Комментарии обсуждений
+   возвращают GHComment (домен Issues) — импорт из `.model`.
+3. **Ядро**: из `GitHubManager.kt` удалён ставший лишним `import …model.GHComment` (его держал только
+   getDiscussionComments). `graphql` уже internal.
+4. **Потребитель** GitHubDiscussionsModule (без wildcard): импорты моделей → `.model`, добавлен
+   `import …github.*` для перенесённых функций.
+5. **Чистая сборка `clean compileDebugKotlin` — BUILD SUCCESSFUL (39s), exit 0.**
+
+### Итог (19 доменов) ✅ — `GitHubManager.kt`: 9008 → 2144.

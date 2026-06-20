@@ -51,9 +51,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import gs.git.vps.data.github.model.GHComment
+import gs.git.vps.data.github.*
 import gs.git.vps.ui.theme.AiModuleTheme
-import gs.git.vps.data.github.GHDiscussion
-import gs.git.vps.data.github.GHDiscussionCategory
+import gs.git.vps.data.github.model.GHDiscussion
+import gs.git.vps.data.github.model.GHDiscussionCategory
 import gs.git.vps.data.github.GitHubManager
 import gs.git.vps.ui.components.AiModuleAlertDialog
 import gs.git.vps.ui.components.AiModuleHairline
