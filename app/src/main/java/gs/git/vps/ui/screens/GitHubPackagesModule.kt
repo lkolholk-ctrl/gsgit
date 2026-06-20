@@ -51,8 +51,8 @@ import gs.git.vps.data.github.*
 import gs.git.vps.ui.theme.AiModuleTheme
 import gs.git.vps.ui.theme.JetBrainsMono
 import androidx.compose.foundation.layout.Spacer
-import gs.git.vps.data.github.GHPackage
-import gs.git.vps.data.github.GHPackageVersion
+import gs.git.vps.data.github.model.GHPackage
+import gs.git.vps.data.github.model.GHPackageVersion
 import gs.git.vps.data.github.GitHubManager
 import gs.git.vps.ui.components.AiModuleAlertDialog
 import gs.git.vps.ui.components.AiModuleIcon as Icon

@@ -574,3 +574,17 @@ helper'а/парсера в один файл.
 5. **Чистая сборка `clean compileDebugKotlin` — BUILD SUCCESSFUL (39s), exit 0.**
 
 ### Итог (19 доменов) ✅ — `GitHubManager.kt`: 9008 → 2144.
+
+## РЕАЛИЗОВАНО: домен Packages ✅
+
+`GitHubManager.kt`: 2144 → 2002 строк (−141). 8 функций + helper'ы/парсеры в один файл.
+
+1. **`GitHubManager+Packages.kt`** (~150 строк) — getUserPackages/getOrgPackages (с раскруткой
+   packageType="all" по githubPackageTypes), getPackage, deletePackage, getPackageVersions,
+   deletePackageVersion, restorePackage, restorePackageVersion. Приватные packageOwnerPath,
+   githubPackageTypes (val), parsePackages/parsePackage/parsePackageVersion перенесены сюда.
+2. **Модели → `model/GHPackage.kt`**: GHPackage, GHPackageVersion. Потребитель — GitHubPackagesModule
+   (wildcard; импорты моделей → `.model`).
+3. **Чистая сборка `clean compileDebugKotlin` — BUILD SUCCESSFUL (38s), exit 0.**
+
+### Итог (20 доменов) ✅ — `GitHubManager.kt`: 9008 → 2002 (−78%).
