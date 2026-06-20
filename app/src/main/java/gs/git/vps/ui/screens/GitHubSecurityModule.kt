@@ -24,6 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import gs.git.vps.data.github.*
 import gs.git.vps.data.github.GHCodeScanningAlert
 import gs.git.vps.ui.components.AiModuleAlertDialog
 import gs.git.vps.ui.components.AiModuleHairline
@@ -704,7 +705,7 @@ internal fun SecurityScreen(
     var showEditAdvisory by remember { mutableStateOf<GHRepositorySecurityAdvisory?>(null) }
     var advisoryActionInFlight by remember { mutableStateOf(false) }
 
-    var repoSecrets by remember { mutableStateOf<List<gs.git.vps.data.github.GHActionSecret>>(emptyList()) }
+    var repoSecrets by remember { mutableStateOf<List<gs.git.vps.data.github.model.GHActionSecret>>(emptyList()) }
     var loadingSecrets by remember { mutableStateOf(false) }
     var showAddSecretDialog by remember { mutableStateOf(false) }
     var newSecretName by remember { mutableStateOf("") }

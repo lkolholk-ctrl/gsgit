@@ -2593,52 +2593,6 @@ object GitHubManager {
         return r.success || r.code == 204
     }
 
-    suspend fun getRepoActionsSecrets(context: Context, owner: String, repo: String): List<GHActionSecret> {
-        val r = request(context, "/repos/$owner/$repo/actions/secrets?per_page=100")
-        if (!r.success) return emptyList()
-        return try {
-            val arr = JSONObject(r.body).optJSONArray("secrets") ?: JSONArray()
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                GHActionSecret(j.optString("name"), j.optString("created_at", ""), j.optString("updated_at", ""))
-            }
-        } catch (e: Exception) { emptyList() }
-    }
-
-    suspend fun getRepoActionsPublicKey(context: Context, owner: String, repo: String): GHActionPublicKey? {
-        val r = request(context, "/repos/$owner/$repo/actions/secrets/public-key")
-        if (!r.success) return null
-        return try {
-            val j = JSONObject(r.body)
-            GHActionPublicKey(j.optString("key_id"), j.optString("key"))
-        } catch (e: Exception) { null }
-    }
-
-    suspend fun createOrUpdateRepoActionsSecret(context: Context, owner: String, repo: String, name: String, value: String): Boolean {
-        return try {
-            val publicKey = getRepoActionsPublicKey(context, owner, repo) ?: return false
-            val encrypted = withContext(Dispatchers.Default) {
-                GitHubSecretCrypto.encryptSecret(publicKey.key, value)
-            }
-            val encodedName = URLEncoder.encode(name, "UTF-8")
-            val body = JSONObject().apply {
-                put("encrypted_value", encrypted)
-                put("key_id", publicKey.keyId)
-            }.toString()
-            request(context, "/repos/$owner/$repo/actions/secrets/$encodedName", "PUT", body).let {
-                it.code == 201 || it.code == 204 || it.success
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Save actions secret: ${e.message}")
-            false
-        }
-    }
-
-    suspend fun deleteRepoActionsSecret(context: Context, owner: String, repo: String, name: String): Boolean {
-        val encodedName = URLEncoder.encode(name, "UTF-8")
-        return request(context, "/repos/$owner/$repo/actions/secrets/$encodedName", "DELETE").let { it.code == 204 || it.success }
-    }
-
     // ═══════════════════════════════════
     // Environments
     // ═══════════════════════════════════
@@ -2702,78 +2656,6 @@ object GitHubManager {
             protectionRules = protectionRules,
             deploymentBranchPolicy = deploymentBranchPolicy
         )
-    }
-
-    // ═══════════════════════════════════
-    // Environment Secrets
-    // ═══════════════════════════════════
-
-    suspend fun getEnvironmentSecrets(context: Context, owner: String, repo: String, envName: String): List<GHEnvironmentSecret> {
-        val encoded = URLEncoder.encode(envName, "UTF-8")
-        val r = request(context, "/repos/$owner/$repo/environments/$encoded/secrets?per_page=100")
-        if (!r.success) return emptyList()
-        return try {
-            val arr = JSONObject(r.body).optJSONArray("secrets") ?: JSONArray()
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                GHEnvironmentSecret(j.optString("name"), j.optString("created_at", ""), j.optString("updated_at", ""))
-            }
-        } catch (e: Exception) { emptyList() }
-    }
-
-    suspend fun createOrUpdateEnvironmentSecret(context: Context, owner: String, repo: String, envName: String, secretName: String, value: String): Boolean {
-        return try {
-            val encodedEnv = URLEncoder.encode(envName, "UTF-8")
-            val encodedSecret = URLEncoder.encode(secretName, "UTF-8")
-            val pubKey = getRepoActionsPublicKey(context, owner, repo) ?: return false
-            val encrypted = withContext(Dispatchers.Default) {
-                GitHubSecretCrypto.encryptSecret(pubKey.key, value)
-            }
-            val body = JSONObject().apply {
-                put("encrypted_value", encrypted)
-                put("key_id", pubKey.keyId)
-            }.toString()
-            request(context, "/repos/$owner/$repo/environments/$encodedEnv/secrets/$encodedSecret", "PUT", body).let {
-                it.code == 201 || it.code == 204 || it.success
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Save env secret: ${e.message}")
-            false
-        }
-    }
-
-    suspend fun deleteEnvironmentSecret(context: Context, owner: String, repo: String, envName: String, secretName: String): Boolean {
-        val encodedEnv = URLEncoder.encode(envName, "UTF-8")
-        val encodedSecret = URLEncoder.encode(secretName, "UTF-8")
-        return request(context, "/repos/$owner/$repo/environments/$encodedEnv/secrets/$encodedSecret", "DELETE").let { it.code == 204 || it.success }
-    }
-
-    suspend fun getRepoActionsVariables(context: Context, owner: String, repo: String): List<GHActionVariable> {
-        val r = request(context, "/repos/$owner/$repo/actions/variables?per_page=100")
-        if (!r.success) return emptyList()
-        return try {
-            val arr = JSONObject(r.body).optJSONArray("variables") ?: JSONArray()
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                GHActionVariable(j.optString("name"), j.optString("value"), j.optString("created_at", ""), j.optString("updated_at", ""))
-            }
-        } catch (e: Exception) { emptyList() }
-    }
-
-    suspend fun createRepoActionsVariable(context: Context, owner: String, repo: String, name: String, value: String): Boolean {
-        val body = JSONObject().apply { put("name", name); put("value", value) }.toString()
-        return request(context, "/repos/$owner/$repo/actions/variables", "POST", body).success
-    }
-
-    suspend fun updateRepoActionsVariable(context: Context, owner: String, repo: String, name: String, value: String): Boolean {
-        val encodedName = URLEncoder.encode(name, "UTF-8")
-        val body = JSONObject().apply { put("name", name); put("value", value) }.toString()
-        return request(context, "/repos/$owner/$repo/actions/variables/$encodedName", "PATCH", body).success
-    }
-
-    suspend fun deleteRepoActionsVariable(context: Context, owner: String, repo: String, name: String): Boolean {
-        val encodedName = URLEncoder.encode(name, "UTF-8")
-        return request(context, "/repos/$owner/$repo/actions/variables/$encodedName", "DELETE").let { it.code == 204 || it.success }
     }
 
     suspend fun getRepoSelfHostedRunners(context: Context, owner: String, repo: String): List<GHActionRunner> {
@@ -7178,12 +7060,6 @@ data class GHActionsCacheUsage(val fullName: String, val activeCachesSizeInBytes
 data class GHActionsCacheEntry(val id: Long, val ref: String, val key: String, val version: String,
     val lastAccessedAt: String, val createdAt: String, val sizeInBytes: Long)
 
-data class GHActionPublicKey(val keyId: String, val key: String)
-
-data class GHActionSecret(val name: String, val createdAt: String, val updatedAt: String)
-
-data class GHActionVariable(val name: String, val value: String, val createdAt: String, val updatedAt: String)
-
 data class GHActionRunner(val id: Long, val name: String, val os: String, val status: String,
     val busy: Boolean, val labels: List<String>)
 
@@ -7908,12 +7784,6 @@ data class GHEnvironmentProtectionRule(
 data class GHDeploymentBranchPolicy(
     val protectedBranches: Boolean,
     val customBranchPolicies: Boolean
-)
-
-data class GHEnvironmentSecret(
-    val name: String,
-    val createdAt: String,
-    val updatedAt: String
 )
 
 data class GHCommitStatus(

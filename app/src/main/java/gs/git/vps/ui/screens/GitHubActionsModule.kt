@@ -96,8 +96,8 @@ import gs.git.vps.data.Strings
 import gs.git.vps.data.github.*
 import gs.git.vps.data.github.GHActionRunner
 import gs.git.vps.data.github.GHActionRunnerGroup
-import gs.git.vps.data.github.GHActionSecret
-import gs.git.vps.data.github.GHActionVariable
+import gs.git.vps.data.github.model.GHActionSecret
+import gs.git.vps.data.github.model.GHActionVariable
 import gs.git.vps.data.github.GHActionsCacheEntry
 import gs.git.vps.data.github.GHActionsCacheUsage
 import gs.git.vps.data.github.GHActionsPermissions
@@ -109,7 +109,7 @@ import gs.git.vps.data.github.GHCheckRun
 import gs.git.vps.data.github.GHCodespace
 import gs.git.vps.data.github.GHDeployment
 import gs.git.vps.data.github.GHEnvironment
-import gs.git.vps.data.github.GHEnvironmentSecret
+import gs.git.vps.data.github.model.GHEnvironmentSecret
 import gs.git.vps.data.github.GHJob
 import gs.git.vps.data.github.GHPendingDeployment
 import gs.git.vps.data.github.GHRepo
