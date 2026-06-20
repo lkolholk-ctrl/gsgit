@@ -93,6 +93,7 @@ import androidx.compose.material3.MenuDefaults
 import coil.compose.AsyncImage
 import gs.git.vps.R
 import gs.git.vps.data.Strings
+import gs.git.vps.data.github.*
 import gs.git.vps.data.github.GHActionRunner
 import gs.git.vps.data.github.GHActionRunnerGroup
 import gs.git.vps.data.github.GHActionSecret

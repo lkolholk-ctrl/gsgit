@@ -84,3 +84,46 @@ extension-функции `GitHubManager+<Domain>.kt`, не меняя сигна
   импорт `.model.GHGist`/`.GHGistComment`.
 - Контрольная компиляция `compileDebugKotlin` — **exit 0, зелёная**. DoD выполнен
   (`GitHubManager+Gists.kt` < 600 строк, ноль прямого HTTP, парсинг через parseGHX).
+
+Коммит: `0a9a0d1 refactor(data): extract Gists domain from GitHubManager god-file`.
+
+## Домен Webhooks (по эталону Releases)
+
+- Особенность: функции были разбросаны по двум местам — org-хуки (getOrgHooks/createOrgHook)
+  и repo-вебхуки. Собраны в один `GitHubManager+Webhooks.kt` (14 `internal`-extension-функций).
+- Модели `model/GHWebhook.kt`: GHWebhook, GHWebhookConfig, GHWebhookDelivery.
+- Парсеры приведены к конвенции: parseGHWebhook/parseGHWebhookConfig/parseGHWebhookDelivery.
+  Приватный хелпер `parseHeaderMap` использовался только в этом домене — перенесён вместе
+  (остался private в файле домена).
+- Ядро: `encPath` помечен `internal` (его звали org-хуки).
+- Из `GitHubManager.kt` удалены 3 блока (org-хуки, repo-вебхуки+парсеры, модели) и пустой
+  заголовок-разделитель «Webhooks». Файл: 8599 → 8399 строк.
+- Импорты потребителей на `.model`: GitHubWebhooksModule.kt, GitHubSettingsModule.kt.
+- Контрольная компиляция — (результат ниже).
+
+### ⚠️ Важное уточнение конвенции (всплыло на Webhooks)
+
+При выносе метода `object`-а в **extension-функцию** `fun GitHubManager.fn()` вызов
+`GitHubManager.fn(...)` компилируется ТОЛЬКО если функция в области видимости:
+- файл в пакете `gs.git.vps.data.github` — видит автоматически;
+- иначе файл-потребитель ОБЯЗАН импортировать `import gs.git.vps.data.github.*`
+  (wildcard подтягивает top-level extension-функции пакета) либо точечно `import ...github.fn`.
+
+Раньше (метод был членом object) импорт не требовался — поэтому «вызовы не меняются» верно
+лишь при наличии wildcard-импорта. Половина экранов уже на wildcard; остальным он добавлен.
+
+**Подвох инкрементальной сборки gradle:** `compileDebugKotlin` может дать ложный exit 0,
+не перекомпилировав downstream-потребителя (так Releases-коммит 6d77c93 скрыл сломанный
+`ReleaseDownloadWorker` без импорта). Вывод: после нарезки домена проверять, что ВСЕ
+файлы, зовущие перенесённые функции, имеют wildcard `data.github.*`; при сомнении — clean build.
+
+Файлы, которым добавлен wildcard на этом этапе: GitHubWebhooksModule, GitHubSettingsModule,
+GitHubActionsModule, GitHubReleasesModule, ReleaseDownloadWorker.
+
+### Итог по Webhooks ✅
+
+- **Чистая сборка `./gradlew clean compileDebugKotlin` — BUILD SUCCESSFUL (1m11s)**, exit 0.
+  Только предсуществующие deprecation-warnings про `Icons.*` (не связаны с декомпозицией).
+  Это первый честный (без инкрементального кэша) зелёный после всех трёх доменов.
+- `GitHubManager.kt`: 9008 → 8399 строк (−609 за три домена). Вынесено: Releases (13),
+  Gists (12), Webhooks (14) = 39 функций, 7 моделей, 3 файла домена + 3 файла моделей.

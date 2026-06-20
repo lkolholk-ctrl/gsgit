@@ -23,7 +23,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import gs.git.vps.data.github.GHWebhook
+import gs.git.vps.data.github.*
+import gs.git.vps.data.github.model.GHWebhook
 import gs.git.vps.ui.components.AiModuleAlertDialog
 import gs.git.vps.ui.components.AiModuleHairline
 import gs.git.vps.ui.components.AiModuleIcon as Icon
@@ -34,8 +35,8 @@ import gs.git.vps.ui.components.AiModuleSpinner
 import gs.git.vps.ui.components.AiModuleText as Text
 import gs.git.vps.ui.components.AiModuleTextAction
 import gs.git.vps.ui.components.AiModuleTextField
-import gs.git.vps.data.github.GHWebhookConfig
-import gs.git.vps.data.github.GHWebhookDelivery
+import gs.git.vps.data.github.model.GHWebhookConfig
+import gs.git.vps.data.github.model.GHWebhookDelivery
 import gs.git.vps.data.github.GitHubManager
 import gs.git.vps.ui.theme.AiModuleTheme
 import gs.git.vps.ui.theme.*

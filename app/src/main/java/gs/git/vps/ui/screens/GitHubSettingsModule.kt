@@ -88,6 +88,7 @@ import gs.git.vps.ui.screens.ToggleRow
 
 import gs.git.vps.ui.theme.AiModuleTheme
 import gs.git.vps.ui.theme.JetBrainsMono
+import gs.git.vps.data.github.*
 import gs.git.vps.data.github.GHBlockedEntry
 import gs.git.vps.data.github.GHEmailEntry
 import gs.git.vps.data.github.GHFollowerEntry
@@ -97,7 +98,7 @@ import gs.git.vps.data.github.GHOrg
 import gs.git.vps.data.github.GHDeviceCode
 import gs.git.vps.data.github.GHOrgMembership
 import gs.git.vps.data.github.GHRepo
-import gs.git.vps.data.github.GHWebhook
+import gs.git.vps.data.github.model.GHWebhook
 import gs.git.vps.data.github.GHSocialAccountEntry
 import gs.git.vps.data.github.GHUser
 import gs.git.vps.data.github.GHUserRepositoryInvitation

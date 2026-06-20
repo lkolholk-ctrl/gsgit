@@ -11,6 +11,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import gs.git.vps.data.github.*
 import gs.git.vps.data.github.GitHubManager
 import gs.git.vps.data.github.model.GHAsset
 import java.io.File
