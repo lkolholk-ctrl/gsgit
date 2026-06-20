@@ -35,9 +35,15 @@ import gs.git.vps.ui.components.AiModuleTextAction
 import gs.git.vps.ui.components.AiModuleTextField
 import gs.git.vps.data.github.GHCommitDetail
 import gs.git.vps.data.github.GHDiffFile
-import gs.git.vps.data.github.GHPullFile
-import gs.git.vps.data.github.GHReviewComment
+import gs.git.vps.data.github.model.GHPullFile
+import gs.git.vps.data.github.model.GHReviewComment
 import gs.git.vps.data.github.GitHubManager
+import gs.git.vps.data.github.getPullRequests
+import gs.git.vps.data.github.getPullRequestFiles
+import gs.git.vps.data.github.getPullRequestReviewComments
+import gs.git.vps.data.github.createPullRequestReviewComment
+import gs.git.vps.data.github.updatePullRequestReviewComment
+import gs.git.vps.data.github.deletePullRequestReviewComment
 import gs.git.vps.ui.theme.AiModuleTheme
 import gs.git.vps.ui.theme.*
 import kotlinx.coroutines.launch

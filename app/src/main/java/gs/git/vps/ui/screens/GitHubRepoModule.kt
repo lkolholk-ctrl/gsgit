@@ -85,6 +85,12 @@ import gs.git.vps.data.github.model.GHTrafficPath
 import gs.git.vps.data.github.model.GHTrafficReferrer
 import gs.git.vps.data.github.model.GHTrafficSeries
 import gs.git.vps.data.github.model.GHCheckRun
+import gs.git.vps.data.github.model.GHCheckSuite
+import gs.git.vps.data.github.model.GHPullRequest
+import gs.git.vps.data.github.model.GHPullMergeStatus
+import gs.git.vps.data.github.model.GHPullReview
+import gs.git.vps.data.github.model.GHPullFile
+import gs.git.vps.data.github.model.GHReviewComment
 import gs.git.vps.data.github.model.GHWorkflow
 import gs.git.vps.data.github.model.GHWorkflowRun
 import gs.git.vps.data.github.model.GHComment

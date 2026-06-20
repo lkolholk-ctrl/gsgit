@@ -362,3 +362,47 @@ PullRequests+Reviews+Checks (~25), Users+Orgs+Teams, Commits+Branches+Tags, Disc
 Releases, Gists, Webhooks, Notifications, Search, Secrets, Repos, Workflows, Actions, Projects, **Issues**.
 `GitHubManager.kt`: 9008 → 5128. Следующие крупные домены: PullRequests+Reviews+Checks (~25),
 Users+Orgs+Teams, Commits+Branches+Tags, Discussions, Reactions.
+
+## РЕАЛИЗОВАНО: домен PullRequests+Reviews+Checks ✅
+
+Нарезан по эталону Releases. `GitHubManager.kt`: 5128 → 4768 строк (−360).
+Вынесено 22 функции + 7 чистых `parseGHX`-парсеров (+ private `parseUsers`) в один файл.
+
+1. **`GitHubManager+PullRequests.kt`** (303 строки) — PR (getPullRequests, getPullRequestDetail,
+   createPullRequest, updatePullRequest, mergePullRequest, updatePullRequestBranch,
+   getPullRequestMergedStatus, getPullRequestFiles), ревью (getPullRequestReviews,
+   getPullRequestReview, updatePullRequestReview, deletePullRequestReview, submitPullRequestReview,
+   request/removePullRequestReviewers), review-комментарии (get/create/update/delete +
+   getPullRequestReviewComment), checks (getPullRequestCheckRuns, getPullRequestCheckSuites).
+   Разбросанный inline-парсинг сведён к чистым `parseGHPullRequest` (единый для list/detail —
+   list-ответ не содержит detail-полей, opt-дефолты дают тот же результат), `parseGHPullReview`,
+   `parseGHPullFile`, `parseGHReviewComment`, `parseGHCheckRun`, `parseGHCheckSuite`. Приватные
+   хелперы `parseUsers`/`parsePullReview` (PR-only) перенесены; `parseGitRef`/`parseOAuthTokenInfo`
+   (чужие домены, стояли рядом) ОСТАВЛЕНЫ в core. Прямой `URLEncoder.encode(ref)` в check-функциях
+   заменён на ядровый `encPath(ref)` (идентично).
+2. **Модели → `model/GHPullRequest.kt`** (6 data class): GHPullRequest, GHPullMergeStatus,
+   GHPullReview, GHPullFile, GHReviewComment, GHCheckSuite. `GHCheckRun` остался в `model/GHWorkflow.kt`
+   (переехал с Actions) — импортируется, не дублируется.
+3. **Ядро не трогали** — `request`/`parseNextPage`/`encPath` уже `internal`. Новых пометок не
+   потребовалось.
+4. **Сознательно НЕ тащили** (как Issues оставил реакции): реакции на review-комментарии
+   (getPullRequestReviewCommentReaction*) — домен Reactions (общий GHReaction + DELETE /reactions/{id});
+   getCommitComments/createCommitComment (тоже возвращают GHReviewComment) — домен Commits;
+   compareCommits — домен Commits. Из-за этого в `GitHubManager.kt` добавлен
+   `import …model.GHReviewComment` (нужен оставшемуся getCommitComments), а неиспользуемый
+   `import …model.GHCheckRun` удалён.
+5. **Потребители** (compiler-driven): GitHubRepoModule (wildcard есть) — +6 явных импортов моделей;
+   GitHubSecurityModule (wildcard) — +import GHPullRequest и правка fully-qualified
+   `gs.git.vps.data.github.GHPullRequest?` → короткое имя (FQN ловил старый пакет); GitHubDiffModule
+   (без wildcard) — 2 импорта моделей на `.model` + 6 явных импортов перенесённых функций;
+   GitHubCheckRunsModule (без wildcard) — GHCheckSuite на `.model` + 2 явных импорта функций;
+   GitHubCompareModule (без wildcard) — +import createPullRequest; GitHubGistsAndDialogsModule
+   (wildcard) — без правок.
+6. **Чистая сборка `./gradlew clean compileDebugKotlin` — BUILD SUCCESSFUL, exit 0.**
+   Только предсуществующие deprecation-warnings про `Icons.*` (не связаны с декомпозицией).
+   Поведение идентично (рефактор, сигнатуры не менялись).
+
+### Итог (12 доменов) ✅
+Releases, Gists, Webhooks, Notifications, Search, Secrets, Repos, Workflows, Actions, Projects,
+Issues, **PullRequests**. `GitHubManager.kt`: 9008 → 4768. Следующие крупные домены:
+Users+Orgs+Teams, Commits+Branches+Tags, Discussions, Reactions.

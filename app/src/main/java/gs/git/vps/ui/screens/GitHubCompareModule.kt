@@ -52,6 +52,7 @@ import gs.git.vps.data.github.GHCommit
 import gs.git.vps.data.github.GHCompareResult
 import gs.git.vps.data.github.GHDiffFile
 import gs.git.vps.data.github.GitHubManager
+import gs.git.vps.data.github.createPullRequest
 import gs.git.vps.ui.components.AiModuleAlertDialog
 import gs.git.vps.ui.components.AiModuleIcon as Icon
 import gs.git.vps.ui.components.AiModulePillButton

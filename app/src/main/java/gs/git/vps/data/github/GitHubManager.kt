@@ -4,13 +4,13 @@ import android.content.Context
 import android.util.Log
 import gs.git.vps.App
 import gs.git.vps.data.github.model.GHActionResult
-import gs.git.vps.data.github.model.GHCheckRun
 import gs.git.vps.data.github.model.GHComment
 import gs.git.vps.data.github.model.GHInteractionLimitEntry
 import gs.git.vps.data.github.model.GHLicenseDetail
 import gs.git.vps.data.github.model.GHPermissions
 import gs.git.vps.data.github.model.GHRepo
 import gs.git.vps.data.github.model.GHRepoEvent
+import gs.git.vps.data.github.model.GHReviewComment
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -1150,158 +1150,6 @@ object GitHubManager {
         return request(context, "/repos/$owner/$repo/git/refs/$cleanRef", "DELETE").success
     }
 
-    suspend fun getPullRequests(context: Context, owner: String, repo: String, state: String = "open", page: Int = 1): List<GHPullRequest> {
-        val r = request(context, "/repos/$owner/$repo/pulls?state=$state&per_page=30&page=$page")
-        if (!r.success) return emptyList()
-        val prs = try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                GHPullRequest(
-                    number = j.optInt("number"), title = j.optString("title"),
-                    state = j.optString("state"), author = j.optJSONObject("user")?.optString("login") ?: "",
-                    createdAt = j.optString("created_at"),
-                    head = j.optJSONObject("head")?.optString("ref") ?: "",
-                    base = j.optJSONObject("base")?.optString("ref") ?: "",
-                    comments = j.optInt("comments", 0), merged = j.optBoolean("merged", false),
-                    body = j.optString("body", ""),
-                    draft = j.optBoolean("draft", false),
-                    htmlUrl = j.optString("html_url", ""),
-                    headSha = j.optJSONObject("head")?.optString("sha") ?: "",
-                    reviewComments = j.optInt("review_comments", 0),
-                    requestedReviewers = parseUsers(j.optJSONArray("requested_reviewers"))
-                )
-            }
-        } catch (e: Exception) { return emptyList() }
-        val nextPage = parseNextPage(r.headers) ?: return prs
-        return prs + getPullRequests(context, owner, repo, state, nextPage)
-    }
-
-    suspend fun getPullRequestDetail(context: Context, owner: String, repo: String, number: Int): GHPullRequest? {
-        val r = request(context, "/repos/$owner/$repo/pulls/$number")
-        if (!r.success) return null
-        return try {
-            val j = JSONObject(r.body)
-            GHPullRequest(
-                number = j.optInt("number"),
-                title = j.optString("title"),
-                state = j.optString("state"),
-                author = j.optJSONObject("user")?.optString("login") ?: "",
-                createdAt = j.optString("created_at"),
-                head = j.optJSONObject("head")?.optString("ref") ?: "",
-                base = j.optJSONObject("base")?.optString("ref") ?: "",
-                comments = j.optInt("comments", 0),
-                merged = j.optBoolean("merged", false),
-                body = j.optString("body", ""),
-                draft = j.optBoolean("draft", false),
-                htmlUrl = j.optString("html_url", ""),
-                headSha = j.optJSONObject("head")?.optString("sha") ?: "",
-                mergeable = if (j.isNull("mergeable")) null else j.optBoolean("mergeable"),
-                mergeableState = j.optString("mergeable_state", ""),
-                reviewComments = j.optInt("review_comments", 0),
-                commits = j.optInt("commits", 0),
-                additions = j.optInt("additions", 0),
-                deletions = j.optInt("deletions", 0),
-                changedFiles = j.optInt("changed_files", 0),
-                requestedReviewers = parseUsers(j.optJSONArray("requested_reviewers"))
-            )
-        } catch (e: Exception) { null }
-    }
-
-    suspend fun createPullRequest(
-        context: Context, owner: String, repo: String,
-        title: String, body: String, head: String, base: String
-    ): Boolean {
-        val json = JSONObject().apply {
-            put("title", title); put("body", body); put("head", head); put("base", base)
-        }.toString()
-        return request(context, "/repos/$owner/$repo/pulls", "POST", json).success
-    }
-
-    suspend fun updatePullRequest(context: Context, owner: String, repo: String, number: Int, title: String? = null, body: String? = null, base: String? = null, state: String? = null): Boolean {
-        val json = JSONObject().apply {
-            title?.let { put("title", it) }
-            body?.let { put("body", it) }
-            base?.takeIf { it.isNotBlank() }?.let { put("base", it) }
-            state?.takeIf { it in listOf("open", "closed") }?.let { put("state", it) }
-        }.toString()
-        return request(context, "/repos/$owner/$repo/pulls/$number", "PATCH", json).success
-    }
-
-    suspend fun mergePullRequest(context: Context, owner: String, repo: String, number: Int, message: String = "", method: String = "merge", title: String = ""): Boolean {
-        val body = JSONObject().apply {
-            if (title.isNotBlank()) put("commit_title", title)
-            if (message.isNotBlank()) put("commit_message", message)
-            put("merge_method", method)
-        }.toString()
-        return request(context, "/repos/$owner/$repo/pulls/$number/merge", "PUT", body).success
-    }
-
-    suspend fun updatePullRequestBranch(context: Context, owner: String, repo: String, number: Int, expectedHeadSha: String? = null): Boolean {
-        val body = JSONObject().apply {
-            if (expectedHeadSha != null) put("expected_head_sha", expectedHeadSha)
-        }.toString()
-        val r = request(context, "/repos/$owner/$repo/pulls/$number/update-branch", "PUT", body)
-        return r.success || r.code == 204
-    }
-
-    suspend fun getPullRequestMergedStatus(context: Context, owner: String, repo: String, number: Int): GHPullMergeStatus {
-        val r = request(context, "/repos/$owner/$repo/pulls/$number/merge")
-        return when (r.code) {
-            204 -> GHPullMergeStatus(merged = true, checked = true, code = r.code, message = "merged")
-            404 -> GHPullMergeStatus(merged = false, checked = true, code = r.code, message = "not merged")
-            else -> GHPullMergeStatus(merged = false, checked = false, code = r.code, message = r.body.take(180))
-        }
-    }
-
-    suspend fun getPullRequestReviews(context: Context, owner: String, repo: String, number: Int): List<GHPullReview> {
-        val r = request(context, "/repos/$owner/$repo/pulls/$number/reviews?per_page=100")
-        if (!r.success) return emptyList()
-        return try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i ->
-                parsePullReview(arr.getJSONObject(i))
-            }
-        } catch (e: Exception) { emptyList() }
-    }
-
-    suspend fun getPullRequestReview(context: Context, owner: String, repo: String, number: Int, reviewId: Long): GHPullReview? {
-        val r = request(context, "/repos/$owner/$repo/pulls/$number/reviews/$reviewId")
-        if (!r.success) return null
-        return try { parsePullReview(JSONObject(r.body)) } catch (e: Exception) { null }
-    }
-
-    suspend fun updatePullRequestReview(context: Context, owner: String, repo: String, number: Int, reviewId: Long, body: String): GHPullReview? {
-        val json = JSONObject().apply { put("body", body) }.toString()
-        val r = request(context, "/repos/$owner/$repo/pulls/$number/reviews/$reviewId", "PUT", json)
-        if (!r.success) return null
-        return try { parsePullReview(JSONObject(r.body)) } catch (e: Exception) { null }
-    }
-
-    suspend fun deletePullRequestReview(context: Context, owner: String, repo: String, number: Int, reviewId: Long): Boolean =
-        request(context, "/repos/$owner/$repo/pulls/$number/reviews/$reviewId", "DELETE").let { it.code == 200 || it.code == 204 || it.success }
-
-    suspend fun requestPullRequestReviewers(context: Context, owner: String, repo: String, number: Int, reviewers: List<String>): Boolean {
-        val clean = reviewers.map { it.trim() }.filter { it.isNotBlank() }.distinct()
-        if (clean.isEmpty()) return false
-        val body = JSONObject().apply { put("reviewers", JSONArray(clean)) }.toString()
-        return request(context, "/repos/$owner/$repo/pulls/$number/requested_reviewers", "POST", body).success
-    }
-
-    suspend fun removePullRequestReviewers(context: Context, owner: String, repo: String, number: Int, reviewers: List<String>): Boolean {
-        val clean = reviewers.map { it.trim() }.filter { it.isNotBlank() }.distinct()
-        if (clean.isEmpty()) return false
-        val body = JSONObject().apply { put("reviewers", JSONArray(clean)) }.toString()
-        return request(context, "/repos/$owner/$repo/pulls/$number/requested_reviewers", "DELETE", body).success
-    }
-
-    private fun parseUsers(arr: JSONArray?): List<String> {
-        if (arr == null) return emptyList()
-        return (0 until arr.length()).mapNotNull { i ->
-            arr.optJSONObject(i)?.optString("login")?.takeIf { it.isNotBlank() && it != "null" }
-        }
-    }
-
     private fun parseGitRef(j: JSONObject): GHGitRef {
         val obj = j.optJSONObject("object")
         return GHGitRef(
@@ -1333,17 +1181,6 @@ object GitHubManager {
             token = j.optString("token", "")
         )
     }
-
-    private fun parsePullReview(j: JSONObject): GHPullReview =
-        GHPullReview(
-            id = j.optLong("id"),
-            user = j.optJSONObject("user")?.optString("login") ?: "",
-            state = j.optString("state", ""),
-            body = j.optString("body", ""),
-            submittedAt = j.optString("submitted_at", ""),
-            commitId = j.optString("commit_id", ""),
-            htmlUrl = j.optString("html_url", "")
-        )
 
     suspend fun isStarred(context: Context, owner: String, repo: String): Boolean =
         request(context, "/user/starred/$owner/$repo").code == 204
@@ -2085,22 +1922,6 @@ object GitHubManager {
             extraHeaders = mapOf("Accept" to "application/vnd.github+json")
         )
         return GHActionResult(r.code == 204 || r.success, r.code, if (r.success || r.code == 204) "Repository removed" else apiErrorMessage(r))
-    }
-
-    suspend fun submitPullRequestReview(context: Context, owner: String, repo: String, number: Int, event: String, body: String = ""): Boolean {
-        val json = JSONObject().apply { put("event", event); if (body.isNotBlank()) put("body", body) }.toString()
-        return request(context, "/repos/$owner/$repo/pulls/$number/reviews", "POST", json).success
-    }
-
-    suspend fun getPullRequestFiles(context: Context, owner: String, repo: String, number: Int): List<GHPullFile> {
-        val r = request(context, "/repos/$owner/$repo/pulls/$number/files?per_page=100")
-        if (!r.success) return emptyList()
-        return try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i -> val j = arr.getJSONObject(i)
-                GHPullFile(j.optString("filename"), j.optString("status"), j.optInt("additions", 0), j.optInt("deletions", 0), j.optString("patch", ""))
-            }
-        } catch (_: Exception) { emptyList() }
     }
 
     suspend fun uploadDirectory(
@@ -2895,72 +2716,6 @@ object GitHubManager {
     // PR Review Comments
     // ═══════════════════════════════════
 
-    suspend fun getPullRequestReviewComments(context: Context, owner: String, repo: String, pullNumber: Int, page: Int = 1): List<GHReviewComment> {
-        val r = request(context, "/repos/$owner/$repo/pulls/$pullNumber/comments?per_page=100&page=$page")
-        if (!r.success) return emptyList()
-        val comments = try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                GHReviewComment(
-                    id = j.optLong("id"),
-                    body = j.optString("body"),
-                    path = j.optString("path"),
-                    line = j.optInt("line", 0),
-                    originalLine = j.optInt("original_line", 0),
-                    diffHunk = j.optString("diff_hunk", ""),
-                    author = j.optJSONObject("user")?.optString("login") ?: "",
-                    avatarUrl = j.optJSONObject("user")?.optString("avatar_url") ?: "",
-                    createdAt = j.optString("created_at", ""),
-                    inReplyToId = j.optLong("in_reply_to_id", 0L).takeIf { it > 0 }
-                )
-            }
-        } catch (e: Exception) { return emptyList() }
-        val nextPage = parseNextPage(r.headers) ?: return comments
-        return comments + getPullRequestReviewComments(context, owner, repo, pullNumber, nextPage)
-    }
-
-    suspend fun createPullRequestReviewComment(
-        context: Context, owner: String, repo: String, pullNumber: Int,
-        body: String, path: String, line: Int, side: String = "RIGHT",
-        inReplyToId: Long? = null
-    ): Boolean {
-        val json = JSONObject().apply {
-            put("body", body)
-            put("path", path)
-            put("line", line)
-            put("side", side)
-            if (inReplyToId != null) put("in_reply_to", inReplyToId)
-        }.toString()
-        return request(context, "/repos/$owner/$repo/pulls/$pullNumber/comments", "POST", json).success
-    }
-
-    suspend fun updatePullRequestReviewComment(context: Context, owner: String, repo: String, commentId: Long, body: String): Boolean {
-        val json = JSONObject().apply { put("body", body) }.toString()
-        return request(context, "/repos/$owner/$repo/pulls/comments/$commentId", "PATCH", json).success
-    }
-
-    suspend fun deletePullRequestReviewComment(context: Context, owner: String, repo: String, commentId: Long): Boolean =
-        request(context, "/repos/$owner/$repo/pulls/comments/$commentId", "DELETE").let { it.code == 204 || it.success }
-
-    suspend fun getPullRequestReviewComment(context: Context, owner: String, repo: String, commentId: Long): GHReviewComment? {
-        val r = request(context, "/repos/$owner/$repo/pulls/comments/$commentId")
-        if (!r.success) return null
-        return try {
-            val j = JSONObject(r.body)
-            GHReviewComment(
-                id = j.optLong("id"), body = j.optString("body"), path = j.optString("path"),
-                line = j.optInt("line", 0), originalLine = j.optInt("original_line", 0),
-                diffHunk = j.optString("diff_hunk", ""),
-                author = j.optJSONObject("user")?.optString("login") ?: "",
-                avatarUrl = j.optJSONObject("user")?.optString("avatar_url") ?: "",
-                createdAt = j.optString("created_at", ""),
-                inReplyToId = j.optLong("in_reply_to_id", 0L).takeIf { it > 0 }
-            )
-        } catch (e: Exception) { null }
-    }
-
-
     // ═══════════════════════════════════
     // Commit Comments
     // ═══════════════════════════════════
@@ -3010,59 +2765,6 @@ object GitHubManager {
     suspend fun deleteCommitComment(context: Context, owner: String, repo: String, commentId: Long): Boolean =
         request(context, "/repos/$owner/$repo/comments/$commentId", "DELETE").let { it.code == 204 || it.success }
 
-
-    // ═══════════════════════════════════
-    // PR Check Runs
-    // ═══════════════════════════════════
-
-    suspend fun getPullRequestCheckRuns(context: Context, owner: String, repo: String, ref: String): List<GHCheckRun> {
-        val encodedRef = URLEncoder.encode(ref, "UTF-8")
-        val r = request(context, "/repos/$owner/$repo/commits/$encodedRef/check-runs?per_page=100")
-        if (!r.success) return emptyList()
-        return try {
-            val arr = JSONObject(r.body).getJSONArray("check_runs")
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                GHCheckRun(
-                    id = j.optLong("id"),
-                    name = j.optString("name"),
-                    status = j.optString("status"),
-                    conclusion = j.optString("conclusion", ""),
-                    detailsUrl = j.optString("details_url", ""),
-                    startedAt = j.optString("started_at", ""),
-                    completedAt = j.optString("completed_at", ""),
-                    outputTitle = j.optJSONObject("output")?.optString("title") ?: "",
-                    outputSummary = j.optJSONObject("output")?.optString("summary") ?: ""
-                )
-            }
-        } catch (e: Exception) { emptyList() }
-    }
-
-    suspend fun getPullRequestCheckSuites(context: Context, owner: String, repo: String, ref: String): List<GHCheckSuite> {
-        if (ref.isBlank()) return emptyList()
-        val encodedRef = URLEncoder.encode(ref, "UTF-8")
-        val r = request(context, "/repos/$owner/$repo/commits/$encodedRef/check-suites?per_page=100")
-        if (!r.success) return emptyList()
-        return try {
-            val arr = JSONObject(r.body).optJSONArray("check_suites") ?: JSONArray()
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                GHCheckSuite(
-                    id = j.optLong("id"),
-                    status = j.optString("status"),
-                    conclusion = j.optString("conclusion", ""),
-                    app = j.optJSONObject("app")?.optString("name") ?: "",
-                    headBranch = j.optString("head_branch", ""),
-                    headSha = j.optString("head_sha", ""),
-                    before = j.optString("before", ""),
-                    after = j.optString("after", ""),
-                    createdAt = j.optString("created_at", ""),
-                    updatedAt = j.optString("updated_at", ""),
-                    latestCheckRunsCount = j.optInt("latest_check_runs_count", 0)
-                )
-            }
-        } catch (e: Exception) { emptyList() }
-    }
 
     // ═══════════════════════════════════
     // Compare Commits
@@ -4561,38 +4263,6 @@ data class GHGitCommit(
     val committerDate: String
 )
 
-data class GHPullRequest(val number: Int, val title: String, val state: String, val author: String,
-    val createdAt: String, val head: String, val base: String, val comments: Int,
-    val merged: Boolean, val body: String,
-    val draft: Boolean = false,
-    val htmlUrl: String = "",
-    val headSha: String = "",
-    val mergeable: Boolean? = null,
-    val mergeableState: String = "",
-    val reviewComments: Int = 0,
-    val commits: Int = 0,
-    val additions: Int = 0,
-    val deletions: Int = 0,
-    val changedFiles: Int = 0,
-    val requestedReviewers: List<String> = emptyList())
-
-data class GHPullMergeStatus(
-    val merged: Boolean,
-    val checked: Boolean,
-    val code: Int,
-    val message: String
-)
-
-data class GHPullReview(
-    val id: Long,
-    val user: String,
-    val state: String,
-    val body: String,
-    val submittedAt: String,
-    val commitId: String,
-    val htmlUrl: String
-)
-
 data class GHContributor(val login: String, val avatarUrl: String, val contributions: Int)
 
 data class QuickGlanceStats(
@@ -4723,8 +4393,6 @@ data class GHSocialAccountEntry(val provider: String, val url: String)
 data class GHFollowerEntry(val login: String, val avatarUrl: String)
 data class GHBlockedEntry(val login: String, val avatarUrl: String)
 data class GHUserLite(val login: String, val avatarUrl: String = "")
-data class GHPullFile(val filename: String, val status: String, val additions: Int, val deletions: Int, val patch: String)
-
 data class GHBranchProtection(
     val enabled: Boolean,
     val requiredStatusChecks: GHRequiredStatusChecks?,
@@ -4786,34 +4454,6 @@ data class GHOrgTeam(
     val membersCount: Int,
     val reposCount: Int,
     val htmlUrl: String
-)
-
-data class GHReviewComment(
-    val id: Long,
-    val body: String,
-    val path: String,
-    val line: Int,
-    val originalLine: Int,
-    val diffHunk: String,
-    val author: String,
-    val avatarUrl: String,
-    val createdAt: String,
-    val inReplyToId: Long?
-)
-
-
-data class GHCheckSuite(
-    val id: Long,
-    val status: String,
-    val conclusion: String,
-    val app: String,
-    val headBranch: String,
-    val headSha: String,
-    val before: String,
-    val after: String,
-    val createdAt: String,
-    val updatedAt: String,
-    val latestCheckRunsCount: Int
 )
 
 data class GHCompareResult(

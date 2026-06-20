@@ -25,6 +25,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import gs.git.vps.data.github.*
+import gs.git.vps.data.github.model.GHPullRequest
 import gs.git.vps.data.github.GHCodeScanningAlert
 import gs.git.vps.ui.components.AiModuleAlertDialog
 import gs.git.vps.ui.components.AiModuleHairline
@@ -1556,7 +1557,7 @@ private fun DependabotDetailDialog(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var fixPullRequest by remember(alert.number) { mutableStateOf<gs.git.vps.data.github.GHPullRequest?>(null) }
+    var fixPullRequest by remember(alert.number) { mutableStateOf<GHPullRequest?>(null) }
     var checkingFix by remember(alert.number) { mutableStateOf(false) }
     var mergingFix by remember { mutableStateOf(false) }
     
