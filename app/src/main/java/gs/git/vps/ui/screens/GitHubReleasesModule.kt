@@ -43,10 +43,10 @@ import gs.git.vps.ui.components.AiModuleTextField
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.workDataOf
-import gs.git.vps.data.github.GHAsset
 import gs.git.vps.data.github.GHCommit
 import gs.git.vps.data.github.GHRepo
-import gs.git.vps.data.github.GHRelease
+import gs.git.vps.data.github.model.GHAsset
+import gs.git.vps.data.github.model.GHRelease
 import gs.git.vps.data.github.GitHubManager
 import gs.git.vps.workers.ReleaseDownloadWorker
 import gs.git.vps.ui.theme.AiModuleTheme

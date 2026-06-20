@@ -38,7 +38,7 @@ object GitHubManager {
             .putString("custom_api_url", resolved)
             .apply()
     }
-    private fun updateApiUrl(context: Context) {
+    internal fun updateApiUrl(context: Context) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val custom = prefs.getString("custom_api_url", "") ?: ""
         cachedApiUrl = custom.ifBlank { "https://api.github.com" }
@@ -107,7 +107,7 @@ object GitHubManager {
     fun getApiErrorLog(context: Context): List<GHApiErrorLogEntry> = GitHubAuth.getApiErrorLog(context)
     fun clearApiErrorLog(context: Context) = GitHubAuth.clearApiErrorLog(context)
 
-    private suspend fun request(
+    internal suspend fun request(
         context: Context,
         endpoint: String,
         method: String = "GET",
@@ -239,7 +239,7 @@ object GitHubManager {
             }
             .toMap()
 
-    private fun parseNextPage(headers: Map<String, String>): Int? {
+    internal fun parseNextPage(headers: Map<String, String>): Int? {
         val link = headers["link"] ?: return null
         val match = Regex("""<[^>]*[?&]page=(\d+)[^>]*>;\s*rel="next"""").find(link)
         return match?.groupValues?.get(1)?.toIntOrNull()
@@ -1977,294 +1977,6 @@ object GitHubManager {
             failedBuildsCount = failedRuns,
             loading = false
         )
-    }
-
-    suspend fun getReleases(context: Context, owner: String, repo: String, page: Int = 1): List<GHRelease> {
-        val r = request(context, "/repos/$owner/$repo/releases?per_page=20&page=$page")
-        if (!r.success) return emptyList()
-        val releases = try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                val assets = mutableListOf<GHAsset>()
-                val assetsArr = j.optJSONArray("assets")
-                if (assetsArr != null) for (a in 0 until assetsArr.length()) {
-                    val aj = assetsArr.getJSONObject(a)
-                    assets.add(parseReleaseAsset(aj))
-                }
-                parseRelease(j, assets)
-            }
-        } catch (e: Exception) { return emptyList() }
-        val nextPage = parseNextPage(r.headers) ?: return releases
-        return releases + getReleases(context, owner, repo, nextPage)
-    }
-
-    suspend fun createRelease(context: Context, owner: String, repo: String, tag: String, name: String, body: String, prerelease: Boolean = false): Boolean {
-        val json = JSONObject().apply {
-            put("tag_name", tag)
-            put("name", name)
-            put("body", body)
-            put("prerelease", prerelease)
-        }.toString()
-        return request(context, "/repos/$owner/$repo/releases", "POST", json).success
-    }
-
-    suspend fun createReleaseDetailed(
-        context: Context,
-        owner: String,
-        repo: String,
-        tag: String,
-        name: String,
-        body: String,
-        prerelease: Boolean = false,
-        draft: Boolean = false,
-        targetCommitish: String = ""
-    ): GHRelease? {
-        val json = JSONObject().apply {
-            put("tag_name", tag)
-            if (targetCommitish.isNotBlank()) put("target_commitish", targetCommitish)
-            put("name", name)
-            put("body", body)
-            put("prerelease", prerelease)
-            put("draft", draft)
-        }.toString()
-        val r = request(context, "/repos/$owner/$repo/releases", "POST", json)
-        if (!r.success) return null
-        return try { parseRelease(JSONObject(r.body)) } catch (e: Exception) { null }
-    }
-
-    suspend fun getReleaseByTag(context: Context, owner: String, repo: String, tag: String): GHRelease? {
-        val encodedTag = URLEncoder.encode(tag, "UTF-8")
-        val r = request(context, "/repos/$owner/$repo/releases/tags/$encodedTag")
-        if (!r.success) return null
-        return try { parseRelease(JSONObject(r.body)) } catch (e: Exception) { null }
-    }
-
-    suspend fun updateRelease(context: Context, owner: String, repo: String, tag: String, name: String, body: String, prerelease: Boolean): Boolean =
-        updateReleaseDetailed(context, owner, repo, tag, name, body, prerelease, draft = null) != null
-
-    suspend fun updateReleaseDetailed(
-        context: Context,
-        owner: String,
-        repo: String,
-        tag: String,
-        name: String,
-        body: String,
-        prerelease: Boolean,
-        draft: Boolean? = null,
-        releaseId: Long = 0L
-    ): GHRelease? {
-        val resolvedReleaseId = if (releaseId > 0L) releaseId else {
-            val encodedTag = URLEncoder.encode(tag, "UTF-8")
-            val r = request(context, "/repos/$owner/$repo/releases/tags/$encodedTag")
-            if (!r.success) return null
-            JSONObject(r.body).optLong("id")
-        }
-        if (resolvedReleaseId == 0L) return null
-        val json = JSONObject().apply {
-            put("tag_name", tag)
-            put("name", name)
-            put("body", body)
-            put("prerelease", prerelease)
-            if (draft != null) put("draft", draft)
-        }.toString()
-        val r = request(context, "/repos/$owner/$repo/releases/$resolvedReleaseId", "PATCH", json)
-        if (!r.success) return null
-        return try { parseRelease(JSONObject(r.body)) } catch (e: Exception) { null }
-    }
-
-    suspend fun publishRelease(context: Context, owner: String, repo: String, release: GHRelease): GHRelease? {
-        if (!release.draft) return release
-        val tag = release.tag.ifBlank { return null }
-        val name = release.name.ifBlank { tag }
-        return updateReleaseDetailed(
-            context = context,
-            owner = owner,
-            repo = repo,
-            tag = tag,
-            name = name,
-            body = release.body,
-            prerelease = release.prerelease,
-            draft = false,
-            releaseId = release.id
-        )
-    }
-
-    suspend fun deleteRelease(context: Context, owner: String, repo: String, tag: String): Boolean {
-        val encodedTag = URLEncoder.encode(tag, "UTF-8")
-        val r = request(context, "/repos/$owner/$repo/releases/tags/$encodedTag")
-        if (!r.success) return false
-        val releaseId = JSONObject(r.body).optLong("id")
-        if (releaseId == 0L) return false
-        return request(context, "/repos/$owner/$repo/releases/$releaseId", "DELETE").let { it.code == 204 || it.success }
-    }
-
-    suspend fun deleteReleaseAsset(context: Context, owner: String, repo: String, assetId: Long): Boolean =
-        request(context, "/repos/$owner/$repo/releases/assets/$assetId", "DELETE").let { it.code == 204 || it.success }
-
-    suspend fun downloadReleaseAsset(context: Context, asset: GHAsset, destFile: java.io.File): Boolean =
-        withContext(Dispatchers.IO) {
-            try {
-                if (asset.downloadUrl.isBlank()) return@withContext false
-                val token = getToken(context)
-                val conn = (URL(asset.downloadUrl).openConnection() as HttpURLConnection).apply {
-                    if (token.isNotBlank()) setRequestProperty("Authorization", "Bearer $token")
-                    setRequestProperty("Accept", "application/octet-stream")
-                    connectTimeout = 15000
-                    readTimeout = 60000
-                }
-                val code = conn.responseCode
-                if (code !in 200..299) {
-                    conn.disconnect()
-                    return@withContext false
-                }
-                destFile.parentFile?.mkdirs()
-                conn.inputStream.use { input -> destFile.outputStream().use { out -> input.copyTo(out) } }
-                conn.disconnect()
-                true
-            } catch (e: Exception) {
-                Log.e(TAG, "Download release asset: ${e.message}")
-                false
-            }
-        }
-
-    suspend fun downloadReleaseAssetWithProgress(
-        context: Context,
-        asset: GHAsset,
-        destFile: java.io.File,
-        onProgress: (bytesDownloaded: Long, totalBytes: Long) -> Unit
-    ): Boolean =
-        withContext(Dispatchers.IO) {
-            try {
-                if (asset.downloadUrl.isBlank()) return@withContext false
-                val token = getToken(context)
-                val conn = (URL(asset.downloadUrl).openConnection() as HttpURLConnection).apply {
-                    if (token.isNotBlank()) setRequestProperty("Authorization", "Bearer $token")
-                    setRequestProperty("Accept", "application/octet-stream")
-                    connectTimeout = 15000
-                    readTimeout = 60000
-                }
-                val code = conn.responseCode
-                if (code !in 200..299) {
-                    conn.disconnect()
-                    return@withContext false
-                }
-                destFile.parentFile?.mkdirs()
-                val totalBytes = if (conn.contentLengthLong > 0) conn.contentLengthLong else asset.size
-                conn.inputStream.use { input ->
-                    destFile.outputStream().use { out ->
-                        val buffer = ByteArray(8192)
-                        var bytesRead: Int
-                        var bytesDownloaded = 0L
-                        while (input.read(buffer).also { bytesRead = it } != -1) {
-                            out.write(buffer, 0, bytesRead)
-                            bytesDownloaded += bytesRead
-                            onProgress(bytesDownloaded, totalBytes)
-                        }
-                    }
-                }
-                conn.disconnect()
-                true
-            } catch (e: Exception) {
-                Log.e(TAG, "Download release asset with progress: ${e.message}")
-                false
-            }
-        }
-
-    suspend fun uploadReleaseAsset(context: Context, owner: String, repo: String, releaseId: Long, file: java.io.File, label: String = ""): Boolean =
-        withContext(Dispatchers.IO) {
-            try {
-                updateApiUrl(context)
-                val token = getToken(context)
-                val uploadUrl = "${getApiUrl()}/repos/$owner/$repo/releases/$releaseId/assets?name=${URLEncoder.encode(file.name, "UTF-8")}"
-                val conn = (URL(uploadUrl).openConnection() as HttpURLConnection).apply {
-                    requestMethod = "POST"
-                    setRequestProperty("Authorization", "Bearer $token")
-                    setRequestProperty("Accept", "application/vnd.github.v3+json")
-                    setRequestProperty("Content-Type", getContentType(file.name))
-                    doOutput = true
-                    connectTimeout = 30000
-                    readTimeout = 120000
-                }
-                file.inputStream().use { input -> conn.outputStream.use { output -> input.copyTo(output) } }
-                val code = conn.responseCode
-                conn.disconnect()
-                code in 200..299
-            } catch (e: Exception) {
-                Log.e(TAG, "Upload asset: ${e.message}")
-                false
-            }
-        }
-
-    suspend fun uploadReleaseAssetDetailed(context: Context, owner: String, repo: String, releaseId: Long, file: java.io.File, label: String = ""): GHAsset? =
-        withContext(Dispatchers.IO) {
-            try {
-                updateApiUrl(context)
-                val token = getToken(context)
-                val labelQuery = label.takeIf { it.isNotBlank() }?.let { "&label=${URLEncoder.encode(it, "UTF-8")}" }.orEmpty()
-                val uploadUrl = "${getApiUrl()}/repos/$owner/$repo/releases/$releaseId/assets?name=${URLEncoder.encode(file.name, "UTF-8")}$labelQuery"
-                val conn = (URL(uploadUrl).openConnection() as HttpURLConnection).apply {
-                    requestMethod = "POST"
-                    setRequestProperty("Authorization", "Bearer $token")
-                    setRequestProperty("Accept", "application/vnd.github.v3+json")
-                    setRequestProperty("Content-Type", getContentType(file.name))
-                    doOutput = true
-                    connectTimeout = 30000
-                    readTimeout = 120000
-                }
-                file.inputStream().use { input -> conn.outputStream.use { output -> input.copyTo(output) } }
-                val code = conn.responseCode
-                val stream = if (code in 200..299) conn.inputStream else conn.errorStream
-                val text = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-                conn.disconnect()
-                if (code in 200..299) parseReleaseAsset(JSONObject(text)) else null
-            } catch (e: Exception) {
-                Log.e(TAG, "Upload asset: ${e.message}")
-                null
-            }
-        }
-
-    private fun parseRelease(j: JSONObject, parsedAssets: List<GHAsset>? = null): GHRelease {
-        val assets = parsedAssets ?: run {
-            val arr = j.optJSONArray("assets") ?: JSONArray()
-            (0 until arr.length()).map { i -> parseReleaseAsset(arr.getJSONObject(i)) }
-        }
-        return GHRelease(
-            id = j.optLong("id"),
-            tag = j.optString("tag_name"),
-            name = j.optString("name", ""),
-            body = j.optString("body", ""),
-            prerelease = j.optBoolean("prerelease", false),
-            draft = j.optBoolean("draft", false),
-            createdAt = j.optString("published_at", j.optString("created_at", "")),
-            htmlUrl = j.optString("html_url", ""),
-            uploadUrl = j.optString("upload_url", "").substringBefore("{"),
-            assets = assets
-        )
-    }
-
-    private fun parseReleaseAsset(j: JSONObject): GHAsset = GHAsset(
-        id = j.optLong("id"),
-        name = j.optString("name"),
-        size = j.optLong("size", 0),
-        downloadUrl = j.optString("browser_download_url", ""),
-        downloadCount = j.optInt("download_count", 0),
-        contentType = j.optString("content_type", ""),
-        state = j.optString("state", "")
-    )
-
-    private fun getContentType(filename: String): String {
-        return when (filename.substringAfterLast(".", "").lowercase()) {
-            "zip" -> "application/zip"
-            "tar" -> "application/x-tar"
-            "gz" -> "application/gzip"
-            "jar" -> "application/java-archive"
-            "apk" -> "application/vnd.android.package-archive"
-            "pdf" -> "application/pdf"
-            "png" -> "image/png"
-            "jpg", "jpeg" -> "image/jpeg"
-            else -> "application/octet-stream"
-        }
     }
 
     suspend fun getGists(context: Context): List<GHGist> {
@@ -7973,29 +7685,6 @@ data class QuickGlanceStats(
     val openIssuesCount: Int = 0,
     val failedBuildsCount: Int = 0,
     val loading: Boolean = true
-)
-
-data class GHRelease(
-    val tag: String,
-    val name: String,
-    val body: String,
-    val prerelease: Boolean,
-    val createdAt: String,
-    val assets: List<GHAsset>,
-    val id: Long = 0L,
-    val draft: Boolean = false,
-    val htmlUrl: String = "",
-    val uploadUrl: String = ""
-)
-
-data class GHAsset(
-    val name: String,
-    val size: Long,
-    val downloadUrl: String,
-    val downloadCount: Int,
-    val id: Long = 0L,
-    val contentType: String = "",
-    val state: String = ""
 )
 
 data class GHGist(val id: String, val description: String, val isPublic: Boolean, val files: List<String>,

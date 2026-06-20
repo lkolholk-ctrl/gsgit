@@ -76,6 +76,7 @@ import coil.request.ImageRequest
 import androidx.compose.material.icons.outlined.Link
 import gs.git.vps.data.Strings
 import gs.git.vps.data.github.*
+import gs.git.vps.data.github.model.GHRelease
 import gs.git.vps.notifications.GitHubNotificationTarget
 import gs.git.vps.ui.components.AiModuleAlertDialog
 import gs.git.vps.ui.components.AiModuleGlyph
