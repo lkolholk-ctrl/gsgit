@@ -519,3 +519,25 @@ Packages, Collaborators, Auth, Repo-settings/Autolinks/LFS/Codespaces, Diagnosti
 
 ### Итог (16 доменов) ✅
 … + **GitData**. `GitHubManager.kt`: 9008 → 3078.
+
+## РЕАЛИЗОВАНО: домен Contents ✅
+
+Высокоуровневые операции с файлами/деревом. `GitHubManager.kt`: 3078 → 2571 строк (−507).
+Вынесено 13 функций (12 extension + 1 private collectFiles) в один файл.
+
+1. **`GitHubManager+Contents.kt`** (~430 строк) — getFileContent, getFileBlame (GraphQL),
+   cloneRepo (zipball), uploadFile/uploadFileWithResult/uploadFileFromPath/uploadMultipleFiles,
+   commitWorkspaceChanges (+PGP-подпись), deleteFile, downloadFile, uploadDirectory/collectFiles,
+   uploadProjectFolder (Contents API seed + Git Data pipeline). TAG → локальный CONTENTS_TAG.
+2. **Модели → `model/GHContent.kt`** (дополнен): GHBlameRange, GHFileSaveResult.
+3. **Законное исключение**: прямой `openConnection()` в cloneRepo/downloadFile (бинарные стримы
+   zip/raw) — текстовое ядро `request()` их не обслуживает; помечено в шапке файла.
+4. **Зависимость от GitData**: uploadProjectFolder/uploadMultipleFiles зовут getGitRef/createGitBlob/
+   createGitCommit/updateGitRef из домена GitData — тот же пакет, без импорта. PREFS/KEY_USER (PGP)
+   и refQuery/repoPath/encPath/graphql — уже internal в ядре.
+5. **Потребители** (5 экранов, все wildcard — функции покрыты): GitHubRepoModule — добавлен
+   `import …model.GHBlameRange`. GHFileSaveResult кросс-файлово не используется (вывод типа).
+6. **Чистая сборка `clean compileDebugKotlin` — BUILD SUCCESSFUL (41s), exit 0.**
+
+### Итог (17 доменов) ✅
+… + GitData, **Contents**. `GitHubManager.kt`: 9008 → 2571 (−71%).
