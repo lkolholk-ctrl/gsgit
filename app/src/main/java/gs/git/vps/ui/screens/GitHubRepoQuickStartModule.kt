@@ -30,6 +30,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.documentfile.provider.DocumentFile
 import gs.git.vps.data.github.*
+import gs.git.vps.data.github.model.GHRepo
+import gs.git.vps.data.github.model.GHRepoCreateResult
 import gs.git.vps.ui.components.*
 import gs.git.vps.ui.theme.AiModuleTheme
 import gs.git.vps.ui.theme.JetBrainsMono

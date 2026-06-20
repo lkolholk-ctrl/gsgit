@@ -56,10 +56,12 @@ import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import gs.git.vps.data.github.GHFollowerEntry
-import gs.git.vps.data.github.GHRepo
-import gs.git.vps.data.github.GHRepoEvent
 import gs.git.vps.data.github.GHUserProfile
 import gs.git.vps.data.github.GitHubManager
+import gs.git.vps.data.github.model.GHRepo
+import gs.git.vps.data.github.model.GHRepoEvent
+import gs.git.vps.data.github.getUserRepos
+import gs.git.vps.data.github.getStarredRepos
 import gs.git.vps.ui.components.AiModuleHairline
 import gs.git.vps.ui.components.AiModuleKeyValueRow
 import gs.git.vps.ui.components.AiModuleSectionLabel

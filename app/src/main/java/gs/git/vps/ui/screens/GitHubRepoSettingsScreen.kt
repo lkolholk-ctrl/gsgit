@@ -77,11 +77,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import gs.git.vps.data.github.GHLicenseDetail
-import gs.git.vps.data.github.GHRepo
 import gs.git.vps.data.github.GitHubManager
 import gs.git.vps.ui.theme.AiModuleTheme
 import gs.git.vps.data.github.GitHubRepoSettingsManager
+import gs.git.vps.data.github.model.GHLicenseDetail
+import gs.git.vps.data.github.model.GHRepo
+import gs.git.vps.data.github.getRepoLicense
 import kotlinx.coroutines.launch
 
 private enum class RepoSettingsTab(val label: String) {

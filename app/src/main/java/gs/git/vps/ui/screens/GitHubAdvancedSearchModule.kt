@@ -55,7 +55,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import gs.git.vps.data.github.*
-import gs.git.vps.data.github.GHRepo
 import gs.git.vps.ui.components.AiModuleGlyph
 import gs.git.vps.ui.components.AiModuleGlyphAction
 import gs.git.vps.ui.components.AiModuleHairline
@@ -75,6 +74,7 @@ import gs.git.vps.data.github.model.GHSearchIssueResult
 import gs.git.vps.data.github.model.GHTopicSearchResult
 import gs.git.vps.data.github.GHUser
 import gs.git.vps.data.github.GitHubManager
+import gs.git.vps.data.github.model.GHRepo
 import kotlinx.coroutines.launch
 
 private enum class AdvancedSearchKind(val label: String) {

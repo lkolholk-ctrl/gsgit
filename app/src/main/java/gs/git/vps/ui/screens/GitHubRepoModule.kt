@@ -77,6 +77,13 @@ import androidx.compose.material.icons.outlined.Link
 import gs.git.vps.data.Strings
 import gs.git.vps.data.github.*
 import gs.git.vps.data.github.model.GHRelease
+import gs.git.vps.data.github.model.GHContent
+import gs.git.vps.data.github.model.GHRepo
+import gs.git.vps.data.github.model.GHRepoEvent
+import gs.git.vps.data.github.model.GHRepoPerson
+import gs.git.vps.data.github.model.GHTrafficPath
+import gs.git.vps.data.github.model.GHTrafficReferrer
+import gs.git.vps.data.github.model.GHTrafficSeries
 import gs.git.vps.notifications.GitHubNotificationTarget
 import gs.git.vps.ui.components.AiModuleAlertDialog
 import gs.git.vps.ui.components.AiModuleGlyph

@@ -37,6 +37,9 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import gs.git.vps.data.Strings
 import gs.git.vps.data.github.*
+import gs.git.vps.data.github.model.GHRepo
+import gs.git.vps.data.github.model.GHRepoCreateResult
+import gs.git.vps.data.github.model.GHRepoEvent
 import gs.git.vps.ui.components.AiModulePageBar
 import gs.git.vps.ui.components.AiModuleSecondaryButton
 import gs.git.vps.ui.components.AiModuleSpinner

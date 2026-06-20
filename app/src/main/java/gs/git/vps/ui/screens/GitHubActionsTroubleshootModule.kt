@@ -35,13 +35,13 @@ import androidx.compose.ui.unit.sp
 import gs.git.vps.data.github.GHActionsPermissions
 import gs.git.vps.data.github.GHApiErrorLogEntry
 import gs.git.vps.data.github.GHJob
-import gs.git.vps.data.github.GHRepo
 import gs.git.vps.data.github.GHWorkflow
 import gs.git.vps.data.github.GHWorkflowPermissions
 import gs.git.vps.data.github.GHWorkflowRun
 import gs.git.vps.data.github.GitHubManager
 import gs.git.vps.data.github.KernelErrorPatterns
 import gs.git.vps.data.github.canWrite
+import gs.git.vps.data.github.model.GHRepo
 import gs.git.vps.ui.components.AiModuleSpinner
 import gs.git.vps.ui.components.AiModuleText as Text
 import gs.git.vps.ui.theme.AiModuleTheme

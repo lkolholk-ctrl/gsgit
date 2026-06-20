@@ -75,9 +75,9 @@ import gs.git.vps.data.github.GHProjectV2Item
 import gs.git.vps.data.github.GHProjectV2ItemFieldValue
 import gs.git.vps.data.github.GHProjectV2View
 import gs.git.vps.data.github.GHProjectV2Workflow
-import gs.git.vps.data.github.GHRepo
 import gs.git.vps.data.github.GitHubManager
 import gs.git.vps.data.github.canWrite
+import gs.git.vps.data.github.model.GHRepo
 import gs.git.vps.ui.components.AiModulePageBar
 import gs.git.vps.ui.components.AiModuleHairline
 import kotlinx.coroutines.launch

@@ -40,12 +40,12 @@ import gs.git.vps.ui.components.AiModuleTextAction
 import gs.git.vps.ui.components.AiModuleTextField
 import gs.git.vps.data.github.*
 import gs.git.vps.data.github.GHAutolink
-import gs.git.vps.data.github.GHDeployKey
-import gs.git.vps.data.github.GHInteractionLimitEntry
-import gs.git.vps.data.github.GHRepoSettings
 import gs.git.vps.data.github.GHRepositorySecuritySettings
-import gs.git.vps.data.github.GHTag
 import gs.git.vps.data.github.GitHubManager
+import gs.git.vps.data.github.model.GHDeployKey
+import gs.git.vps.data.github.model.GHInteractionLimitEntry
+import gs.git.vps.data.github.model.GHRepoSettings
+import gs.git.vps.data.github.model.GHTag
 import gs.git.vps.ui.theme.AiModuleTheme
 import gs.git.vps.ui.theme.*
 import kotlinx.coroutines.launch

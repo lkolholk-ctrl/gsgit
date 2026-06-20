@@ -25,8 +25,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import gs.git.vps.data.github.GHCollaborator
-import gs.git.vps.data.github.GHRepoInvitation
 import gs.git.vps.data.github.GitHubManager
+import gs.git.vps.data.github.model.GHRepoInvitation
+import gs.git.vps.data.github.getRepoInvitations
+import gs.git.vps.data.github.updateRepoInvitation
+import gs.git.vps.data.github.deleteRepoInvitation
 import gs.git.vps.ui.components.AiModuleAlertDialog
 import gs.git.vps.ui.components.AiModuleIcon as Icon
 import gs.git.vps.ui.components.AiModuleIconButton as IconButton

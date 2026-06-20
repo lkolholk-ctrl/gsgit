@@ -35,6 +35,7 @@ import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import gs.git.vps.data.Strings
 import gs.git.vps.data.github.*
+import gs.git.vps.data.github.model.GHRepo
 import gs.git.vps.ui.components.AiModuleText as Text
 import gs.git.vps.ui.components.AiModuleGlyphAction
 import gs.git.vps.ui.components.aiModuleRepoBadge

@@ -40,8 +40,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import gs.git.vps.data.github.GHAppInstallation
-import gs.git.vps.data.github.GHRepo
 import gs.git.vps.data.github.GitHubManager
+import gs.git.vps.data.github.model.GHRepo
 import gs.git.vps.ui.components.AiModuleHairline
 import gs.git.vps.ui.components.AiModuleSpinner
 import gs.git.vps.ui.components.AiModuleText as Text

@@ -46,6 +46,8 @@ import gs.git.vps.data.Strings
 import gs.git.vps.data.github.*
 import gs.git.vps.data.github.model.GHGist
 import gs.git.vps.data.github.model.GHGistComment
+import gs.git.vps.data.github.model.GHContent
+import gs.git.vps.data.github.model.GHRepo
 import gs.git.vps.ui.components.AiModuleHairline
 import gs.git.vps.ui.components.AiModulePageBar
 import gs.git.vps.ui.components.AiModuleSpinner

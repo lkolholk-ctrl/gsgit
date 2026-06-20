@@ -230,3 +230,33 @@ GHDeployKey, GHRepoSettings, GHRepoInvitation, GHUserRepositoryInvitation, GHInt
 
 Из-за объёма (~40 функций, перекрёстные парсеры) Repos лучше резать в свежем контексте
 строго по этому плану; журнал позволяет восстановить состояние мгновенно.
+
+## РЕАЛИЗОВАНО: домен Repos ✅
+
+Нарезан по плану выше (свежий контекст). `GitHubManager.kt`: 7859 → 7208 строк (−651).
+
+1. **Модели** вынесены в `model/`: `GHRepo.kt` (GHRepo + GHPermissions + GHRepoCreateResult),
+   `GHContent.kt`, `GHTraffic.kt` (GHTrafficSeries/Point/Referrer/Path), `GHRepoActivity.kt`
+   (GHRepoPerson + GHRepoEvent), `GHRepoMeta.kt` (GHTag, GHDeployKey, GHRepoSettings,
+   GHRepoInvitation, GHUserRepositoryInvitation, GHInteractionLimitEntry), `GHLicenseDetail.kt`.
+   `canWrite`/`canAdmin` (extension на GHRepo) ОСТАВЛЕНЫ в `GitHubManager.kt` — они в пакете
+   `gs.git.vps.data.github`, перенос в `.model` сломал бы импорты у потребителей без выгоды.
+2. **`GitHubManager+Repos.kt`** — 40 `internal`-extension-функций (569 строк): getRepos/getRepo,
+   createRepo*/deleteRepo, getRepoContents, star/unstar/forkRepo, getRepoLicense, traffic-*,
+   stargazers/watchers/events, getUserRepos/Starred/Watched/OrgRepos,
+   getUserRepositoryInvitations(+accept/decline), interaction-limits, settings/topics/tags,
+   deploy-keys, transferRepo, repo-invitations. Хелперы парсинга `parseTrafficSeries`/
+   `parseRepoPerson` перенесены сюда как private. Вызовы `GitHubManager.x(...)` не менялись.
+3. **Шаренные хелперы ядра → `internal`** (были private): `parseRepo` (нужен ещё `searchRepos`,
+   остался в core), `repoPath`, `refQuery` (нужен ещё `getFileContent`). `request`/`encPath`/
+   `parseNextPage` уже были internal.
+4. **Потребители** (compiler-driven): wildcard-импорты не покрывают подпакет `.model` —
+   в 20 экранов добавлены явные импорты моделей; в 4 экрана без wildcard добавлены явные импорты
+   перенесённых extension-функций (getRepoContents/getRepoInvitations/updateRepoInvitation/
+   deleteRepoInvitation/getUserRepos/getStarredRepos/getRepoLicense). В `GitHubManager.kt`
+   добавлены импорты GHRepo/GHPermissions/GHRepoEvent/GHInteractionLimitEntry/GHLicenseDetail
+   (используются оставшимися searchRepos/parseRepo/getUserReceived|PublicEvents/getLicense/native-лимитами).
+5. Контрольная компиляция `compileDebugKotlin` — **BUILD SUCCESSFUL, exit 0**. Поведение идентично (рефактор).
+
+### Итог (7 доменов) ✅
+Вынесено: Releases, Gists, Webhooks, Notifications, Search, Secrets, **Repos**. `GitHubManager.kt`: 9008 → 7208.

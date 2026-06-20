@@ -112,7 +112,6 @@ import gs.git.vps.data.github.GHEnvironment
 import gs.git.vps.data.github.model.GHEnvironmentSecret
 import gs.git.vps.data.github.GHJob
 import gs.git.vps.data.github.GHPendingDeployment
-import gs.git.vps.data.github.GHRepo
 import gs.git.vps.data.github.GHStep
 import gs.git.vps.data.github.GHWorkflow
 import gs.git.vps.data.github.GHWorkflowDispatchInput
@@ -126,6 +125,7 @@ import gs.git.vps.ui.components.AiModuleSectionLabel
 import gs.git.vps.data.github.canWrite
 import gs.git.vps.data.github.KernelErrorCatalog
 import gs.git.vps.data.github.KernelErrorPatterns
+import gs.git.vps.data.github.model.GHRepo
 import gs.git.vps.ui.theme.Blue
 import gs.git.vps.ui.theme.Green
 import gs.git.vps.ui.theme.Orange

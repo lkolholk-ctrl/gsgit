@@ -101,10 +101,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import gs.git.vps.data.Strings
-import gs.git.vps.data.github.GHContent
 import gs.git.vps.data.github.GHCommit
-import gs.git.vps.data.github.GHRepo
 import gs.git.vps.data.github.GitHubManager
+import gs.git.vps.data.github.model.GHContent
+import gs.git.vps.data.github.model.GHRepo
+import gs.git.vps.data.github.getRepoContents
 import gs.git.vps.ui.components.AiModuleAlertDialog
 import gs.git.vps.ui.components.AiModuleGlyph
 import gs.git.vps.ui.components.AiModuleGlyphAction
