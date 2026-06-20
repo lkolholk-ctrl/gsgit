@@ -203,3 +203,30 @@ Notifications(16), Search(6), Secrets(11) = 72 функции, 18 моделей
 **Дальше — по запросу пользователя — крупные домены** (Repos ~83, Actions+Workflows ~50+,
 Projects ~27, Issues ~24, PullRequests ~25). Они объёмные и с перекрёстными зависимостями
 парсеров — резать осторожно, по под-доменам, с проверкой потребителей.
+
+## ПЛАН: крупный домен Repos (следующий, лучше со свежим контекстом)
+
+В god-файле ~70 функций с «Repo» в имени, НО многие принадлежат другим доменам — НЕ тащить их
+в Repos, оставить для соответствующих доменов:
+- → **Actions**: getRepoSelfHostedRunners, deleteRepoSelfHostedRunner, createRepoRunnerRegistrationToken,
+  createRepoRunnerRemoveToken, getRepoActionsPermissions, setRepoActionsPermissions,
+  getRepoActionsWorkflowPermissions, setRepoActionsWorkflowPermissions, getRepoActionsRetention,
+  setRepoActionsRetention, getRepositoryArtifacts.
+- → **Projects**: getRepoProjects, createRepoProject, getRepoProjectsV2.
+- → **Security**: getRepositorySecurityAdvisor*, getRepositorySecuritySettings, setPrivateVulnerabilityReporting.
+- → **Teams**: getRepoTeams, addRepoTeam, updateRepoTeamPermission, removeRepoTeam.
+- → **Apps**: getAppInstallationRepositories, addRepositoryToAppInstallation, removeRepositoryFromAppInstallation.
+
+**Чистое ядро Repos (резать сюда), ~35-40 функций:** getRepos, getRepo, createRepo*,
+deleteRepo, getRepoContents, starRepo/unstarRepo/forkRepo, getRepoLicense, traffic-*
+(views/clones/referrers/paths), getRepoStargazers/Watchers/Events, getUserRepos/StarredRepos/
+WatchedRepos, getOrgRepos, getUserRepositoryInvitations, getRepoInteractionLimit/set/remove,
+getRepoSettings/updateRepoSettings, getRepoTopics, getRepoTags, getRepoDeployKeys/create/delete,
+transferRepo, getRepoInvitations/update/delete.
+Модели: GHRepo, GHContent, GHLicenseDetail, GHTraffic*, GHRepoPerson, GHRepoEvent, GHTag,
+GHDeployKey, GHRepoSettings, GHRepoInvitation, GHUserRepositoryInvitation, GHInteractionLimitEntry…
+ВНИМАНИЕ: `parseRepo`/`parseUser` используются и в оставшихся searchRepos/searchUsers — при
+выносе пометить эти parse-функции `internal` (как ядро), не ломать чужие вызовы.
+
+Из-за объёма (~40 функций, перекрёстные парсеры) Repos лучше резать в свежем контексте
+строго по этому плану; журнал позволяет восстановить состояние мгновенно.
