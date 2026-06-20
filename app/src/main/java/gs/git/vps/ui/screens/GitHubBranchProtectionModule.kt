@@ -22,6 +22,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import gs.git.vps.data.github.*
+import gs.git.vps.data.github.model.GHRequiredPRReviews
+import gs.git.vps.data.github.model.GHRequiredStatusChecks
+import gs.git.vps.data.github.model.GHBranchProtection
 import gs.git.vps.ui.components.AiModuleAlertDialog
 import gs.git.vps.ui.components.AiModuleIcon as Icon
 import gs.git.vps.ui.components.AiModulePageBar

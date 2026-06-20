@@ -348,65 +348,6 @@ object GitHubManager {
         } catch (e: Exception) { "" }
     }
 
-    suspend fun getCommits(context: Context, owner: String, repo: String, page: Int = 1): List<GHCommit> {
-        val r = request(context, "/repos/$owner/$repo/commits?per_page=30&page=$page")
-        if (!r.success) return emptyList()
-        val commits = try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                val commit = j.getJSONObject("commit")
-                val author = commit.optJSONObject("author")
-                val parentsArr = j.optJSONArray("parents")
-                val parentsList = if (parentsArr != null) {
-                    (0 until parentsArr.length()).map { pIdx ->
-                        parentsArr.getJSONObject(pIdx).optString("sha").take(7)
-                    }
-                } else emptyList()
-                GHCommit(
-                    sha = j.optString("sha").take(7),
-                    message = commit.optString("message"),
-                    author = author?.optString("name") ?: "?",
-                    date = author?.optString("date") ?: "",
-                    avatarUrl = j.optJSONObject("author")?.optString("avatar_url") ?: "",
-                    parents = parentsList,
-                    verified = commit.optJSONObject("verification")?.optBoolean("verified", false) ?: false
-                )
-            }
-        } catch (e: Exception) { return emptyList() }
-        val nextPage = parseNextPage(r.headers) ?: return commits
-        return commits + getCommits(context, owner, repo, nextPage)
-    }
-
-    suspend fun getFileCommits(context: Context, owner: String, repo: String, path: String, branch: String? = null): List<GHCommit> {
-        val ref = branch?.takeIf { it.isNotBlank() }
-        val refParam = if (ref != null) "&sha=${URLEncoder.encode(ref, "UTF-8")}" else ""
-        val r = request(context, "/repos/$owner/$repo/commits?path=${URLEncoder.encode(path, "UTF-8")}&per_page=20$refParam")
-        if (!r.success) return emptyList()
-        return try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                val commit = j.getJSONObject("commit")
-                val author = commit.optJSONObject("author")
-                val parentsArr = j.optJSONArray("parents")
-                val parentsList = if (parentsArr != null) {
-                    (0 until parentsArr.length()).map { pIdx ->
-                        parentsArr.getJSONObject(pIdx).optString("sha").take(7)
-                    }
-                } else emptyList()
-                GHCommit(
-                    sha = j.optString("sha").take(7),
-                    message = commit.optString("message"),
-                    author = author?.optString("name") ?: "?",
-                    date = author?.optString("date") ?: "",
-                    avatarUrl = j.optJSONObject("author")?.optString("avatar_url") ?: "",
-                    parents = parentsList,
-                    verified = commit.optJSONObject("verification")?.optBoolean("verified", false) ?: false
-                )
-            }
-        } catch (e: Exception) { emptyList() }
-    }
 
     suspend fun getFileBlame(context: Context, owner: String, repo: String, path: String, branch: String? = null): List<GHBlameRange> {
         val ref = branch?.takeIf { it.isNotBlank() } ?: "HEAD"
@@ -442,37 +383,6 @@ object GitHubManager {
         } catch (e: Exception) { Log.e(TAG, "Parse blame: ${e.message}"); emptyList() }
     }
 
-    suspend fun getBranches(context: Context, owner: String, repo: String): List<String> {
-        val branches = mutableListOf<String>()
-        var page = 1
-        while (true) {
-            val r = request(context, "/repos/$owner/$repo/branches?per_page=100&page=$page")
-            if (!r.success) break
-            val count = try {
-                val arr = JSONArray(r.body)
-                for (i in 0 until arr.length()) {
-                    arr.getJSONObject(i).optString("name").takeIf { it.isNotBlank() }?.let { branches += it }
-                }
-                arr.length()
-            } catch (e: Exception) {
-                0
-            }
-            if (count < 100) break
-            page++
-        }
-        return branches.distinct()
-    }
-
-    suspend fun getBranchHeadSha(context: Context, owner: String, repo: String, branch: String): String? {
-        if (branch.isBlank()) return null
-        val r = request(context, "/repos/$owner/$repo/git/ref/heads/$branch")
-        if (!r.success) return null
-        return try {
-            JSONObject(r.body).optJSONObject("object")?.optString("sha")?.takeIf { it.isNotBlank() }
-        } catch (_: Exception) {
-            null
-        }
-    }
 
     suspend fun cloneRepo(context: Context, owner: String, repo: String, destDir: java.io.File, onProgress: (String) -> Unit): Boolean =
         withContext(Dispatchers.IO) {
@@ -756,17 +666,6 @@ object GitHubManager {
                 true
             } catch (e: Exception) { Log.e(TAG, "Download: ${e.message}"); false }
         }
-
-    suspend fun createBranch(context: Context, owner: String, repo: String, branchName: String, fromBranch: String): Boolean {
-        val refR = request(context, "/repos/$owner/$repo/git/ref/heads/$fromBranch")
-        if (!refR.success) return false
-        val sha = JSONObject(refR.body).getJSONObject("object").getString("sha")
-        val body = JSONObject().apply { put("ref", "refs/heads/$branchName"); put("sha", sha) }.toString()
-        return request(context, "/repos/$owner/$repo/git/refs", "POST", body).success
-    }
-
-    suspend fun deleteBranch(context: Context, owner: String, repo: String, branch: String): Boolean =
-        request(context, "/repos/$owner/$repo/git/refs/heads/$branch", "DELETE").success
 
     suspend fun getGitRef(context: Context, owner: String, repo: String, ref: String): GHGitRef? {
         val cleanRef = ref.trim().removePrefix("refs/").trim('/')
@@ -1377,31 +1276,6 @@ object GitHubManager {
         )
     }
 
-    suspend fun getCommitDiff(context: Context, owner: String, repo: String, sha: String): GHCommitDetail? {
-        val r = request(context, "/repos/$owner/$repo/commits/$sha")
-        if (!r.success) return null
-        return try {
-            val j = JSONObject(r.body)
-            val filesArr = j.optJSONArray("files")
-            val files = mutableListOf<GHDiffFile>()
-            if (filesArr != null) for (i in 0 until filesArr.length()) {
-                val fj = filesArr.getJSONObject(i)
-                files.add(GHDiffFile(
-                    filename = fj.optString("filename"), status = fj.optString("status"),
-                    additions = fj.optInt("additions"), deletions = fj.optInt("deletions"),
-                    patch = fj.optString("patch", "")
-                ))
-            }
-            GHCommitDetail(
-                sha = j.optString("sha"), message = j.getJSONObject("commit").optString("message"),
-                author = j.getJSONObject("commit").optJSONObject("author")?.optString("name") ?: "",
-                date = j.getJSONObject("commit").optJSONObject("author")?.optString("date") ?: "",
-                files = files, totalAdditions = j.optJSONObject("stats")?.optInt("additions") ?: 0,
-                totalDeletions = j.optJSONObject("stats")?.optInt("deletions") ?: 0
-            )
-        } catch (e: Exception) { null }
-    }
-
     suspend fun checkOAuthAppToken(clientId: String, clientSecret: String, accessToken: String): GHOAuthTokenInfo? {
         val body = JSONObject().apply { put("access_token", accessToken.trim()) }.toString()
         val r = requestBasic("/applications/${clientId.trim()}/token", "POST", body, clientId.trim(), clientSecret)
@@ -1465,43 +1339,6 @@ object GitHubManager {
         } catch (e: Exception) {
             GHDeviceTokenResult(token = null, error = "parse_error")
         }
-    }
-
-    // ═══════════════════════════════════
-    // Commit Statuses
-    // ═══════════════════════════════════
-
-    suspend fun getCommitStatuses(context: Context, owner: String, repo: String, ref: String): List<GHCommitStatus> {
-        val encodedRef = URLEncoder.encode(ref, "UTF-8")
-        val r = request(context, "/repos/$owner/$repo/commits/$encodedRef/statuses?per_page=100")
-        if (!r.success) return emptyList()
-        return try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                GHCommitStatus(
-                    id = j.optLong("id", 0),
-                    state = j.optString("state", ""),
-                    context = j.optString("context", ""),
-                    description = j.optString("description", ""),
-                    targetUrl = j.optString("target_url", ""),
-                    createdAt = j.optString("created_at", ""),
-                    updatedAt = j.optString("updated_at", ""),
-                    creator = j.optJSONObject("creator")?.optString("login") ?: ""
-                )
-            }
-        } catch (e: Exception) { emptyList() }
-    }
-
-    suspend fun createCommitStatus(context: Context, owner: String, repo: String, sha: String, state: String, statusContext: String, description: String = "", targetUrl: String = ""): Boolean {
-        val body = JSONObject().apply {
-            put("state", state)
-            put("context", context)
-            if (description.isNotBlank()) put("description", description)
-            if (targetUrl.isNotBlank()) put("target_url", targetUrl)
-        }.toString()
-        val r = request(context, "/repos/$owner/$repo/statuses/$sha", "POST", body)
-        return r.success
     }
 
     // ═══════════════════════════════════
@@ -1931,162 +1768,6 @@ object GitHubManager {
         }
 
     // ═══════════════════════════════════
-    // Repository Settings
-    // ═══════════════════════════════════
-
-    suspend fun mergeBranch(
-        context: Context,
-        owner: String,
-        repo: String,
-        base: String,
-        head: String,
-        commitMessage: String? = null
-    ): Boolean {
-        val body = JSONObject().apply {
-            put("base", base)
-            put("head", head)
-            if (!commitMessage.isNullOrBlank()) put("commit_message", commitMessage)
-        }.toString()
-        return request(context, "/repos/$owner/$repo/merges", "POST", body).success
-    }
-
-    suspend fun renameBranch(context: Context, owner: String, repo: String, branch: String, newName: String): Boolean {
-        val encodedBranch = URLEncoder.encode(branch, "UTF-8")
-        val body = JSONObject().apply { put("new_name", newName) }.toString()
-        return request(context, "/repos/$owner/$repo/branches/$encodedBranch/rename", "POST", body).success
-    }
-
-    // ═══════════════════════════════════
-    // Branch Protection
-    // ═══════════════════════════════════
-
-    suspend fun getBranchProtection(context: Context, owner: String, repo: String, branch: String): GHBranchProtection? {
-        val encodedBranch = URLEncoder.encode(branch, "UTF-8")
-        val r = request(context, "/repos/$owner/$repo/branches/$encodedBranch/protection")
-        if (!r.success) return null
-        return try {
-            val j = JSONObject(r.body)
-            val requiredStatusChecks = j.optJSONObject("required_status_checks")
-            val requiredPRReviews = j.optJSONObject("required_pull_request_reviews")
-            val restrictions = j.optJSONObject("restrictions")
-
-            GHBranchProtection(
-                enabled = true,
-                requiredStatusChecks = if (requiredStatusChecks != null) GHRequiredStatusChecks(
-                    strict = requiredStatusChecks.optBoolean("strict", false),
-                    contexts = mutableListOf<String>().apply {
-                        val arr = requiredStatusChecks.optJSONArray("contexts")
-                        if (arr != null) for (i in 0 until arr.length()) add(arr.getString(i))
-                    }
-                ) else null,
-                requiredPRReviews = if (requiredPRReviews != null) GHRequiredPRReviews(
-                    requiredApprovingReviewCount = requiredPRReviews.optInt("required_approving_review_count", 1),
-                    dismissStaleReviews = requiredPRReviews.optBoolean("dismiss_stale_reviews", false),
-                    requireCodeOwnerReviews = requiredPRReviews.optBoolean("require_code_owner_reviews", false)
-                ) else null,
-                restrictions = if (restrictions != null) GHBranchRestrictions(
-                    users = mutableListOf<String>().apply {
-                        val arr = restrictions.optJSONArray("users")
-                        if (arr != null) for (i in 0 until arr.length()) add(arr.getJSONObject(i).optString("login"))
-                    },
-                    teams = mutableListOf<String>().apply {
-                        val arr = restrictions.optJSONArray("teams")
-                        if (arr != null) for (i in 0 until arr.length()) add(arr.getJSONObject(i).optString("slug"))
-                    }
-                ) else null,
-                allowForcePushes = j.optJSONObject("allow_force_pushes")?.optBoolean("enabled") ?: true,
-                allowDeletions = j.optJSONObject("allow_deletions")?.optBoolean("enabled") ?: true,
-                requiredConversationResolution = j.optJSONObject("required_conversation_resolution")?.optBoolean("enabled") ?: false,
-                enforceAdmins = j.optJSONObject("enforce_admins")?.optBoolean("enabled") ?: false,
-                requiredSignatures = j.optJSONObject("required_signatures")?.optBoolean("enabled") ?: false,
-                requiredLinearHistory = j.optJSONObject("required_linear_history")?.optBoolean("enabled") ?: false,
-                blockCreations = j.optJSONObject("block_creations")?.optBoolean("enabled") ?: false,
-                lockBranch = j.optJSONObject("lock_branch")?.optBoolean("enabled") ?: false,
-                requiredDeployments = mutableListOf<String>().apply {
-                    val rd = j.optJSONObject("required_deployments")
-                    val arr = rd?.optJSONArray("environments")
-                    if (arr != null) for (i in 0 until arr.length()) add(arr.getString(i))
-                }
-            )
-        } catch (e: Exception) { null }
-    }
-
-    suspend fun getBranchRequiredSignatures(context: Context, owner: String, repo: String, branch: String): Boolean {
-        val encodedBranch = URLEncoder.encode(branch, "UTF-8")
-        val r = request(context, "/repos/$owner/$repo/branches/$encodedBranch/protection/required_signatures")
-        if (!r.success) return false
-        return try { JSONObject(r.body).optBoolean("enabled", true) } catch (e: Exception) { true }
-    }
-
-    suspend fun enableBranchRequiredSignatures(context: Context, owner: String, repo: String, branch: String): Boolean {
-        val encodedBranch = URLEncoder.encode(branch, "UTF-8")
-        return request(context, "/repos/$owner/$repo/branches/$encodedBranch/protection/required_signatures", "POST", "{}").success
-    }
-
-    suspend fun disableBranchRequiredSignatures(context: Context, owner: String, repo: String, branch: String): Boolean {
-        val encodedBranch = URLEncoder.encode(branch, "UTF-8")
-        return request(context, "/repos/$owner/$repo/branches/$encodedBranch/protection/required_signatures", "DELETE").let { it.code == 204 || it.success }
-    }
-
-    suspend fun updateBranchProtection(
-        context: Context, owner: String, repo: String, branch: String,
-        requiredStatusChecks: GHRequiredStatusChecks? = null,
-        requiredPRReviews: GHRequiredPRReviews? = null,
-        restrictions: GHBranchRestrictions? = null,
-        allowForcePushes: Boolean? = null,
-        allowDeletions: Boolean? = null,
-        requiredConversationResolution: Boolean? = null,
-        enforceAdmins: Boolean? = null,
-        requiredLinearHistory: Boolean? = null,
-        blockCreations: Boolean? = null,
-        lockBranch: Boolean? = null,
-        requiredDeployments: List<String>? = null
-    ): Boolean {
-        val encodedBranch = URLEncoder.encode(branch, "UTF-8")
-        val body = JSONObject().apply {
-            if (requiredStatusChecks != null) {
-                put("required_status_checks", JSONObject().apply {
-                    put("strict", requiredStatusChecks.strict)
-                    put("contexts", JSONArray(requiredStatusChecks.contexts))
-                })
-            } else {
-                put("required_status_checks", JSONObject.NULL)
-            }
-            if (requiredPRReviews != null) {
-                put("required_pull_request_reviews", JSONObject().apply {
-                    put("required_approving_review_count", requiredPRReviews.requiredApprovingReviewCount)
-                    put("dismiss_stale_reviews", requiredPRReviews.dismissStaleReviews)
-                    put("require_code_owner_reviews", requiredPRReviews.requireCodeOwnerReviews)
-                })
-            } else {
-                put("required_pull_request_reviews", JSONObject.NULL)
-            }
-            if (restrictions != null) {
-                put("restrictions", JSONObject().apply {
-                    put("users", JSONArray(restrictions.users))
-                    put("teams", JSONArray(restrictions.teams))
-                })
-            } else {
-                put("restrictions", JSONObject.NULL)
-            }
-            if (allowForcePushes != null) put("allow_force_pushes", JSONObject().apply { put("enabled", allowForcePushes) })
-            if (allowDeletions != null) put("allow_deletions", JSONObject().apply { put("enabled", allowDeletions) })
-            if (requiredConversationResolution != null) put("required_conversation_resolution", JSONObject().apply { put("enabled", requiredConversationResolution) })
-            if (enforceAdmins != null) put("enforce_admins", JSONObject().apply { put("enabled", enforceAdmins) })
-            if (requiredLinearHistory != null) put("required_linear_history", JSONObject().apply { put("enabled", requiredLinearHistory) })
-            if (blockCreations != null) put("block_creations", JSONObject().apply { put("enabled", blockCreations) })
-            if (lockBranch != null) put("lock_branch", JSONObject().apply { put("enabled", lockBranch) })
-            if (requiredDeployments != null) put("required_deployments", JSONObject().apply { put("environments", JSONArray(requiredDeployments)) })
-        }.toString()
-        return request(context, "/repos/$owner/$repo/branches/$encodedBranch/protection", "PUT", body).success
-    }
-
-    suspend fun deleteBranchProtection(context: Context, owner: String, repo: String, branch: String): Boolean {
-        val encodedBranch = URLEncoder.encode(branch, "UTF-8")
-        return request(context, "/repos/$owner/$repo/branches/$encodedBranch/protection", "DELETE").let { it.code == 204 || it.success }
-    }
-
-    // ═══════════════════════════════════
     // Collaborators
     // ═══════════════════════════════════
 
@@ -2127,117 +1808,6 @@ object GitHubManager {
     suspend fun updateCollaboratorPermission(context: Context, owner: String, repo: String, username: String, permission: String): Boolean {
         val body = JSONObject().apply { put("permission", permission) }.toString()
         return request(context, "/repos/$owner/$repo/collaborators/${URLEncoder.encode(username, "UTF-8")}", "PUT", body).success
-    }
-
-    // ═══════════════════════════════════
-    // Repository Teams
-    // ═══════════════════════════════════
-
-    // ═══════════════════════════════════
-    // Commit Comments
-    // ═══════════════════════════════════
-
-    suspend fun getCommitComments(context: Context, owner: String, repo: String, sha: String, page: Int = 1): List<GHReviewComment> {
-        val r = request(context, "/repos/$owner/$repo/commits/$sha/comments?per_page=100&page=$page")
-        if (!r.success) return emptyList()
-        val comments = try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                GHReviewComment(
-                    id = j.optLong("id"),
-                    body = j.optString("body"),
-                    path = j.optString("path", ""),
-                    line = j.optInt("line", 0),
-                    originalLine = j.optInt("position", 0),
-                    diffHunk = j.optString("diff_hunk", ""),
-                    author = j.optJSONObject("user")?.optString("login") ?: "",
-                    avatarUrl = j.optJSONObject("user")?.optString("avatar_url") ?: "",
-                    createdAt = j.optString("created_at", ""),
-                    inReplyToId = null
-                )
-            }
-        } catch (e: Exception) { emptyList() }
-        val nextPage = parseNextPage(r.headers) ?: return comments
-        return comments + getCommitComments(context, owner, repo, sha, nextPage)
-    }
-
-    suspend fun createCommitComment(
-        context: Context, owner: String, repo: String, sha: String,
-        body: String, path: String, line: Int
-    ): Boolean {
-        val json = JSONObject().apply {
-            put("body", body)
-            put("path", path)
-            put("line", line)
-        }.toString()
-        return request(context, "/repos/$owner/$repo/commits/$sha/comments", "POST", json).success
-    }
-
-    suspend fun updateCommitComment(context: Context, owner: String, repo: String, commentId: Long, body: String): Boolean {
-        val json = JSONObject().apply { put("body", body) }.toString()
-        return request(context, "/repos/$owner/$repo/comments/$commentId", "PATCH", json).success
-    }
-
-    suspend fun deleteCommitComment(context: Context, owner: String, repo: String, commentId: Long): Boolean =
-        request(context, "/repos/$owner/$repo/comments/$commentId", "DELETE").let { it.code == 204 || it.success }
-
-
-    // ═══════════════════════════════════
-    // Compare Commits
-    // ═══════════════════════════════════
-
-    suspend fun compareCommits(context: Context, owner: String, repo: String, base: String, head: String): GHCompareResult? {
-        val encodedBase = URLEncoder.encode(base, "UTF-8")
-        val encodedHead = URLEncoder.encode(head, "UTF-8")
-        val r = request(context, "/repos/$owner/$repo/compare/$encodedBase...$encodedHead")
-        if (!r.success) return null
-        return try {
-            val j = JSONObject(r.body)
-            val filesArr = j.optJSONArray("files")
-            val files = mutableListOf<GHDiffFile>()
-            if (filesArr != null) for (i in 0 until filesArr.length()) {
-                val fj = filesArr.getJSONObject(i)
-                files.add(GHDiffFile(
-                    filename = fj.optString("filename"),
-                    status = fj.optString("status"),
-                    additions = fj.optInt("additions"),
-                    deletions = fj.optInt("deletions"),
-                    patch = fj.optString("patch", "")
-                ))
-            }
-            val commitsArr = j.optJSONArray("commits")
-            val commits = mutableListOf<GHCommit>()
-            if (commitsArr != null) for (i in 0 until commitsArr.length()) {
-                val cj = commitsArr.getJSONObject(i)
-                val commit = cj.optJSONObject("commit")
-                val author = commit?.optJSONObject("author")
-                val user = cj.optJSONObject("author")
-                val parentsArr = cj.optJSONArray("parents")
-                val parentsList = if (parentsArr != null) {
-                    (0 until parentsArr.length()).map { pIdx ->
-                        parentsArr.getJSONObject(pIdx).optString("sha").take(7)
-                    }
-                } else emptyList()
-                commits.add(GHCommit(
-                    sha = cj.optString("sha"),
-                    message = commit?.optString("message", "") ?: "",
-                    author = user?.optString("login", "")?.ifBlank { author?.optString("name", "") ?: "" } ?: "",
-                    date = author?.optString("date", "") ?: "",
-                    avatarUrl = user?.optString("avatar_url", "") ?: "",
-                    parents = parentsList
-                ))
-            }
-            GHCompareResult(
-                status = j.optString("status"),
-                aheadBy = j.optInt("ahead_by"),
-                behindBy = j.optInt("behind_by"),
-                totalCommits = j.optInt("total_commits"),
-                files = files,
-                commits = commits,
-                htmlUrl = j.optString("html_url", "")
-            )
-        } catch (e: Exception) { null }
     }
 
     // ═══════════════════════════════════
@@ -3531,8 +3101,6 @@ data class GHAppInstallation(
     val suspendedBy: String
 )
 
-data class GHCommit(val sha: String, val message: String, val author: String, val date: String, val avatarUrl: String, val parents: List<String> = emptyList(), val verified: Boolean = false)
-
 data class GHBlameRange(
     val startLine: Int,
     val endLine: Int,
@@ -3608,12 +3176,6 @@ data class QuickGlanceStats(
     val loading: Boolean = true
 )
 
-data class GHCommitDetail(val sha: String, val message: String, val author: String, val date: String,
-    val files: List<GHDiffFile>, val totalAdditions: Int, val totalDeletions: Int)
-
-data class GHDiffFile(val filename: String, val status: String, val additions: Int, val deletions: Int, val patch: String)
-
-
 data class GHOAuthTokenInfo(
     val id: Long,
     val url: String,
@@ -3646,52 +3208,11 @@ data class GHDeviceTokenResult(
 
 
 data class GHUserLite(val login: String, val avatarUrl: String = "")
-data class GHBranchProtection(
-    val enabled: Boolean,
-    val requiredStatusChecks: GHRequiredStatusChecks?,
-    val requiredPRReviews: GHRequiredPRReviews?,
-    val restrictions: GHBranchRestrictions?,
-    val allowForcePushes: Boolean,
-    val allowDeletions: Boolean,
-    val requiredConversationResolution: Boolean,
-    val enforceAdmins: Boolean,
-    val requiredSignatures: Boolean = false,
-    val requiredLinearHistory: Boolean = false,
-    val blockCreations: Boolean = false,
-    val lockBranch: Boolean = false,
-    val requiredDeployments: List<String> = emptyList()
-)
-
-data class GHRequiredStatusChecks(
-    val strict: Boolean,
-    val contexts: List<String>
-)
-
-data class GHRequiredPRReviews(
-    val requiredApprovingReviewCount: Int,
-    val dismissStaleReviews: Boolean,
-    val requireCodeOwnerReviews: Boolean
-)
-
-data class GHBranchRestrictions(
-    val users: List<String>,
-    val teams: List<String>
-)
 
 data class GHCollaborator(
     val login: String,
     val avatarUrl: String,
     val role: String
-)
-
-data class GHCompareResult(
-    val status: String,
-    val aheadBy: Int,
-    val behindBy: Int,
-    val totalCommits: Int,
-    val files: List<GHDiffFile>,
-    val commits: List<GHCommit> = emptyList(),
-    val htmlUrl: String = ""
 )
 
 data class GHReaction(
@@ -3930,17 +3451,6 @@ data class GHLicense(
     val featured: Boolean
 )
 
-
-data class GHCommitStatus(
-    val id: Long,
-    val state: String,
-    val context: String,
-    val description: String,
-    val targetUrl: String,
-    val createdAt: String,
-    val updatedAt: String,
-    val creator: String
-)
 
 data class GHAutolink(
     val id: Long,

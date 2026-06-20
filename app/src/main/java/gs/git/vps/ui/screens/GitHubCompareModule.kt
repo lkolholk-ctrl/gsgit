@@ -48,9 +48,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import gs.git.vps.data.Strings
 import gs.git.vps.ui.theme.AiModuleTheme
-import gs.git.vps.data.github.GHCommit
-import gs.git.vps.data.github.GHCompareResult
-import gs.git.vps.data.github.GHDiffFile
+import gs.git.vps.data.github.model.GHCommit
+import gs.git.vps.data.github.*
+import gs.git.vps.data.github.model.GHCompareResult
+import gs.git.vps.data.github.model.GHDiffFile
 import gs.git.vps.data.github.GitHubManager
 import gs.git.vps.data.github.createPullRequest
 import gs.git.vps.ui.components.AiModuleAlertDialog

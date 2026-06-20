@@ -458,3 +458,42 @@ Users+Orgs+Teams, Commits+Branches+Tags, Discussions, Reactions.
 Releases, Gists, Webhooks, Notifications, Search, Secrets, Repos, Workflows, Actions, Projects,
 Issues, PullRequests, **Users, Orgs, Teams**. `GitHubManager.kt`: 9008 → 3984. Следующие крупные
 домены: Commits+Branches+Tags, Discussions, Reactions, Events, Packages, Collaborators, Auth.
+
+## РЕАЛИЗОВАНО: домен Commits+Branches ✅
+
+Нарезан по эталону Releases в ДВА файла (порцелайн), один коммит. `GitHubManager.kt`: 3984 → 3494
+строк (−490). Вынесено 22 функции + чистые `parseGHX`-парсеры.
+
+1. **`GitHubManager+Commits.kt`** (227 строк, 10 функций) — коммиты (getCommits, getFileCommits),
+   детали/diff (getCommitDiff), сравнение (compareCommits), commit-статусы (getCommitStatuses,
+   createCommitStatus), commit-комментарии (get/create/update/deleteCommitComment). Парсинг сведён
+   к `parseGHCommit` (единый для getCommits/getFileCommits), `parseDiffFiles` (общий для diff/compare),
+   `parseGHCommitStatus`. compareCommits строит GHCommit иначе (sha не обрезан, author-логика) —
+   оставлен инлайн. commit-comments тоже инлайн (своё поле-маппинг: originalLine=position, inReplyToId=null).
+2. **`GitHubManager+Branches.kt`** (216 строк, 12 функций) — ветки (getBranches, getBranchHeadSha,
+   create/deleteBranch, merge/renameBranch) и защита веток (getBranchProtection, required-signatures
+   get/enable/disable, update/deleteBranchProtection). Парсер `parseGHBranchProtection`.
+3. **Модели → `model/`**: `GHCommit.kt` (GHCommit, GHCommitDetail, GHDiffFile, GHCompareResult,
+   GHCommitStatus), `GHBranchProtection.kt` (GHBranchProtection, GHRequiredStatusChecks,
+   GHRequiredPRReviews, GHBranchRestrictions). GHBlameRange (blame) и GHCollaborator оставлены в core.
+4. **Ядро не трогали** — `request`/`parseNextPage`/`encPath`/`repoPath`/`refQuery` уже internal.
+5. **Сознательно НЕ тащили** (отдельные домены): blame (getFileBlame), git-data объекты
+   (getGitRef/createGitRef/getGitTree/createGitTree/getGitBlob/createGitBlob/getGitTag/createGitTag/
+   getGitCommit/createGitCommit), file-contents/upload/commitWorkspaceChanges → Contents/GitData;
+   collaborators → отдельный домен. Ветки берут git-refs из core (тот же пакет, без импорта).
+6. **Найден предсуществующий баг (НЕ чинил — рефактор):** в createCommitStatus тело пишет
+   `put("context", context)`, где `context` — android `Context`, а не параметр `statusContext`
+   (он игнорируется). Сохранено как было, помечено в шапке `GitHubManager+Commits.kt`.
+7. **Потребители** (compiler-driven): импорты моделей → `.model` (CodeEditor, Compare, Releases, Diff);
+   wildcard-экранам без явного импорта добавлены `.model`-импорты (RepoModule: GHCommit/CommitDetail/
+   CommitStatus; BranchProtection: GHBranchProtection/RequiredStatusChecks/RequiredPRReviews);
+   трём экранам без wildcard, зовущим перенесённые функции (CodeEditor, Compare, Diff), добавлен
+   `import …github.*`.
+8. **Чистая сборка `./gradlew clean compileDebugKotlin` — BUILD SUCCESSFUL (43s), exit 0.**
+   Поведение идентично (рефактор, сигнатуры не менялись).
+
+### Итог (15 доменов) ✅
+Releases, Gists, Webhooks, Notifications, Search, Secrets, Repos, Workflows, Actions, Projects,
+Issues, PullRequests, Users, Orgs, Teams, **Commits, Branches**. `GitHubManager.kt`: 9008 → 3494.
+Следующие домены: GitData (refs/trees/blobs/git-objects)+Contents, Discussions, Reactions, Events,
+Packages, Collaborators, Auth, Repo-settings/Autolinks/LFS/Codespaces, Diagnostics/RateLimit.

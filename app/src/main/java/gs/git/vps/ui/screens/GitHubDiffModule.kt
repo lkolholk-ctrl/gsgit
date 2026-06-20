@@ -33,8 +33,9 @@ import gs.git.vps.ui.components.AiModuleSpinner
 import gs.git.vps.ui.components.AiModuleText as Text
 import gs.git.vps.ui.components.AiModuleTextAction
 import gs.git.vps.ui.components.AiModuleTextField
-import gs.git.vps.data.github.GHCommitDetail
-import gs.git.vps.data.github.GHDiffFile
+import gs.git.vps.data.github.model.GHCommitDetail
+import gs.git.vps.data.github.*
+import gs.git.vps.data.github.model.GHDiffFile
 import gs.git.vps.data.github.model.GHPullFile
 import gs.git.vps.data.github.model.GHReviewComment
 import gs.git.vps.data.github.GitHubManager
