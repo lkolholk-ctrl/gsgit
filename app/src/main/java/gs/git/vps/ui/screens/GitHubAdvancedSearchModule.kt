@@ -72,7 +72,7 @@ import gs.git.vps.data.github.model.GHLabelSearchResult
 import gs.git.vps.data.github.model.GHSearchCommitResult
 import gs.git.vps.data.github.model.GHSearchIssueResult
 import gs.git.vps.data.github.model.GHTopicSearchResult
-import gs.git.vps.data.github.GHUser
+import gs.git.vps.data.github.model.GHUser
 import gs.git.vps.data.github.GitHubManager
 import gs.git.vps.data.github.model.GHRepo
 import kotlinx.coroutines.launch

@@ -32,11 +32,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import gs.git.vps.data.github.GHAuditLogEntry
+import gs.git.vps.data.github.model.GHAuditLogEntry
+import gs.git.vps.data.github.*
 import gs.git.vps.data.github.GHOAuthTokenInfo
-import gs.git.vps.data.github.GHSamlAuthorization
-import gs.git.vps.data.github.GHScimUser
-import gs.git.vps.data.github.GHScimUsersPage
+import gs.git.vps.data.github.model.GHSamlAuthorization
+import gs.git.vps.data.github.model.GHScimUser
+import gs.git.vps.data.github.model.GHScimUsersPage
 import gs.git.vps.data.github.GitHubManager
 import gs.git.vps.data.github.model.GHActionRunner
 import gs.git.vps.data.github.getEnterpriseRunners

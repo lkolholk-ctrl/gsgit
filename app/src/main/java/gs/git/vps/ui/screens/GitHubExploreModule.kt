@@ -51,7 +51,7 @@ import gs.git.vps.data.github.*
 import gs.git.vps.data.github.model.GHCodeResult
 import gs.git.vps.data.github.GHLicense
 import gs.git.vps.data.github.GHMeta
-import gs.git.vps.data.github.GHOrg
+import gs.git.vps.data.github.model.GHOrg
 import gs.git.vps.data.github.model.GHTopicSearchResult
 import gs.git.vps.data.github.GitHubManager
 import gs.git.vps.data.github.model.GHLicenseDetail

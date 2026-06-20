@@ -51,8 +51,8 @@ object GitHubManager {
         val custom = prefs.getString("custom_api_url", "") ?: ""
         cachedApiUrl = custom.ifBlank { "https://api.github.com" }
     }
-    private const val PREFS = "github_prefs"
-    private const val KEY_USER = "user_json"
+    internal const val PREFS = "github_prefs"
+    internal const val KEY_USER = "user_json"
     private const val CODE_NOT_MODIFIED = 304
 
     private val etagCache = mutableMapOf<String, Pair<String, Map<String, String>>>()
@@ -322,36 +322,6 @@ object GitHubManager {
             Log.e(TAG, "GraphQL parse error: ${e.message}")
             null
         }
-    }
-
-    suspend fun getUser(context: Context): GHUser? {
-        val r = request(context, "/user")
-        if (!r.success) return null
-        return try {
-            val j = JSONObject(r.body)
-            val user = GHUser(
-                login = j.optString("login"),
-                name = j.optString("name", ""),
-                avatarUrl = j.optString("avatar_url", ""),
-                bio = j.optString("bio", ""),
-                publicRepos = j.optInt("public_repos", 0),
-                privateRepos = j.optInt("total_private_repos", 0),
-                followers = j.optInt("followers", 0),
-                following = j.optInt("following", 0)
-            )
-            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_USER, r.body).apply()
-            user
-        } catch (e: Exception) { Log.e(TAG, "Parse user: ${e.message}"); null }
-    }
-
-    fun getCachedUser(context: Context): GHUser? {
-        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_USER, null) ?: return null
-        return try {
-            val j = JSONObject(raw)
-            GHUser(j.optString("login"), j.optString("name", ""), j.optString("avatar_url", ""),
-                j.optString("bio", ""), j.optInt("public_repos", 0), j.optInt("total_private_repos", 0),
-                j.optInt("followers", 0), j.optInt("following", 0))
-        } catch (_: Exception) { null }
     }
 
     suspend fun searchRepos(context: Context, query: String): List<GHRepo> {
@@ -1407,19 +1377,6 @@ object GitHubManager {
         )
     }
 
-    suspend fun searchUsers(context: Context, query: String): List<GHUser> {
-        val q = URLEncoder.encode(query, "UTF-8")
-        val r = request(context, "/search/users?q=$q&per_page=30")
-        if (!r.success) return emptyList()
-        return try {
-            val arr = JSONObject(r.body).getJSONArray("items")
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                GHUser(j.optString("login"), "", j.optString("avatar_url", ""), "", 0, 0, 0, 0)
-            }
-        } catch (e: Exception) { emptyList() }
-    }
-
     suspend fun getCommitDiff(context: Context, owner: String, repo: String, sha: String): GHCommitDetail? {
         val r = request(context, "/repos/$owner/$repo/commits/$sha")
         if (!r.success) return null
@@ -1443,105 +1400,6 @@ object GitHubManager {
                 totalDeletions = j.optJSONObject("stats")?.optInt("deletions") ?: 0
             )
         } catch (e: Exception) { null }
-    }
-
-    suspend fun getOrgAuditLog(context: Context, org: String, phrase: String = "", page: Int = 1): List<GHAuditLogEntry> {
-        val cleanOrg = org.trim()
-        if (cleanOrg.isBlank()) return emptyList()
-        val query = buildString {
-            append("?per_page=100&page=$page")
-            if (phrase.isNotBlank()) append("&phrase=${URLEncoder.encode(phrase.trim(), "UTF-8")}")
-        }
-        val r = request(context, "/orgs/$cleanOrg/audit-log$query")
-        if (!r.success) return emptyList()
-        return try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                GHAuditLogEntry(
-                    id = j.optString("_document_id", j.optString("id", "")),
-                    action = j.optString("action", ""),
-                    actor = j.optString("actor", ""),
-                    createdAt = j.optString("@timestamp", j.optString("created_at", "")),
-                    org = j.optString("org", cleanOrg),
-                    repo = j.optString("repo", ""),
-                    user = j.optString("user", ""),
-                    operationType = j.optString("operation_type", ""),
-                    transportProtocol = j.optString("transport_protocol", "")
-                )
-            }
-        } catch (e: Exception) { emptyList() }
-    }
-
-    suspend fun getOrgScimUsers(context: Context, org: String, startIndex: Int = 1, count: Int = 50): GHScimUsersPage {
-        val cleanOrg = org.trim()
-        if (cleanOrg.isBlank()) return GHScimUsersPage()
-        val r = request(context, "/scim/v2/organizations/$cleanOrg/Users?startIndex=$startIndex&count=$count")
-        if (!r.success) return GHScimUsersPage(error = r.body.ifBlank { "HTTP ${r.code}" })
-        return try {
-            val j = JSONObject(r.body)
-            val resources = j.optJSONArray("Resources") ?: JSONArray()
-            GHScimUsersPage(
-                totalResults = j.optInt("totalResults", 0),
-                startIndex = j.optInt("startIndex", startIndex),
-                itemsPerPage = j.optInt("itemsPerPage", count),
-                users = (0 until resources.length()).map { i ->
-                    val user = resources.getJSONObject(i)
-                    val name = user.optJSONObject("name")
-                    val emails = user.optJSONArray("emails")?.let { arr ->
-                        (0 until arr.length()).mapNotNull { idx ->
-                            arr.optJSONObject(idx)?.optString("value")?.takeIf { it.isNotBlank() }
-                        }
-                    } ?: emptyList()
-                    GHScimUser(
-                        id = user.optString("id", ""),
-                        userName = user.optString("userName", ""),
-                        displayName = user.optString("displayName", ""),
-                        givenName = name?.optString("givenName", "") ?: "",
-                        familyName = name?.optString("familyName", "") ?: "",
-                        active = user.optBoolean("active", false),
-                        externalId = user.optString("externalId", ""),
-                        emails = emails
-                    )
-                }
-            )
-        } catch (e: Exception) { GHScimUsersPage(error = e.message ?: "parse error") }
-    }
-
-    suspend fun getOrgSamlAuthorizations(context: Context, org: String, login: String = "", page: Int = 1): List<GHSamlAuthorization> {
-        val cleanOrg = org.trim()
-        if (cleanOrg.isBlank()) return emptyList()
-        val query = buildString {
-            append("?per_page=100&page=$page")
-            if (login.isNotBlank()) append("&login=${URLEncoder.encode(login.trim(), "UTF-8")}")
-        }
-        val r = request(context, "/orgs/$cleanOrg/credential-authorizations$query")
-        if (!r.success) return emptyList()
-        return try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                val scopes = j.optJSONArray("scopes")?.let { scopeArr ->
-                    (0 until scopeArr.length()).mapNotNull { idx -> scopeArr.optString(idx).takeIf { it.isNotBlank() } }
-                } ?: emptyList()
-                GHSamlAuthorization(
-                    login = j.optString("login", ""),
-                    credentialId = j.optLong("credential_id"),
-                    credentialType = j.optString("credential_type", ""),
-                    tokenLastEight = j.optString("token_last_eight", ""),
-                    authorizedAt = j.optString("credential_authorized_at", ""),
-                    accessedAt = j.optString("credential_accessed_at", ""),
-                    expiresAt = j.optString("authorized_credential_expires_at", ""),
-                    scopes = scopes
-                )
-            }
-        } catch (e: Exception) { emptyList() }
-    }
-
-    suspend fun removeOrgSamlAuthorization(context: Context, org: String, credentialId: Long): Boolean {
-        val cleanOrg = org.trim()
-        if (cleanOrg.isBlank() || credentialId <= 0L) return false
-        return request(context, "/orgs/$cleanOrg/credential-authorizations/$credentialId", "DELETE").let { it.code == 204 || it.success }
     }
 
     suspend fun checkOAuthAppToken(clientId: String, clientSecret: String, accessToken: String): GHOAuthTokenInfo? {
@@ -1607,144 +1465,6 @@ object GitHubManager {
         } catch (e: Exception) {
             GHDeviceTokenResult(token = null, error = "parse_error")
         }
-    }
-
-    suspend fun getUserProfile(context: Context, username: String): GHUserProfile? {
-        val r = request(context, "/users/$username")
-        if (!r.success) return null
-        return try {
-            parseUserProfile(JSONObject(r.body))
-        } catch (e: Exception) { null }
-    }
-
-    suspend fun getUserContributions(context: Context, username: String): List<GHContributionDay> {
-        val r = request(context, "https://github.com/users/$username/contributions", extraHeaders = mapOf("Accept" to "text/html"))
-        if (!r.success) return emptyList()
-        return try {
-            val tdRegex = """<td[^>]*class="[^"]*ContributionCalendar-day[^"]*"[^>]*>""".toRegex()
-            val dateRegex = """data-date="(\d{4}-\d{2}-\d{2})"""".toRegex()
-            val levelRegex = """data-level="(\d)"""".toRegex()
-
-            tdRegex.findAll(r.body).mapNotNull { td ->
-                val content = td.value
-                val date = dateRegex.find(content)?.groupValues?.get(1) ?: return@mapNotNull null
-                val level = levelRegex.find(content)?.groupValues?.get(1)?.toIntOrNull() ?: return@mapNotNull null
-                GHContributionDay(date, level)
-            }.toList()
-        } catch (e: Exception) {
-            emptyList()
-        }
-    }
-
-    private fun parseUserProfile(j: JSONObject): GHUserProfile =
-        GHUserProfile(
-            login = j.cleanString("login"),
-            name = j.cleanString("name"),
-            avatarUrl = j.cleanString("avatar_url"),
-            bio = j.cleanString("bio"),
-            company = j.cleanString("company"),
-            location = j.cleanString("location"),
-            blog = j.cleanString("blog"),
-            email = j.cleanString("email"),
-            twitterUsername = j.cleanString("twitter_username"),
-            hireable = if (j.isNull("hireable")) false else j.optBoolean("hireable", false),
-            publicRepos = j.optInt("public_repos", 0),
-            publicGists = j.optInt("public_gists", 0),
-            privateRepos = j.optInt("total_private_repos", 0),
-            ownedPrivateRepos = j.optInt("owned_private_repos", 0),
-            privateGists = j.optInt("private_gists", 0),
-            diskUsageKb = j.optLong("disk_usage", 0L),
-            collaborators = j.optInt("collaborators", 0),
-            followers = j.optInt("followers", 0),
-            following = j.optInt("following", 0),
-            twoFactorAuthentication = if (j.has("two_factor_authentication") && !j.isNull("two_factor_authentication")) {
-                j.optBoolean("two_factor_authentication", false)
-            } else null,
-            planName = j.optJSONObject("plan")?.cleanString("name").orEmpty(),
-            planSpace = j.optJSONObject("plan")?.optLong("space", 0L) ?: 0L,
-            createdAt = j.cleanString("created_at"),
-            updatedAt = j.cleanString("updated_at")
-        )
-
-    private fun JSONObject.cleanString(key: String): String =
-        optString(key, "").trim().takeUnless { it.equals("null", ignoreCase = true) }.orEmpty()
-
-    suspend fun isFollowing(context: Context, username: String): Boolean =
-        request(context, "/user/following/$username").code == 204
-
-    suspend fun followUser(context: Context, username: String): Boolean =
-        request(context, "/user/following/$username", "PUT").let { it.code == 204 || it.success }
-
-    suspend fun unfollowUser(context: Context, username: String): Boolean =
-        request(context, "/user/following/$username", "DELETE").let { it.code == 204 || it.success }
-
-    suspend fun getOrganizations(context: Context): List<GHOrg> {
-        val r = request(context, "/user/orgs?per_page=30")
-        if (!r.success) return emptyList()
-        return try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                GHOrg(login = j.optString("login"), avatarUrl = j.optString("avatar_url", ""),
-                    description = j.optString("description", ""))
-            }
-        } catch (e: Exception) { emptyList() }
-    }
-
-    suspend fun getOrgMembership(context: Context, org: String): GHOrgMembership? {
-        val r = request(context, "/user/memberships/orgs/${encPath(org)}")
-        if (!r.success) return null
-        return try {
-            val j = JSONObject(r.body)
-            GHOrgMembership(
-                org = j.optJSONObject("organization")?.optString("login") ?: org,
-                state = j.optString("state", ""),
-                role = j.optString("role", ""),
-                url = j.optString("url", "")
-            )
-        } catch (e: Exception) { null }
-    }
-
-    suspend fun updateOrgMembership(context: Context, org: String, state: String = "active"): Boolean {
-        val body = JSONObject().apply { put("state", state) }.toString()
-        val r = request(context, "/user/memberships/orgs/${encPath(org)}", "PATCH", body)
-        return r.success
-    }
-
-    suspend fun getOrgMembers(context: Context, org: String, role: String = "all", page: Int = 1): List<GHUserLite> {
-        val r = request(context, "/orgs/${encPath(org)}/members?role=$role&per_page=100&page=$page")
-        if (!r.success) return emptyList()
-        return try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                GHUserLite(login = j.optString("login", ""), avatarUrl = j.optString("avatar_url", ""))
-            }
-        } catch (e: Exception) { emptyList() }
-    }
-
-    suspend fun removeOrgMember(context: Context, org: String, username: String): Boolean {
-        return request(context, "/orgs/${encPath(org)}/members/${encPath(username)}", "DELETE").let { it.code == 204 || it.success }
-    }
-
-    suspend fun getOrg(context: Context, org: String): GHOrg? {
-        val r = request(context, "/orgs/${encPath(org)}")
-        if (!r.success) return null
-        return try {
-            val j = JSONObject(r.body)
-            GHOrg(login = j.optString("login"), avatarUrl = j.optString("avatar_url", ""), description = j.optString("description", ""))
-        } catch (e: Exception) { null }
-    }
-
-    suspend fun updateOrg(context: Context, org: String, description: String? = null, defaultRepoPermission: String? = null, hasOrgProjects: Boolean? = null, hasRepoProjects: Boolean? = null): Boolean {
-        val body = JSONObject().apply {
-            description?.let { put("description", it) }
-            defaultRepoPermission?.let { put("default_repository_permission", it) }
-            hasOrgProjects?.let { put("has_organization_projects", it) }
-            hasRepoProjects?.let { put("has_repository_projects", it) }
-        }.toString()
-        val r = request(context, "/orgs/${encPath(org)}", "PATCH", body)
-        return r.success
     }
 
     // ═══════════════════════════════════
@@ -1945,224 +1665,6 @@ object GitHubManager {
         }
     }
 
-
-    suspend fun getCurrentUserProfile(context: Context): GHUserProfile? {
-        val r = request(context, "/user")
-        if (!r.success) return null
-        return try {
-            val j = JSONObject(r.body)
-            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_USER, r.body).apply()
-            parseUserProfile(j)
-        } catch (e: Exception) {
-            Log.e(TAG, "Parse current profile: ${e.message}")
-            null
-        }
-    }
-
-    suspend fun updateCurrentUserProfile(
-        context: Context,
-        name: String,
-        bio: String,
-        company: String,
-        location: String,
-        blog: String,
-        email: String? = null,
-        twitterUsername: String? = null,
-        hireable: Boolean? = null
-    ): Boolean {
-        val body = JSONObject().apply {
-            put("name", name)
-            put("bio", bio)
-            put("company", company)
-            put("location", location)
-            put("blog", blog)
-            if (email != null && email.isNotBlank()) put("email", email.trim())
-            if (twitterUsername != null) {
-                if (twitterUsername.isBlank()) put("twitter_username", JSONObject.NULL)
-                else put("twitter_username", twitterUsername.trim().removePrefix("@"))
-            }
-            if (hireable != null) put("hireable", hireable)
-        }.toString()
-        val ok = request(context, "/user", "PATCH", body).success
-        if (ok) getUser(context)
-        return ok
-    }
-
-    suspend fun getEmailEntries(context: Context): List<GHEmailEntry> {
-        val r = request(context, "/user/emails")
-        if (!r.success) return emptyList()
-        return try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                GHEmailEntry(
-                    email = j.optString("email"),
-                    primary = j.optBoolean("primary", false),
-                    verified = j.optBoolean("verified", false),
-                    visibility = j.optString("visibility", "")
-                )
-            }
-        } catch (_: Exception) { emptyList() }
-    }
-
-    suspend fun addEmailAddress(context: Context, email: String): Boolean {
-        val body = JSONArray().put(email).toString()
-        return request(context, "/user/emails", "POST", body).success
-    }
-
-    suspend fun deleteEmailAddress(context: Context, email: String): Boolean {
-        val body = JSONArray().put(email).toString()
-        return request(context, "/user/emails", "DELETE", body).success
-    }
-
-    suspend fun setEmailVisibility(context: Context, visibility: String): Boolean {
-        val body = JSONObject().apply { put("visibility", visibility) }.toString()
-        return request(context, "/user/email/visibility", "PATCH", body).success
-    }
-
-    suspend fun getSshKeysNative(context: Context): List<GHUserKeyEntry> {
-        val r = request(context, "/user/keys")
-        if (!r.success) return emptyList()
-        return try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                GHUserKeyEntry(j.optLong("id"), j.optString("title"), j.optString("key"), j.optString("created_at", ""), "ssh")
-            }
-        } catch (_: Exception) { emptyList() }
-    }
-
-    suspend fun getSshSigningKeysNative(context: Context): List<GHUserKeyEntry> {
-        val r = request(context, "/user/ssh_signing_keys")
-        if (!r.success) return emptyList()
-        return try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                GHUserKeyEntry(j.optLong("id"), j.optString("title"), j.optString("key"), j.optString("created_at", ""), "ssh_signing")
-            }
-        } catch (_: Exception) { emptyList() }
-    }
-
-    suspend fun getGpgKeysNative(context: Context): List<GHUserKeyEntry> {
-        val r = request(context, "/user/gpg_keys")
-        if (!r.success) return emptyList()
-        return try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                GHUserKeyEntry(j.optLong("id"), j.optString("name"), j.optString("public_key"), j.optString("created_at", ""), "gpg")
-            }
-        } catch (_: Exception) { emptyList() }
-    }
-
-    suspend fun addSshKeyNative(context: Context, title: String, key: String): Boolean {
-        val body = JSONObject().apply { put("title", title); put("key", key) }.toString()
-        return request(context, "/user/keys", "POST", body).success
-    }
-
-    suspend fun addSshSigningKeyNative(context: Context, title: String, key: String): Boolean {
-        val body = JSONObject().apply { put("title", title); put("key", key) }.toString()
-        return request(context, "/user/ssh_signing_keys", "POST", body).success
-    }
-
-    suspend fun addGpgKeyNative(context: Context, armoredKey: String): Boolean {
-        val body = JSONObject().apply { put("armored_public_key", armoredKey) }.toString()
-        return request(context, "/user/gpg_keys", "POST", body).success
-    }
-
-    suspend fun deleteSshKeyNative(context: Context, id: Long): Boolean =
-        request(context, "/user/keys/$id", "DELETE").let { it.code == 204 || it.success }
-
-    suspend fun deleteSshSigningKeyNative(context: Context, id: Long): Boolean =
-        request(context, "/user/ssh_signing_keys/$id", "DELETE").let { it.code == 204 || it.success }
-
-    suspend fun deleteGpgKeyNative(context: Context, id: Long): Boolean =
-        request(context, "/user/gpg_keys/$id", "DELETE").let { it.code == 204 || it.success }
-
-    suspend fun getSocialAccountsNative(context: Context): List<GHSocialAccountEntry> {
-        val r = request(context, "/user/social_accounts")
-        if (!r.success) return emptyList()
-        return try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                GHSocialAccountEntry(j.optString("provider", "social"), j.optString("url"))
-            }
-        } catch (_: Exception) { emptyList() }
-    }
-
-    suspend fun addSocialAccountNative(context: Context, url: String): Boolean {
-        val body = JSONArray().put(url).toString()
-        return request(context, "/user/social_accounts", "POST", body).success
-    }
-
-    suspend fun deleteSocialAccountNative(context: Context, url: String): Boolean {
-        val body = JSONArray().put(url).toString()
-        return request(context, "/user/social_accounts", "DELETE", body).success
-    }
-
-    suspend fun getFollowersNative(context: Context): List<GHFollowerEntry> {
-        val r = request(context, "/user/followers?per_page=100")
-        if (!r.success) return emptyList()
-        return try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                GHFollowerEntry(j.optString("login"), j.optString("avatar_url", ""))
-            }
-        } catch (_: Exception) { emptyList() }
-    }
-
-    suspend fun getFollowingNative(context: Context): List<GHFollowerEntry> {
-        val r = request(context, "/user/following?per_page=100")
-        if (!r.success) return emptyList()
-        return try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                GHFollowerEntry(j.optString("login"), j.optString("avatar_url", ""))
-            }
-        } catch (_: Exception) { emptyList() }
-    }
-
-    suspend fun getBlockedUsersNative(context: Context): List<GHBlockedEntry> {
-        val r = request(context, "/user/blocks?per_page=100")
-        if (!r.success) return emptyList()
-        return try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                GHBlockedEntry(j.optString("login"), j.optString("avatar_url", ""))
-            }
-        } catch (_: Exception) { emptyList() }
-    }
-
-    suspend fun blockUserNative(context: Context, username: String): Boolean =
-        request(context, "/user/blocks/${URLEncoder.encode(username, "UTF-8")}", "PUT", "").let { it.code == 204 || it.success }
-
-    suspend fun unblockUserNative(context: Context, username: String): Boolean =
-        request(context, "/user/blocks/${URLEncoder.encode(username, "UTF-8")}", "DELETE").let { it.code == 204 || it.success }
-
-    suspend fun getInteractionLimitNative(context: Context): GHInteractionLimitEntry? {
-        val r = request(context, "/user/interaction-limits")
-        if (!r.success || r.body.isBlank()) return null
-        return try {
-            val j = JSONObject(r.body)
-            GHInteractionLimitEntry(j.optString("limit"), j.optString("expires_at", "").ifBlank { null })
-        } catch (_: Exception) { null }
-    }
-
-    suspend fun setInteractionLimitNative(context: Context, limit: String, expiry: String): Boolean {
-        val body = JSONObject().apply {
-            put("limit", limit)
-            put("expiry", expiry)
-        }.toString()
-        return request(context, "/user/interaction-limits", "PUT", body).success
-    }
-
-    suspend fun removeInteractionLimitNative(context: Context): Boolean =
-        request(context, "/user/interaction-limits", "DELETE").let { it.code == 204 || it.success }
 
     suspend fun getRateLimitSummaryNative(context: Context): String {
         val r = request(context, "/rate_limit")
@@ -2631,91 +2133,6 @@ object GitHubManager {
     // Repository Teams
     // ═══════════════════════════════════
 
-    suspend fun getRepoTeams(context: Context, owner: String, repo: String): List<GHRepoTeam> {
-        val r = request(context, "/repos/$owner/$repo/teams?per_page=100")
-        if (!r.success) return emptyList()
-        return try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i -> parseRepoTeam(arr.getJSONObject(i)) }
-        } catch (e: Exception) {
-            emptyList()
-        }
-    }
-
-    suspend fun getOrgTeams(context: Context, org: String): List<GHOrgTeam> {
-        val r = request(context, "/orgs/${URLEncoder.encode(org, "UTF-8")}/teams?per_page=100")
-        if (!r.success) return emptyList()
-        return try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                GHOrgTeam(
-                    id = j.optLong("id"),
-                    name = j.optString("name"),
-                    slug = j.optString("slug"),
-                    description = j.optString("description", ""),
-                    privacy = j.optString("privacy", ""),
-                    permission = normalizeRepoTeamPermission(j.optString("permission", "")),
-                    membersCount = j.optInt("members_count", 0),
-                    reposCount = j.optInt("repos_count", 0),
-                    htmlUrl = j.optString("html_url", "")
-                )
-            }
-        } catch (e: Exception) {
-            emptyList()
-        }
-    }
-
-    suspend fun addRepoTeam(context: Context, org: String, teamSlug: String, owner: String, repo: String, permission: String): Boolean {
-        val body = JSONObject().apply { put("permission", normalizeRepoTeamPermission(permission)) }.toString()
-        val encodedTeam = URLEncoder.encode(teamSlug, "UTF-8")
-        return request(context, "/orgs/${URLEncoder.encode(org, "UTF-8")}/teams/$encodedTeam/repos/$owner/$repo", "PUT", body).let { it.code == 204 || it.success }
-    }
-
-    suspend fun updateRepoTeamPermission(context: Context, org: String, teamSlug: String, owner: String, repo: String, permission: String): Boolean =
-        addRepoTeam(context, org, teamSlug, owner, repo, permission)
-
-    suspend fun removeRepoTeam(context: Context, org: String, teamSlug: String, owner: String, repo: String): Boolean {
-        val encodedTeam = URLEncoder.encode(teamSlug, "UTF-8")
-        return request(context, "/orgs/${URLEncoder.encode(org, "UTF-8")}/teams/$encodedTeam/repos/$owner/$repo", "DELETE").let { it.code == 204 || it.success }
-    }
-
-    private fun parseRepoTeam(j: JSONObject): GHRepoTeam {
-        val permissions = j.optJSONObject("permissions")
-        val permission = when {
-            permissions?.optBoolean("admin", false) == true -> "admin"
-            permissions?.optBoolean("maintain", false) == true -> "maintain"
-            permissions?.optBoolean("push", false) == true -> "push"
-            permissions?.optBoolean("triage", false) == true -> "triage"
-            permissions?.optBoolean("pull", false) == true -> "pull"
-            else -> normalizeRepoTeamPermission(j.optString("permission", "pull"))
-        }
-        val org = j.optJSONObject("organization")
-        return GHRepoTeam(
-            id = j.optLong("id"),
-            name = j.optString("name"),
-            slug = j.optString("slug"),
-            description = j.optString("description", ""),
-            privacy = j.optString("privacy", ""),
-            permission = permission,
-            membersCount = j.optInt("members_count", 0),
-            reposCount = j.optInt("repos_count", 0),
-            htmlUrl = j.optString("html_url", ""),
-            organization = org?.optString("login", "") ?: ""
-        )
-    }
-
-    private fun normalizeRepoTeamPermission(permission: String): String = when (permission.lowercase()) {
-        "read", "pull" -> "pull"
-        "write", "push" -> "push"
-        "triage", "maintain", "admin" -> permission.lowercase()
-        else -> "pull"
-    }
-
-    // ═══════════════════════════════════
-    // PR Review Comments
-    // ═══════════════════════════════════
-
     // ═══════════════════════════════════
     // Commit Comments
     // ═══════════════════════════════════
@@ -2821,10 +2238,6 @@ object GitHubManager {
                 htmlUrl = j.optString("html_url", "")
             )
         } catch (e: Exception) { null }
-    }
-
-    fun clearGitHubUserCache(context: Context) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(KEY_USER).apply()
     }
 
     // ═══════════════════════════════════
@@ -3172,80 +2585,6 @@ object GitHubManager {
             put("subjectId", subjectId)
         })
         return data?.optJSONObject("removeUpvote")?.optJSONObject("subject") != null
-    }
-
-    suspend fun getTeamMembers(context: Context, org: String, teamSlug: String): List<GHCollaborator> {
-        val encodedOrg = java.net.URLEncoder.encode(org, "UTF-8")
-        val encodedTeam = java.net.URLEncoder.encode(teamSlug, "UTF-8")
-        val r = request(context, "/orgs/${'$'}encodedOrg/teams/${'$'}encodedTeam/members?per_page=100")
-        if (!r.success) return emptyList()
-        return try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                GHCollaborator(
-                    login = j.optString("login"),
-                    avatarUrl = j.optString("avatar_url", ""),
-                    role = "member"
-                )
-            }
-        } catch (e: Exception) { emptyList() }
-    }
-
-    suspend fun addTeamMember(context: Context, org: String, teamSlug: String, username: String, role: String = "member"): Boolean {
-        val encodedOrg = java.net.URLEncoder.encode(org, "UTF-8")
-        val encodedTeam = java.net.URLEncoder.encode(teamSlug, "UTF-8")
-        val encodedUser = java.net.URLEncoder.encode(username, "UTF-8")
-        val body = JSONObject().apply { put("role", role) }.toString()
-        return request(context, "/orgs/${'$'}encodedOrg/teams/${'$'}encodedTeam/memberships/${'$'}encodedUser", "PUT", body).success
-    }
-
-    suspend fun removeTeamMember(context: Context, org: String, teamSlug: String, username: String): Boolean {
-        val encodedOrg = java.net.URLEncoder.encode(org, "UTF-8")
-        val encodedTeam = java.net.URLEncoder.encode(teamSlug, "UTF-8")
-        val encodedUser = java.net.URLEncoder.encode(username, "UTF-8")
-        return request(context, "/orgs/${'$'}encodedOrg/teams/${'$'}encodedTeam/memberships/${'$'}encodedUser", "DELETE").success
-    }
-
-    suspend fun getTeamDiscussions(context: Context, org: String, teamSlug: String): List<GHTeamDiscussion> {
-        val encodedOrg = java.net.URLEncoder.encode(org, "UTF-8")
-        val encodedTeam = java.net.URLEncoder.encode(teamSlug, "UTF-8")
-        val r = request(context, "/orgs/${'$'}encodedOrg/teams/${'$'}encodedTeam/discussions?per_page=100")
-        if (!r.success) return emptyList()
-        return try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                val author = j.optJSONObject("author")
-                GHTeamDiscussion(
-                    id = j.optLong("id"),
-                    number = j.optInt("number"),
-                    title = j.optString("title"),
-                    body = j.optString("body", ""),
-                    author = author?.optString("login") ?: j.optString("author_login"),
-                    avatarUrl = author?.optString("avatar_url") ?: "",
-                    createdAt = j.optString("created_at", ""),
-                    commentsCount = j.optInt("comments_count", 0),
-                    htmlUrl = j.optString("html_url", "")
-                )
-            }
-        } catch (e: Exception) { emptyList() }
-    }
-
-    suspend fun createTeamDiscussion(context: Context, org: String, teamSlug: String, title: String, body: String): Boolean {
-        val encodedOrg = java.net.URLEncoder.encode(org, "UTF-8")
-        val encodedTeam = java.net.URLEncoder.encode(teamSlug, "UTF-8")
-        val reqBody = JSONObject().apply {
-            put("title", title)
-            put("body", body)
-        }.toString()
-        return request(context, "/orgs/${'$'}encodedOrg/teams/${'$'}encodedTeam/discussions", "POST", reqBody).success
-    }
-
-    suspend fun deleteTeamDiscussion(context: Context, org: String, teamSlug: String, number: Int): Boolean {
-        val encodedOrg = java.net.URLEncoder.encode(org, "UTF-8")
-        val encodedTeam = java.net.URLEncoder.encode(teamSlug, "UTF-8")
-        return request(context, "/orgs/${'$'}encodedOrg/teams/${'$'}encodedTeam/discussions/$number", "DELETE").success
     }
 
     private suspend fun getRepositoryNodeId(context: Context, owner: String, repo: String): String? {
@@ -4151,9 +3490,6 @@ data class GHApiErrorLogEntry(
     val rateRemaining: String,
 )
 
-data class GHUser(val login: String, val name: String, val avatarUrl: String, val bio: String,
-    val publicRepos: Int, val privateRepos: Int, val followers: Int, val following: Int)
-
 /** True if the current user can push commits / edit content / run workflows. */
 fun GHRepo.canWrite(): Boolean = permissions?.let { it.push || it.maintain || it.admin } == true
 
@@ -4278,48 +3614,6 @@ data class GHCommitDetail(val sha: String, val message: String, val author: Stri
 data class GHDiffFile(val filename: String, val status: String, val additions: Int, val deletions: Int, val patch: String)
 
 
-data class GHAuditLogEntry(
-    val id: String,
-    val action: String,
-    val actor: String,
-    val createdAt: String,
-    val org: String,
-    val repo: String,
-    val user: String,
-    val operationType: String,
-    val transportProtocol: String
-)
-
-data class GHScimUsersPage(
-    val totalResults: Int = 0,
-    val startIndex: Int = 1,
-    val itemsPerPage: Int = 0,
-    val users: List<GHScimUser> = emptyList(),
-    val error: String = ""
-)
-
-data class GHScimUser(
-    val id: String,
-    val userName: String,
-    val displayName: String,
-    val givenName: String,
-    val familyName: String,
-    val active: Boolean,
-    val externalId: String,
-    val emails: List<String>
-)
-
-data class GHSamlAuthorization(
-    val login: String,
-    val credentialId: Long,
-    val credentialType: String,
-    val tokenLastEight: String,
-    val authorizedAt: String,
-    val accessedAt: String,
-    val expiresAt: String,
-    val scopes: List<String>
-)
-
 data class GHOAuthTokenInfo(
     val id: Long,
     val url: String,
@@ -4351,47 +3645,6 @@ data class GHDeviceTokenResult(
 )
 
 
-data class GHUserProfile(
-    val login: String,
-    val name: String,
-    val avatarUrl: String,
-    val bio: String,
-    val company: String,
-    val location: String,
-    val blog: String,
-    val publicRepos: Int,
-    val followers: Int,
-    val following: Int,
-    val createdAt: String,
-    val email: String = "",
-    val twitterUsername: String = "",
-    val hireable: Boolean = false,
-    val publicGists: Int = 0,
-    val privateRepos: Int = 0,
-    val ownedPrivateRepos: Int = 0,
-    val privateGists: Int = 0,
-    val diskUsageKb: Long = 0L,
-    val collaborators: Int = 0,
-    val twoFactorAuthentication: Boolean? = null,
-    val planName: String = "",
-    val planSpace: Long = 0L,
-    val updatedAt: String = ""
-)
-
-data class GHContributionDay(
-    val date: String,
-    val level: Int
-)
-
-data class GHOrg(val login: String, val avatarUrl: String, val description: String)
-
-data class GHOrgMembership(val org: String, val state: String, val role: String, val url: String)
-
-data class GHEmailEntry(val email: String, val primary: Boolean, val verified: Boolean, val visibility: String)
-data class GHUserKeyEntry(val id: Long, val title: String, val key: String, val createdAt: String, val kind: String)
-data class GHSocialAccountEntry(val provider: String, val url: String)
-data class GHFollowerEntry(val login: String, val avatarUrl: String)
-data class GHBlockedEntry(val login: String, val avatarUrl: String)
 data class GHUserLite(val login: String, val avatarUrl: String = "")
 data class GHBranchProtection(
     val enabled: Boolean,
@@ -4429,31 +3682,6 @@ data class GHCollaborator(
     val login: String,
     val avatarUrl: String,
     val role: String
-)
-
-data class GHRepoTeam(
-    val id: Long,
-    val name: String,
-    val slug: String,
-    val description: String,
-    val privacy: String,
-    val permission: String,
-    val membersCount: Int,
-    val reposCount: Int,
-    val htmlUrl: String,
-    val organization: String
-)
-
-data class GHOrgTeam(
-    val id: Long,
-    val name: String,
-    val slug: String,
-    val description: String,
-    val privacy: String,
-    val permission: String,
-    val membersCount: Int,
-    val reposCount: Int,
-    val htmlUrl: String
 )
 
 data class GHCompareResult(
@@ -4742,18 +3970,6 @@ data class GHRepoCreateParams(
     val hasProjects: Boolean = true, val hasWiki: Boolean = true,
     val templateOwner: String = "", val templateRepo: String = "",
     val includeAllBranches: Boolean = false
-)
-
-data class GHTeamDiscussion(
-    val id: Long,
-    val number: Int,
-    val title: String,
-    val body: String,
-    val author: String,
-    val avatarUrl: String,
-    val createdAt: String,
-    val commentsCount: Int,
-    val htmlUrl: String
 )
 
 data class GHStatusComponent(

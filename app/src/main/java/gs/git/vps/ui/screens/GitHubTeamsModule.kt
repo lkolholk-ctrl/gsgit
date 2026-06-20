@@ -46,12 +46,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import gs.git.vps.data.github.GHOrgTeam
+import gs.git.vps.data.github.model.GHOrgTeam
+import gs.git.vps.data.github.*
 import gs.git.vps.ui.theme.AiModuleTheme
 import gs.git.vps.ui.theme.JetBrainsMono
-import gs.git.vps.data.github.GHRepoTeam
+import gs.git.vps.data.github.model.GHRepoTeam
 import gs.git.vps.data.github.GHCollaborator
-import gs.git.vps.data.github.GHTeamDiscussion
+import gs.git.vps.data.github.model.GHTeamDiscussion
 import gs.git.vps.data.github.GitHubManager
 import gs.git.vps.ui.components.AiModuleAlertDialog
 import gs.git.vps.ui.components.AiModuleIcon as Icon

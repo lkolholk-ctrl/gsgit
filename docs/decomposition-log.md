@@ -406,3 +406,55 @@ Users+Orgs+Teams, Commits+Branches+Tags, Discussions, Reactions.
 Releases, Gists, Webhooks, Notifications, Search, Secrets, Repos, Workflows, Actions, Projects,
 Issues, **PullRequests**. `GitHubManager.kt`: 9008 → 4768. Следующие крупные домены:
 Users+Orgs+Teams, Commits+Branches+Tags, Discussions, Reactions.
+
+## РЕАЛИЗОВАНО: домен Users+Orgs+Teams ✅
+
+Крупный гетерогенный домен, нарезан по эталону Releases в ТРИ файла (как Actions/Projects), один коммит.
+`GitHubManager.kt`: 4768 → 3984 строк (−784). Вынесено 57 функций + чистые `parseGHX`-парсеры.
+
+1. **`GitHubManager+Users.kt`** (374 строки, 35 функций) — текущий пользователь и его кэш
+   (getUser/getCachedUser/clearGitHubUserCache), поиск пользователей (searchUsers, был оставлен
+   доменом Search «до Users»), профиль и контрибуции (getUserProfile/getUserContributions/
+   getCurrentUserProfile/updateCurrentUserProfile), follow (is/follow/unfollowUser), почты, SSH/GPG-
+   ключи, соц-аккаунты, подписчики/подписки/блок-лист, interaction-limits (native). Парсинг сведён к
+   `parseGHUser` (единый для `/user` и search-item — у search нет счётчиков, opt-дефолты совпадают),
+   `parseGHUserProfile`, `parseGHEmailEntry`; приватный `JSONObject.cleanString` перенесён.
+   TAG → локальный `USERS_TAG` (private `TAG` ядра не трогаем).
+2. **`GitHubManager+Orgs.kt`** (194 строки, 11 функций) — организации/членство (getOrganizations,
+   getOrg, getOrgMembership, updateOrgMembership, getOrgMembers, removeOrgMember, updateOrg) и
+   org-админ (getOrgAuditLog, getOrgScimUsers, getOrgSamlAuthorizations, removeOrgSamlAuthorization).
+   Парсеры parseGHOrg/parseGHAuditLogEntry/parseGHScimUser/parseGHSamlAuthorization.
+3. **`GitHubManager+Teams.kt`** (185 строк, 11 функций) — команды репо/орг (getRepoTeams/getOrgTeams/
+   add/update/removeRepoTeam), участники (getTeamMembers/add/removeTeamMember), обсуждения
+   (get/create/deleteTeamDiscussion). parseRepoTeam→`parseGHRepoTeam`, `normalizeRepoTeamPermission`
+   перенесены как private.
+4. **Модели → `model/`**: `GHUser.kt` (GHUser, GHUserProfile, GHContributionDay, GHEmailEntry,
+   GHUserKeyEntry, GHSocialAccountEntry, GHFollowerEntry, GHBlockedEntry), `GHOrg.kt` (GHOrg,
+   GHOrgMembership, GHAuditLogEntry, GHScimUsersPage, GHScimUser, GHSamlAuthorization),
+   `GHTeam.kt` (GHRepoTeam, GHOrgTeam, GHTeamDiscussion).
+5. **Ядро: `PREFS`/`KEY_USER` помечены `internal`** (были private) — кэш текущего юзера читают и
+   оставшиеся в core функции (commit-flow), и вынесенные user-функции. `request`/`encPath`/
+   `parseNextPage` уже internal. Доменные файлы в пакете `data.github` видят оставшиеся в core
+   `GHUserLite`/`GHCollaborator` без импорта (их сознательно НЕ выносили — широко шарятся,
+   см. прецедент Issues).
+6. **Сознательно НЕ тащили** (как Search оставил searchRepos): активность getUserReceived/
+   PublicEvents (домен Events), getUserPackages/getOrgPackages (Packages), collaborators
+   (репо-доступ), validateToken/getCopilotToken/OAuth-app/device-flow (Auth), getCommunityProfile
+   (Repos/Security). Их модели (GHOAuthTokenInfo, GHDeviceCode/TokenResult, GHCollaborator,
+   GHUserLite) оставлены в core.
+7. **Потребители** (10 экранов, compiler-driven): импорты моделей переключены на `.model`
+   (Profile, EnterpriseAdmin, AdvancedSearch, Teams, Packages, Settings, Explore — 22 импорта);
+   Home (wildcard, без явного импорта) — добавлен `import …model.GHUser`; четырём экранам без
+   wildcard, зовущим перенесённые функции (Profile, EnterpriseAdmin, Teams, Packages), добавлен
+   `import …github.*`. В core ссылок на вынесенные модели не осталось.
+8. **Найден предсуществующий баг (НЕ чинил — это рефактор):** в getTeamMembers/addTeamMember/
+   removeTeamMember/getTeamDiscussions/createTeamDiscussion URL собирается через `${'$'}encodedOrg`
+   — это ЛИТЕРАЛЬНЫЙ `$encodedOrg` в пути (vals encoded* по факту не подставляются). Сохранено
+   как было, помечено в шапке `GitHubManager+Teams.kt` для отдельного фикса.
+9. **Чистая сборка `./gradlew clean compileDebugKotlin` — BUILD SUCCESSFUL (58s), exit 0.**
+   Поведение идентично (рефактор, сигнатуры не менялись).
+
+### Итог (13 доменов, 3 файла Users/Orgs/Teams) ✅
+Releases, Gists, Webhooks, Notifications, Search, Secrets, Repos, Workflows, Actions, Projects,
+Issues, PullRequests, **Users, Orgs, Teams**. `GitHubManager.kt`: 9008 → 3984. Следующие крупные
+домены: Commits+Branches+Tags, Discussions, Reactions, Events, Packages, Collaborators, Auth.

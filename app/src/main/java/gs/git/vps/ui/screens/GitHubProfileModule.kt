@@ -6,7 +6,8 @@ import android.content.Context
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.graphics.Color
-import gs.git.vps.data.github.GHContributionDay
+import gs.git.vps.data.github.model.GHContributionDay
+import gs.git.vps.data.github.*
 import android.widget.Toast
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -55,8 +56,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import gs.git.vps.data.github.GHFollowerEntry
-import gs.git.vps.data.github.GHUserProfile
+import gs.git.vps.data.github.model.GHFollowerEntry
+import gs.git.vps.data.github.model.GHUserProfile
 import gs.git.vps.data.github.GitHubManager
 import gs.git.vps.data.github.model.GHRepo
 import gs.git.vps.data.github.model.GHRepoEvent
