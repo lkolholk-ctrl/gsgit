@@ -54,6 +54,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import gs.git.vps.data.github.*
 import gs.git.vps.data.github.GHRepo
 import gs.git.vps.ui.components.AiModuleGlyph
 import gs.git.vps.ui.components.AiModuleGlyphAction
@@ -68,10 +69,10 @@ import gs.git.vps.ui.components.AiModuleTextField
 import gs.git.vps.ui.components.AiModuleTextAction
 import gs.git.vps.ui.theme.AiModuleTheme
 import gs.git.vps.ui.theme.JetBrainsMono
-import gs.git.vps.data.github.GHLabelSearchResult
-import gs.git.vps.data.github.GHSearchCommitResult
-import gs.git.vps.data.github.GHSearchIssueResult
-import gs.git.vps.data.github.GHTopicSearchResult
+import gs.git.vps.data.github.model.GHLabelSearchResult
+import gs.git.vps.data.github.model.GHSearchCommitResult
+import gs.git.vps.data.github.model.GHSearchIssueResult
+import gs.git.vps.data.github.model.GHTopicSearchResult
 import gs.git.vps.data.github.GHUser
 import gs.git.vps.data.github.GitHubManager
 import kotlinx.coroutines.launch

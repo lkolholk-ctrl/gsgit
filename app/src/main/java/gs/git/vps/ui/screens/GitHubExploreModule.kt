@@ -47,13 +47,14 @@ import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import gs.git.vps.data.Strings
-import gs.git.vps.data.github.GHCodeResult
+import gs.git.vps.data.github.*
+import gs.git.vps.data.github.model.GHCodeResult
 import gs.git.vps.data.github.GHLicense
 import gs.git.vps.data.github.GHLicenseDetail
 import gs.git.vps.data.github.GHMeta
 import gs.git.vps.data.github.GHOrg
 import gs.git.vps.data.github.GHRepo
-import gs.git.vps.data.github.GHTopicSearchResult
+import gs.git.vps.data.github.model.GHTopicSearchResult
 import gs.git.vps.data.github.GitHubManager
 import gs.git.vps.ui.components.AiModuleHairline
 import gs.git.vps.ui.components.AiModuleIcon as Icon

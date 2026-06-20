@@ -152,3 +152,27 @@ GitHubActionsModule, GitHubReleasesModule, ReleaseDownloadWorker.
 `GitHubManager.kt`: 9008 → 8201 строк (−807). Вынесено 4 домена: Releases(13), Gists(12),
 Webhooks(14), Notifications(15+1) = 55 функций, 9 моделей. 4 файла домена + 4 файла моделей.
 Конвенция стабильна и задокументирована.
+
+Коммит: `422982d refactor(data): extract Notifications domain from GitHubManager god-file`.
+
+## Домен Search (по эталону Releases)
+
+- Вынесен **advanced search**: searchCode, searchIssuesAdvanced, searchCommitsAdvanced,
+  searchTopics, searchLabels (5 функций) + private extension `getRepositoryId`.
+  `searchRepos`/`searchUsers` ОСТАВЛЕНЫ в god-файле — возвращают GHRepo/GHUser и переедут
+  в домены Repos/Users (используют их parse-функции).
+- Модели `model/GHSearchResult.kt`: GHCodeResult, GHSearchIssueResult, GHSearchCommitResult,
+  GHTopicSearchResult, GHLabelSearchResult.
+- Парсинг → чистые parseGHCodeResult/parseGHSearchIssueResult/parseGHSearchCommitResult/
+  parseGHTopicSearchResult/parseGHLabelSearchResult (последний берёт repository параметром).
+  Приватные хелперы repoNameFromIssueSearch/parseLabelNames/parseTopicNameArray использовались
+  только тут — перенесены (остались private в файле).
+- Из `GitHubManager.kt` удалены функции и модели. Файл: 8201 → **7989 строк** (ниже 8000).
+- Потребители GitHubAdvancedSearchModule, GitHubExploreModule: импорты моделей → `.model`,
+  добавлен wildcard.
+- Контрольная компиляция `compileDebugKotlin` — **BUILD SUCCESSFUL (11s), exit 0**.
+
+### Промежуточный итог (5 доменов) ✅
+
+`GitHubManager.kt`: 9008 → 7989 строк (−1019). Вынесено: Releases(13), Gists(12), Webhooks(14),
+Notifications(16), Search(5+1) = 61 функция, 14 моделей. 5 файлов домена + 5 файлов моделей.
