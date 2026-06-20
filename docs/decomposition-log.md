@@ -327,3 +327,38 @@ Releases, Gists, Webhooks, Notifications, Search, Secrets, Repos, **Workflows, A
 Releases, Gists, Webhooks, Notifications, Search, Secrets, Repos, Workflows, Actions, **Projects**.
 `GitHubManager.kt`: 9008 → 5418. Следующие крупные домены: Issues+Comments+Labels (~24),
 PullRequests+Reviews+Checks (~25), Users+Orgs+Teams, Commits+Branches+Tags, Discussions.
+
+## РЕАЛИЗОВАНО: домен Issues ✅
+
+Нарезан по эталону Releases. `GitHubManager.kt`: 5418 → 5128 строк (−290).
+Вынесено 23 функции + 7 чистых `parseGHX`-парсеров в один файл.
+
+1. **`GitHubManager+Issues.kt`** (271 строка) — issues (getIssues, createIssue, getIssueDetail,
+   close/reopen/lock/unlockIssue, updateIssueMeta), комментарии (getIssueComments, addComment,
+   update/deleteIssueComment), события (getIssueEvents, getIssueEventsForIssue, getIssueEvent),
+   timeline (getIssueTimeline), метки/вехи/assignees (getLabels, createLabel, deleteLabel,
+   addLabelsToIssue, getMilestones, createMilestone, getAssignees). Inline-парсинг (раньше был
+   размазан по методам — часть из тех 713 ad-hoc разборов) выделен в чистые
+   `parseGHIssue/parseGHComment/parseGHIssueEvent/parseGHIssueDetail/parseGHLabel/parseGHMilestone/
+   parseGHTimelineEvent`. Приватный хелпер ядра `parseIssueEvent` переименован в `parseGHIssueEvent`
+   и перенесён сюда (использовался только Issues).
+2. **Модели → `model/GHIssue.kt`** (7 data class): GHIssue, GHIssueEvent, GHIssueDetail, GHComment,
+   GHLabel, GHMilestone, GHTimelineEvent. `GHUserLite` (возвращает getAssignees) и `GHReaction`
+   ОСТАВЛЕНЫ в core — первый шарится широко, второй переедет в домен Reactions.
+3. **Реакции НЕ трогали:** getIssueReactions/addIssueReaction/… и PR-review-comment-реакции
+   используют общий `GHReaction` и общий DELETE `/reactions/{id}` — это отдельный домен Reactions,
+   режется позже целиком. Из Issues исключены сознательно (как Search оставил searchRepos).
+4. **Ядро не трогали** — `request`/`parseNextPage` уже `internal`. Новых `internal`-пометок не
+   потребовалось. `extraHeaders` (mockingbird-preview для timeline) — штатный параметр `request()`.
+5. **Протечка в core:** `getDiscussionComments` (остаётся в god-файле до домена Discussions) тоже
+   возвращает `GHComment` → в `GitHubManager.kt` добавлен `import …model.GHComment`.
+6. **Потребители** (compiler-driven): GitHubRepoModule (wildcard есть) — добавлены 7 явных
+   импортов моделей; GitHubDiscussionsModule — `import …github.GHComment` → `…github.model.GHComment`;
+   GitHubGistsAndDialogsModule зовёт Issues-функцию, но wildcard уже есть и моделей не использует.
+7. **Чистая сборка `./gradlew clean compileDebugKotlin` — BUILD SUCCESSFUL, exit 0.**
+   Поведение идентично (рефактор, сигнатуры не менялись).
+
+### Итог (11 доменов) ✅
+Releases, Gists, Webhooks, Notifications, Search, Secrets, Repos, Workflows, Actions, Projects, **Issues**.
+`GitHubManager.kt`: 9008 → 5128. Следующие крупные домены: PullRequests+Reviews+Checks (~25),
+Users+Orgs+Teams, Commits+Branches+Tags, Discussions, Reactions.

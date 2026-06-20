@@ -87,6 +87,13 @@ import gs.git.vps.data.github.model.GHTrafficSeries
 import gs.git.vps.data.github.model.GHCheckRun
 import gs.git.vps.data.github.model.GHWorkflow
 import gs.git.vps.data.github.model.GHWorkflowRun
+import gs.git.vps.data.github.model.GHComment
+import gs.git.vps.data.github.model.GHIssue
+import gs.git.vps.data.github.model.GHIssueDetail
+import gs.git.vps.data.github.model.GHIssueEvent
+import gs.git.vps.data.github.model.GHLabel
+import gs.git.vps.data.github.model.GHMilestone
+import gs.git.vps.data.github.model.GHTimelineEvent
 import gs.git.vps.notifications.GitHubNotificationTarget
 import gs.git.vps.ui.components.AiModuleAlertDialog
 import gs.git.vps.ui.components.AiModuleGlyph

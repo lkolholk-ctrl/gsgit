@@ -5,6 +5,7 @@ import android.util.Log
 import gs.git.vps.App
 import gs.git.vps.data.github.model.GHActionResult
 import gs.git.vps.data.github.model.GHCheckRun
+import gs.git.vps.data.github.model.GHComment
 import gs.git.vps.data.github.model.GHInteractionLimitEntry
 import gs.git.vps.data.github.model.GHLicenseDetail
 import gs.git.vps.data.github.model.GHPermissions
@@ -469,27 +470,6 @@ object GitHubManager {
                 )
             }
         } catch (e: Exception) { Log.e(TAG, "Parse blame: ${e.message}"); emptyList() }
-    }
-
-    suspend fun getIssues(context: Context, owner: String, repo: String, state: String = "open", page: Int = 1): List<GHIssue> {
-        val r = request(context, "/repos/$owner/$repo/issues?state=$state&per_page=30&page=$page")
-        if (!r.success) return emptyList()
-        val issues = try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                GHIssue(j.optInt("number"), j.optString("title"), j.optString("state"),
-                    j.optJSONObject("user")?.optString("login") ?: "", j.optString("created_at"),
-                    j.optInt("comments", 0), j.has("pull_request"))
-            }
-        } catch (e: Exception) { return emptyList() }
-        val nextPage = parseNextPage(r.headers) ?: return issues
-        return issues + getIssues(context, owner, repo, state, nextPage)
-    }
-
-    suspend fun createIssue(context: Context, owner: String, repo: String, title: String, body: String): Boolean {
-        val json = JSONObject().apply { put("title", title); put("body", body) }.toString()
-        return request(context, "/repos/$owner/$repo/issues", "POST", json).success
     }
 
     suspend fun getBranches(context: Context, owner: String, repo: String): List<String> {
@@ -1332,31 +1312,6 @@ object GitHubManager {
         )
     }
 
-    private fun parseIssueEvent(j: JSONObject, fallbackIssueNumber: Int = 0): GHIssueEvent {
-        val issue = j.optJSONObject("issue")
-        val rename = j.optJSONObject("rename")
-        val app = j.optJSONObject("performed_via_github_app")
-        return GHIssueEvent(
-            id = j.optLong("id"),
-            event = j.optString("event", ""),
-            actor = j.optJSONObject("actor")?.optString("login") ?: "",
-            createdAt = j.optString("created_at", ""),
-            issueNumber = issue?.optInt("number", fallbackIssueNumber) ?: fallbackIssueNumber,
-            issueTitle = issue?.optString("title", "") ?: "",
-            label = j.optJSONObject("label")?.optString("name") ?: "",
-            assignee = j.optJSONObject("assignee")?.optString("login") ?: "",
-            milestone = j.optJSONObject("milestone")?.optString("title") ?: "",
-            renameFrom = rename?.optString("from", "") ?: "",
-            renameTo = rename?.optString("to", "") ?: "",
-            commitId = j.optString("commit_id", ""),
-            url = j.optString("url", ""),
-            commitUrl = j.optString("commit_url", ""),
-            authorAssociation = issue?.optString("author_association", "") ?: "",
-            stateReason = issue?.optString("state_reason", "") ?: "",
-            performedViaGithubApp = app?.optString("name", "") ?: ""
-        )
-    }
-
     private fun parseOAuthTokenInfo(j: JSONObject): GHOAuthTokenInfo {
         val app = j.optJSONObject("app")
         val scopes = j.optJSONArray("scopes")?.let { arr ->
@@ -1389,108 +1344,6 @@ object GitHubManager {
             commitId = j.optString("commit_id", ""),
             htmlUrl = j.optString("html_url", "")
         )
-
-    suspend fun getIssueComments(context: Context, owner: String, repo: String, number: Int): List<GHComment> {
-        val r = request(context, "/repos/$owner/$repo/issues/$number/comments?per_page=50")
-        if (!r.success) return emptyList()
-        return try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                GHComment(
-                    id = j.optLong("id"), body = j.optString("body"),
-                    author = j.optJSONObject("user")?.optString("login") ?: "",
-                    avatarUrl = j.optJSONObject("user")?.optString("avatar_url") ?: "",
-                    createdAt = j.optString("created_at")
-                )
-            }
-        } catch (e: Exception) { emptyList() }
-    }
-
-    suspend fun getIssueEvents(context: Context, owner: String, repo: String, page: Int = 1): List<GHIssueEvent> {
-        val r = request(context, "/repos/$owner/$repo/issues/events?per_page=100&page=$page")
-        if (!r.success) return emptyList()
-        val events = try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i -> parseIssueEvent(arr.getJSONObject(i)) }
-        } catch (e: Exception) { return emptyList() }
-        val nextPage = parseNextPage(r.headers) ?: return events
-        return events + getIssueEvents(context, owner, repo, nextPage)
-    }
-
-    suspend fun getIssueEventsForIssue(context: Context, owner: String, repo: String, issueNumber: Int, page: Int = 1): List<GHIssueEvent> {
-        val r = request(context, "/repos/$owner/$repo/issues/$issueNumber/events?per_page=100&page=$page")
-        if (!r.success) return emptyList()
-        val events = try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i -> parseIssueEvent(arr.getJSONObject(i), fallbackIssueNumber = issueNumber) }
-        } catch (e: Exception) { return emptyList() }
-        val nextPage = parseNextPage(r.headers) ?: return events
-        return events + getIssueEventsForIssue(context, owner, repo, issueNumber, nextPage)
-    }
-
-    suspend fun getIssueEvent(context: Context, owner: String, repo: String, eventId: Long): GHIssueEvent? {
-        if (eventId <= 0L) return null
-        val r = request(context, "/repos/$owner/$repo/issues/events/$eventId")
-        if (!r.success) return null
-        return try { parseIssueEvent(JSONObject(r.body)) } catch (e: Exception) { null }
-    }
-
-    suspend fun addComment(context: Context, owner: String, repo: String, number: Int, body: String): Boolean {
-        val json = JSONObject().apply { put("body", body) }.toString()
-        return request(context, "/repos/$owner/$repo/issues/$number/comments", "POST", json).success
-    }
-
-    suspend fun updateIssueComment(context: Context, owner: String, repo: String, commentId: Long, body: String): Boolean {
-        val json = JSONObject().apply { put("body", body) }.toString()
-        return request(context, "/repos/$owner/$repo/issues/comments/$commentId", "PATCH", json).success
-    }
-
-    suspend fun deleteIssueComment(context: Context, owner: String, repo: String, commentId: Long): Boolean =
-        request(context, "/repos/$owner/$repo/issues/comments/$commentId", "DELETE").let { it.code == 204 || it.success }
-
-    suspend fun closeIssue(context: Context, owner: String, repo: String, number: Int): Boolean {
-        val json = JSONObject().apply { put("state", "closed") }.toString()
-        return request(context, "/repos/$owner/$repo/issues/$number", "PATCH", json).success
-    }
-
-    suspend fun reopenIssue(context: Context, owner: String, repo: String, number: Int): Boolean {
-        val json = JSONObject().apply { put("state", "open") }.toString()
-        return request(context, "/repos/$owner/$repo/issues/$number", "PATCH", json).success
-    }
-
-    suspend fun lockIssue(context: Context, owner: String, repo: String, number: Int, reason: String = ""): Boolean {
-        val json = JSONObject().apply {
-            if (reason.isNotBlank()) put("lock_reason", reason)
-        }.toString()
-        return request(context, "/repos/$owner/$repo/issues/$number/lock", "PUT", json).let { it.code == 204 || it.success }
-    }
-
-    suspend fun unlockIssue(context: Context, owner: String, repo: String, number: Int): Boolean =
-        request(context, "/repos/$owner/$repo/issues/$number/lock", "DELETE").let { it.code == 204 || it.success }
-
-    suspend fun getIssueDetail(context: Context, owner: String, repo: String, number: Int): GHIssueDetail? {
-        val r = request(context, "/repos/$owner/$repo/issues/$number")
-        if (!r.success) return null
-        return try {
-            val j = JSONObject(r.body)
-            val labels = mutableListOf<String>()
-            val labelsArr = j.optJSONArray("labels")
-            if (labelsArr != null) for (i in 0 until labelsArr.length()) labels.add(labelsArr.getJSONObject(i).optString("name"))
-            GHIssueDetail(
-                number = j.optInt("number"), title = j.optString("title"),
-                body = j.optString("body", ""), state = j.optString("state"),
-                author = j.optJSONObject("user")?.optString("login") ?: "",
-                avatarUrl = j.optJSONObject("user")?.optString("avatar_url") ?: "",
-                createdAt = j.optString("created_at"), comments = j.optInt("comments", 0),
-                labels = labels, isPR = j.has("pull_request"),
-                assignee = j.optJSONObject("assignee")?.optString("login") ?: "",
-                milestoneTitle = j.optJSONObject("milestone")?.optString("title") ?: "",
-                locked = j.optBoolean("locked", false),
-                activeLockReason = j.optString("active_lock_reason", "")
-            )
-        } catch (e: Exception) { null }
-    }
 
     suspend fun isStarred(context: Context, owner: String, repo: String): Boolean =
         request(context, "/user/starred/$owner/$repo").code == 204
@@ -2232,77 +2085,6 @@ object GitHubManager {
             extraHeaders = mapOf("Accept" to "application/vnd.github+json")
         )
         return GHActionResult(r.code == 204 || r.success, r.code, if (r.success || r.code == 204) "Repository removed" else apiErrorMessage(r))
-    }
-
-    suspend fun getLabels(context: Context, owner: String, repo: String): List<GHLabel> {
-        val r = request(context, "/repos/$owner/$repo/labels?per_page=50")
-        if (!r.success) return emptyList()
-        return try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                GHLabel(name = j.optString("name"), color = j.optString("color", ""), description = j.optString("description", ""))
-            }
-        } catch (e: Exception) { emptyList() }
-    }
-
-    suspend fun createLabel(context: Context, owner: String, repo: String, name: String, color: String, description: String = ""): Boolean {
-        val body = JSONObject().apply { put("name", name); put("color", color.removePrefix("#")); put("description", description) }.toString()
-        return request(context, "/repos/$owner/$repo/labels", "POST", body).success
-    }
-
-    suspend fun deleteLabel(context: Context, owner: String, repo: String, name: String): Boolean =
-        request(context, "/repos/$owner/$repo/labels/${URLEncoder.encode(name, "UTF-8")}", "DELETE").let { it.code == 204 || it.success }
-
-    suspend fun addLabelsToIssue(context: Context, owner: String, repo: String, issueNumber: Int, labels: List<String>): Boolean {
-        val body = JSONObject().apply { put("labels", JSONArray(labels)) }.toString()
-        return request(context, "/repos/$owner/$repo/issues/$issueNumber/labels", "POST", body).success
-    }
-
-    suspend fun getMilestones(context: Context, owner: String, repo: String): List<GHMilestone> {
-        val r = request(context, "/repos/$owner/$repo/milestones?per_page=30")
-        if (!r.success) return emptyList()
-        return try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                GHMilestone(
-                    number = j.optInt("number"), title = j.optString("title"),
-                    description = j.optString("description", ""), state = j.optString("state"),
-                    openIssues = j.optInt("open_issues"), closedIssues = j.optInt("closed_issues"),
-                    dueOn = j.optString("due_on", "")
-                )
-            }
-        } catch (e: Exception) { emptyList() }
-    }
-
-    suspend fun createMilestone(context: Context, owner: String, repo: String, title: String, description: String = "", dueOn: String? = null): Boolean {
-        val body = JSONObject().apply {
-            put("title", title); put("description", description)
-            if (dueOn != null) put("due_on", dueOn)
-        }.toString()
-        return request(context, "/repos/$owner/$repo/milestones", "POST", body).success
-    }
-
-    suspend fun getAssignees(context: Context, owner: String, repo: String): List<GHUserLite> {
-        val r = request(context, "/repos/$owner/$repo/assignees")
-        if (!r.success) return emptyList()
-        return try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i -> val j = arr.getJSONObject(i)
-                GHUserLite(j.optString("login"), j.optString("avatar_url", ""))
-            }
-        } catch (_: Exception) { emptyList() }
-    }
-
-    suspend fun updateIssueMeta(context: Context, owner: String, repo: String, issueNumber: Int, labels: List<String>, assignees: List<String>, milestoneNumber: Int?, clearMilestone: Boolean = false): Boolean {
-        val body = JSONObject().apply {
-            put("labels", JSONArray(labels))
-            put("assignees", JSONArray(assignees))
-            if (clearMilestone) put("milestone", JSONObject.NULL)
-            else if (milestoneNumber != null) put("milestone", milestoneNumber)
-        }.toString()
-        return request(context, "/repos/$owner/$repo/issues/$issueNumber", "PATCH", body).success
     }
 
     suspend fun submitPullRequestReview(context: Context, owner: String, repo: String, number: Int, event: String, body: String = ""): Boolean {
@@ -3420,31 +3202,6 @@ object GitHubManager {
     suspend fun deletePullRequestReviewCommentReaction(context: Context, owner: String, repo: String, reactionId: Long): Boolean {
         val r = request(context, "/repos/$owner/$repo/reactions/$reactionId", "DELETE")
         return r.code == 204 || r.success
-    }
-
-    // ═══════════════════════════════════
-    // Issue Timeline
-    // ═══════════════════════════════════
-
-    suspend fun getIssueTimeline(context: Context, owner: String, repo: String, issueNumber: Int): List<GHTimelineEvent> {
-        val r = request(context, "/repos/$owner/$repo/issues/$issueNumber/timeline?per_page=100", extraHeaders = mapOf("Accept" to "application/vnd.github.mockingbird-preview+json"))
-        if (!r.success) return emptyList()
-        return try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                GHTimelineEvent(
-                    id = j.optLong("id"),
-                    event = j.optString("event"),
-                    actor = j.optJSONObject("actor")?.optString("login") ?: "",
-                    createdAt = j.optString("created_at", ""),
-                    label = j.optJSONObject("label")?.optString("name") ?: "",
-                    milestone = j.optJSONObject("milestone")?.optString("title") ?: "",
-                    assignee = j.optJSONObject("assignee")?.optString("login") ?: "",
-                    source = j.optJSONObject("source")?.optString("issue") ?: ""
-                )
-            }
-        } catch (e: Exception) { emptyList() }
     }
 
     // ═══════════════════════════════════
@@ -4748,34 +4505,6 @@ data class GHBlameRange(
     val avatarUrl: String
 )
 
-data class GHIssue(val number: Int, val title: String, val state: String, val author: String,
-    val createdAt: String, val comments: Int, val isPR: Boolean)
-
-data class GHIssueEvent(
-    val id: Long,
-    val event: String,
-    val actor: String,
-    val createdAt: String,
-    val issueNumber: Int,
-    val issueTitle: String,
-    val label: String,
-    val assignee: String,
-    val milestone: String,
-    val renameFrom: String,
-    val renameTo: String,
-    val commitId: String,
-    val url: String = "",
-    val commitUrl: String = "",
-    val authorAssociation: String = "",
-    val stateReason: String = "",
-    val performedViaGithubApp: String = ""
-)
-
-data class GHIssueDetail(val number: Int, val title: String, val body: String, val state: String,
-    val author: String, val avatarUrl: String, val createdAt: String, val comments: Int,
-    val labels: List<String>, val isPR: Boolean, val assignee: String, val milestoneTitle: String = "",
-    val locked: Boolean = false, val activeLockReason: String = "")
-
 data class GHFileSaveResult(val success: Boolean, val sha: String, val error: String)
 
 data class GHGitRef(
@@ -4863,8 +4592,6 @@ data class GHPullReview(
     val commitId: String,
     val htmlUrl: String
 )
-
-data class GHComment(val id: Long, val body: String, val author: String, val avatarUrl: String, val createdAt: String, val nodeId: String = "")
 
 data class GHContributor(val login: String, val avatarUrl: String, val contributions: Int)
 
@@ -4990,12 +4717,6 @@ data class GHOrg(val login: String, val avatarUrl: String, val description: Stri
 
 data class GHOrgMembership(val org: String, val state: String, val role: String, val url: String)
 
-data class GHLabel(val name: String, val color: String, val description: String)
-
-data class GHMilestone(val number: Int, val title: String, val description: String, val state: String,
-    val openIssues: Int, val closedIssues: Int, val dueOn: String)
-
-
 data class GHEmailEntry(val email: String, val primary: Boolean, val verified: Boolean, val visibility: String)
 data class GHUserKeyEntry(val id: Long, val title: String, val key: String, val createdAt: String, val kind: String)
 data class GHSocialAccountEntry(val provider: String, val url: String)
@@ -5109,17 +4830,6 @@ data class GHReaction(
     val id: Long,
     val content: String,
     val user: String
-)
-
-data class GHTimelineEvent(
-    val id: Long,
-    val event: String,
-    val actor: String,
-    val createdAt: String,
-    val label: String,
-    val milestone: String,
-    val assignee: String,
-    val source: String
 )
 
 data class GHDiscussion(
