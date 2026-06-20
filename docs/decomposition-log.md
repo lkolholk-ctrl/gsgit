@@ -68,3 +68,19 @@ extension-функции `GitHubManager+<Domain>.kt`, не меняя сигна
 **Конвенция зафиксирована — этот домен служит образцом для остальных.**
 Следующие кандидаты (компактные): Gists(13), Webhooks(12), Secrets(8), Search(7), Notifications(6).
 Перед массовой репликацией CLAUDE.md рекомендует довести до идеала ещё ОДИН эталон — UI-экран.
+
+Коммит: `6d77c93 refactor(data): extract Releases domain from GitHubManager god-file`.
+
+## Домен Gists (по эталону Releases)
+
+- Созданы `model/GHGist.kt` (GHGist + GHGistComment) и `GitHubManager+Gists.kt`
+  (12 `internal`-extension-функций: getGists, createGist, getGistContent, deleteGist,
+  starGist, unstarGist, isGistStarred, forkGist, updateGist, getGistComments,
+  addGistComment, deleteGistComment).
+- Inline-парсинг выделен в чистые `parseGHGist`/`parseGHGistComment`.
+  Замечание: `getGistComments` читает поле `user_login` (как и было) — поведение сохранено, не менял.
+- Из `GitHubManager.kt` удалён блок Gists (функции + модели). Файл: 8697 → 8599 строк.
+- В потребитель `GitHubGistsAndDialogsModule.kt` (wildcard `data.github.*`) добавлен явный
+  импорт `.model.GHGist`/`.GHGistComment`.
+- Контрольная компиляция `compileDebugKotlin` — **exit 0, зелёная**. DoD выполнен
+  (`GitHubManager+Gists.kt` < 600 строк, ноль прямого HTTP, парсинг через parseGHX).
