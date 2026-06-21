@@ -1301,7 +1301,7 @@ private fun ReadmeTable(rows: List<List<String>>, onLinkClick: (String) -> Unit 
     ) {
         Column {
             visibleRows.forEachIndexed { rowIndex, row ->
-                Row(Modifier.background(if (rowIndex == 0) Color(0xFF161B22) else colors.surface)) {
+                Row(Modifier.background(if (rowIndex == 0) colors.surfaceElevated else colors.surface)) {
                     row.forEachIndexed { cellIndex, cell ->
                         Box(
                             Modifier
