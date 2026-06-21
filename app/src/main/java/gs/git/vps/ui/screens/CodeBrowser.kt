@@ -21,7 +21,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Article
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Code
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Image
@@ -103,17 +105,49 @@ internal fun CodeBrowser(
         if (recents.isNotEmpty()) CodeRecentsRow(recents = recents, onOpen = onOpenFile)
         Box(Modifier.fillMaxWidth().height(1.dp).background(palette.border.copy(alpha = 0.12f)))
         if (draftCount > 0) {
+            // Source Control bar: solid surfaceElevated + hairline, без alpha-скрима/тени. Иерархия:
+            // счётчик (тап → панель) | discard (тихий) | commit (primary, accent-pill как активный bottom-bar).
             Row(
-                Modifier.fillMaxWidth().background(palette.accent.copy(alpha = 0.08f)).padding(horizontal = 16.dp, vertical = 9.dp),
+                Modifier.fillMaxWidth().background(palette.surfaceElevated).padding(horizontal = 16.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(Modifier.size(7.dp).clip(CircleShape).background(palette.accent))
+                Row(
+                    Modifier.weight(1f).clickable(onClick = onShowChanges),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Rounded.Edit, contentDescription = null, modifier = Modifier.size(15.dp), tint = palette.accent)
+                    Spacer(Modifier.width(8.dp))
+                    AiModuleText(
+                        "$draftCount ${if (draftCount == 1) "change" else "changes"}",
+                        color = palette.textPrimary,
+                        fontFamily = JetBrainsMono,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 13.sp,
+                    )
+                }
+                AiModuleText(
+                    "discard",
+                    color = palette.error,
+                    fontFamily = JetBrainsMono,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 12.sp,
+                    modifier = Modifier.clickable(onClick = onDiscardAll).padding(horizontal = 6.dp, vertical = 4.dp),
+                )
                 Spacer(Modifier.width(8.dp))
-                AiModuleText("$draftCount unsaved", color = palette.accent, fontFamily = JetBrainsMono, fontWeight = FontWeight.Medium, fontSize = 12.sp, modifier = Modifier.weight(1f).clickable(onClick = onShowChanges))
-                AiModuleText("commit", color = palette.accent, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.clickable(onClick = onCommit))
-                Spacer(Modifier.width(18.dp))
-                AiModuleText("discard", color = palette.error, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.clickable(onClick = onDiscardAll))
+                Row(
+                    Modifier
+                        .clip(RoundedCornerShape(percent = 50))
+                        .background(palette.accent.copy(alpha = 0.14f))
+                        .clickable(onClick = onCommit)
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(14.dp), tint = palette.accent)
+                    Spacer(Modifier.width(5.dp))
+                    AiModuleText("commit", color = palette.accent, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                }
             }
+            Box(Modifier.fillMaxWidth().height(1.dp).background(palette.border.copy(alpha = 0.12f)))
         }
         when {
             loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
