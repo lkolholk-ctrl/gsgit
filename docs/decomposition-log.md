@@ -897,3 +897,4 @@ FilePickerDialog, ConflictResolverDialog (+парсинг/сборка merge), E
 (Settings/Telemetry/CodeEditor) — при flip→internal CodeEditor-версия открылась на пакет и сломала
 резолв в Telemetry; переименована в EditorCompactField (только в своих файлах). Урок: проверять
 одноимённые file-private хелперы перед flip→internal. BUILD SUCCESSFUL.
+## Файл 2: CodeEditorDiff.kt ✅ — diff-типы, generateDiff, ModernDiffCanvas, formatRelativeTime (279 строк). main: 3864 → 3721. BUILD SUCCESSFUL.
