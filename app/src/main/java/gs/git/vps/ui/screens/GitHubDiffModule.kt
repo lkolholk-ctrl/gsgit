@@ -476,8 +476,8 @@ private fun DiffLineItem(line: PatchDiffLine, ext: String, viewMode: DiffViewMod
     val context = LocalContext.current
     when (line) {
         is PatchDiffLine.Header -> {
-            Box(Modifier.fillMaxWidth().background(Color(0xFF2C2C2E)).padding(horizontal = 8.dp, vertical = 4.dp)) {
-                Text(line.text, fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = Color(0xFF8E8E93))
+            Box(Modifier.fillMaxWidth().background(palette.surfaceElevated).padding(horizontal = 8.dp, vertical = 4.dp)) {
+                Text(line.text, fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = palette.textSecondary)
             }
         }
         is PatchDiffLine.Added -> {
@@ -660,7 +660,7 @@ fun PRReviewCommentsScreen(
                                 Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(4.dp))
-                                    .background(Color(0xFF1C1C1E))
+                                    .background(AiModuleTheme.colors.surfaceElevated)
                                     .border(0.5.dp, AiModuleTheme.colors.border, RoundedCornerShape(4.dp))
                                     .padding(8.dp)
                             ) {
@@ -1030,8 +1030,8 @@ private fun SplitDiffLineRow(
     val context = LocalContext.current
     
     if (pair.left is PatchDiffLine.Header) {
-        Box(Modifier.fillMaxWidth().background(Color(0xFF2C2C2E)).padding(horizontal = 8.dp, vertical = 4.dp)) {
-            Text(pair.left.text, fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = Color(0xFF8E8E93))
+        Box(Modifier.fillMaxWidth().background(AiModuleTheme.colors.surfaceElevated).padding(horizontal = 8.dp, vertical = 4.dp)) {
+            Text(pair.left.text, fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = AiModuleTheme.colors.textSecondary)
         }
         return
     }
