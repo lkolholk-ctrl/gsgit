@@ -356,6 +356,7 @@ fun CodeEditorScreen(
             showGoToLine -> showGoToLine = false
             showOutline -> showOutline = false
             showSearch -> showSearch = false
+            onSaveDraft != null && hasChanges -> { onSaveDraft(currentFile.path, text); onBack() }
             hasChanges && !isImage -> showDiscardDialog = true
             else -> onBack()
         }

@@ -246,8 +246,15 @@ internal fun RepoDetailScreen(
     // Code-таб: открытый в редакторе файл (full-screen read-only, Стадия 2). null = редактор закрыт.
     var codeEditorFile by remember { mutableStateOf<GHContent?>(null) }
     var codeEditorContent by remember { mutableStateOf<String?>(null) }
-    // Code-таб: буфер черновика (path → новый контент), скоуп (репо, ветка). In-memory (диск — Стадия 6).
-    val codeDraft = remember(repo.fullName, selectedBranch) { mutableStateMapOf<String, String>() }
+    // Code-таб: буфер черновика (path → новый контент), репо-скоуп; per-ветка персист/загрузка на диск.
+    val codeDraft = remember(repo.fullName) { mutableStateMapOf<String, String>() }
+    fun persistCodeDraft() = CodeDraftStore.save(context, repo.fullName, selectedBranch, codeDraft.toMap())
+    // Стадия 6 «прочность»: загрузка/восстановление черновика для текущей (репо, ветка) — переживает
+    // рестарт процесса и смену ветки (у каждой ветки свой черновик; старая ветка уже на диске).
+    LaunchedEffect(repo.fullName, selectedBranch) {
+        val loaded = CodeDraftStore.load(context, repo.fullName, selectedBranch)
+        codeDraft.clear(); codeDraft.putAll(loaded)
+    }
     var showCodeCommitSheet by remember { mutableStateOf(false) }
     var codeCommitting by remember { mutableStateOf(false) }
     // Code-таб: недавно открытые файлы (most-recent-first, для строки «recent»). Скоуп репо.
@@ -685,7 +692,7 @@ internal fun RepoDetailScreen(
                 file = codeFile,
                 branch = selectedBranch,
                 initialContent = codeContent,
-                onSaveDraft = { p, c -> codeDraft[p] = c },
+                onSaveDraft = { p, c -> codeDraft[p] = c; persistCodeDraft() },
                 onBack = { codeEditorFile = null; codeEditorContent = null },
             )
         }
@@ -1372,8 +1379,8 @@ internal fun RepoDetailScreen(
                 onOpenFile = { openCodeFile(it) },
                 onOpenPath = { path -> openCodeFile(GHContent(path.substringAfterLast('/'), path, "file", 0L, "", "")) },
                 onCommit = { showCodeCommitSheet = true },
-                onDiscardFile = { codeDraft.remove(it) },
-                onDiscardAll = { codeDraft.clear() },
+                onDiscardFile = { codeDraft.remove(it); persistCodeDraft() },
+                onDiscardAll = { codeDraft.clear(); persistCodeDraft() },
                 onExit = { nav.selectedSection = null },
             )
         }
@@ -1436,6 +1443,7 @@ internal fun RepoDetailScreen(
                     when (res) {
                         is CodeCommitResult.Success -> {
                             codeDraft.clear()
+                            persistCodeDraft()
                             showCodeCommitSheet = false
                             Toast.makeText(context, "committed", Toast.LENGTH_SHORT).show()
                         }
