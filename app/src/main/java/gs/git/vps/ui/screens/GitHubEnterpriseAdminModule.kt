@@ -34,7 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import gs.git.vps.data.github.model.GHAuditLogEntry
 import gs.git.vps.data.github.*
-import gs.git.vps.data.github.GHOAuthTokenInfo
+import gs.git.vps.data.github.model.GHOAuthTokenInfo
 import gs.git.vps.data.github.model.GHSamlAuthorization
 import gs.git.vps.data.github.model.GHScimUser
 import gs.git.vps.data.github.model.GHScimUsersPage

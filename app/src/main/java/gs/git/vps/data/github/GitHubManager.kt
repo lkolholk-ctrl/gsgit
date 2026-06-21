@@ -252,7 +252,7 @@ object GitHubManager {
         return match?.groupValues?.get(1)?.toIntOrNull()
     }
 
-    private suspend fun requestBasic(endpoint: String, method: String, body: String?, username: String, password: String): ApiResult =
+    internal suspend fun requestBasic(endpoint: String, method: String, body: String?, username: String, password: String): ApiResult =
         withContext(Dispatchers.IO) {
             var conn: HttpURLConnection? = null
             try {
@@ -335,28 +335,6 @@ object GitHubManager {
     internal fun refQuery(branch: String?): String {
         val ref = branch?.takeIf { it.isNotBlank() } ?: return ""
         return "?ref=${URLEncoder.encode(ref, "UTF-8")}"
-    }
-
-    private fun parseOAuthTokenInfo(j: JSONObject): GHOAuthTokenInfo {
-        val app = j.optJSONObject("app")
-        val scopes = j.optJSONArray("scopes")?.let { arr ->
-            (0 until arr.length()).mapNotNull { idx -> arr.optString(idx).takeIf { it.isNotBlank() } }
-        } ?: emptyList()
-        return GHOAuthTokenInfo(
-            id = j.optLong("id"),
-            url = j.optString("url", ""),
-            appName = app?.optString("name", "") ?: "",
-            appUrl = app?.optString("url", "") ?: "",
-            clientId = app?.optString("client_id", "") ?: "",
-            tokenLastEight = j.optString("token_last_eight", ""),
-            note = j.optString("note", ""),
-            noteUrl = j.optString("note_url", ""),
-            createdAt = j.optString("created_at", ""),
-            updatedAt = j.optString("updated_at", ""),
-            scopes = scopes,
-            fingerprint = j.optString("fingerprint", ""),
-            token = j.optString("token", "")
-        )
     }
 
     suspend fun isStarred(context: Context, owner: String, repo: String): Boolean =
@@ -582,71 +560,6 @@ object GitHubManager {
             failedBuildsCount = failedRuns,
             loading = false
         )
-    }
-
-    suspend fun checkOAuthAppToken(clientId: String, clientSecret: String, accessToken: String): GHOAuthTokenInfo? {
-        val body = JSONObject().apply { put("access_token", accessToken.trim()) }.toString()
-        val r = requestBasic("/applications/${clientId.trim()}/token", "POST", body, clientId.trim(), clientSecret)
-        if (!r.success) return null
-        return try { parseOAuthTokenInfo(JSONObject(r.body)) } catch (e: Exception) { null }
-    }
-
-    suspend fun resetOAuthAppToken(clientId: String, clientSecret: String, accessToken: String): GHOAuthTokenInfo? {
-        val body = JSONObject().apply { put("access_token", accessToken.trim()) }.toString()
-        val r = requestBasic("/applications/${clientId.trim()}/token", "PATCH", body, clientId.trim(), clientSecret)
-        if (!r.success) return null
-        return try { parseOAuthTokenInfo(JSONObject(r.body)) } catch (e: Exception) { null }
-    }
-
-    suspend fun deleteOAuthAppToken(clientId: String, clientSecret: String, accessToken: String): Boolean {
-        val body = JSONObject().apply { put("access_token", accessToken.trim()) }.toString()
-        return requestBasic("/applications/${clientId.trim()}/token", "DELETE", body, clientId.trim(), clientSecret).let { it.code == 204 || it.success }
-    }
-
-    suspend fun deleteOAuthAppGrant(clientId: String, clientSecret: String, accessToken: String): Boolean {
-        val body = JSONObject().apply { put("access_token", accessToken.trim()) }.toString()
-        return requestBasic("/applications/${clientId.trim()}/grant", "DELETE", body, clientId.trim(), clientSecret).let { it.code == 204 || it.success }
-    }
-
-    suspend fun initiateDeviceFlow(clientId: String): GHDeviceCode? {
-        val body = JSONObject().apply {
-            put("client_id", clientId)
-            put("scope", "read:user,repo,write:repo_hook,admin:repo_hook,copilot")
-        }.toString()
-        val webUrl = getWebUrl()
-        val r = requestBasic("$webUrl/login/device/code", "POST", body, clientId, "")
-        if (!r.success) return null
-        return try {
-            val j = JSONObject(r.body)
-            GHDeviceCode(
-                deviceCode = j.optString("device_code"),
-                userCode = j.optString("user_code"),
-                verificationUri = j.optString("verification_uri"),
-                expiresIn = j.optInt("expires_in"),
-                interval = j.optInt("interval", 5)
-            )
-        } catch (e: Exception) { null }
-    }
-
-    suspend fun pollDeviceToken(clientId: String, deviceCode: String): GHDeviceTokenResult {
-        val body = JSONObject().apply {
-            put("client_id", clientId)
-            put("device_code", deviceCode)
-            put("grant_type", "urn:ietf:params:oauth:grant-type:device_code")
-        }.toString()
-        val webUrl = getWebUrl()
-        val r = requestBasic("$webUrl/login/oauth/access_token", "POST", body, clientId, "")
-        return try {
-            val j = JSONObject(r.body)
-            val error = j.optString("error", "")
-            if (error.isBlank()) {
-                GHDeviceTokenResult(token = j.optString("access_token"), error = null)
-            } else {
-                GHDeviceTokenResult(token = null, error = error)
-            }
-        } catch (e: Exception) {
-            GHDeviceTokenResult(token = null, error = "parse_error")
-        }
     }
 
     // ═══════════════════════════════════
@@ -1248,37 +1161,6 @@ data class QuickGlanceStats(
     val failedBuildsCount: Int = 0,
     val loading: Boolean = true
 )
-
-data class GHOAuthTokenInfo(
-    val id: Long,
-    val url: String,
-    val appName: String,
-    val appUrl: String,
-    val clientId: String,
-    val tokenLastEight: String,
-    val note: String,
-    val noteUrl: String,
-    val createdAt: String,
-    val updatedAt: String,
-    val scopes: List<String>,
-    val fingerprint: String,
-    val token: String = ""
-)
-
-
-data class GHDeviceCode(
-    val deviceCode: String,
-    val userCode: String,
-    val verificationUri: String,
-    val expiresIn: Int,
-    val interval: Int
-)
-
-data class GHDeviceTokenResult(
-    val token: String?,
-    val error: String?
-)
-
 
 data class GHUserLite(val login: String, val avatarUrl: String = "")
 

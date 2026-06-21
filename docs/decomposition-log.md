@@ -631,3 +631,19 @@ helper'а/парсера в один файл.
 6. **Чистая сборка `clean compileDebugKotlin` — BUILD SUCCESSFUL (49s), exit 0.**
 
 ### Итог (23 домена, 2 файла Security) ✅ — `GitHubManager.kt`: 9008 → 1346 (−85%).
+
+## РЕАЛИЗОВАНО: домен Auth ✅
+
+`GitHubManager.kt`: 1346 → 1228 строк (−118). 6 функций + parseOAuthTokenInfo в один файл.
+
+1. **`GitHubManager+Auth.kt`** (~110 строк) — OAuth-app токены (check/reset/deleteOAuthAppToken,
+   deleteOAuthAppGrant) и device-flow (initiateDeviceFlow, pollDeviceToken). Запросы — через
+   ядровый `requestBasic` (помечен `internal`, был private; других потребителей в core не осталось).
+   parseOAuthTokenInfo перенесён как private.
+2. **Модели → `model/GHAuth.kt`**: GHOAuthTokenInfo, GHDeviceCode, GHDeviceTokenResult.
+3. **Оставлено в core**: validateToken/getCopilotToken — завязаны на вложенный
+   GitHubManager.TokenValidation и базовое токен-хранилище (часть auth-ядра).
+4. **Потребители** (GitHubSettingsModule, GitHubEnterpriseAdminModule — wildcard): импорты моделей → `.model`.
+5. **Чистая сборка `clean compileDebugKotlin` — BUILD SUCCESSFUL (38s), exit 0.**
+
+### Итог (24 домена) ✅ — `GitHubManager.kt`: 9008 → 1228.

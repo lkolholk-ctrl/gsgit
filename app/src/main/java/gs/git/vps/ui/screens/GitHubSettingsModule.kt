@@ -94,7 +94,7 @@ import gs.git.vps.data.github.model.GHEmailEntry
 import gs.git.vps.data.github.model.GHFollowerEntry
 import gs.git.vps.data.github.model.GHNotification
 import gs.git.vps.data.github.model.GHOrg
-import gs.git.vps.data.github.GHDeviceCode
+import gs.git.vps.data.github.model.GHDeviceCode
 import gs.git.vps.data.github.model.GHOrgMembership
 import gs.git.vps.data.github.model.GHWebhook
 import gs.git.vps.data.github.model.GHSocialAccountEntry
