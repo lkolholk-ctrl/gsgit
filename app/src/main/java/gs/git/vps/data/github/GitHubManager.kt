@@ -8,7 +8,6 @@ import gs.git.vps.data.github.model.GHInteractionLimitEntry
 import gs.git.vps.data.github.model.GHLicenseDetail
 import gs.git.vps.data.github.model.GHPermissions
 import gs.git.vps.data.github.model.GHRepo
-import gs.git.vps.data.github.model.GHRepoEvent
 import gs.git.vps.data.github.model.GHReviewComment
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -339,52 +338,6 @@ object GitHubManager {
 
     suspend fun isStarred(context: Context, owner: String, repo: String): Boolean =
         request(context, "/user/starred/$owner/$repo").code == 204
-
-    suspend fun getUserReceivedEvents(context: Context, username: String, page: Int = 1): List<GHRepoEvent> {
-        val r = request(context, "/users/$username/received_events?per_page=30&page=$page")
-        if (!r.success) return emptyList()
-        return try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                val payload = j.optJSONObject("payload")
-                GHRepoEvent(
-                    id = j.optString("id", ""),
-                    type = j.optString("type", ""),
-                    actor = j.optJSONObject("actor")?.optString("login") ?: "",
-                    createdAt = j.optString("created_at", ""),
-                    action = payload?.optString("action", "") ?: "",
-                    ref = payload?.optString("ref", "") ?: "",
-                    refType = payload?.optString("ref_type", "") ?: "",
-                    size = payload?.optInt("size", 0) ?: 0,
-                    repoName = j.optJSONObject("repo")?.optString("name") ?: ""
-                )
-            }
-        } catch (e: Exception) { emptyList() }
-    }
-
-    suspend fun getUserPublicEvents(context: Context, username: String, page: Int = 1): List<GHRepoEvent> {
-        val r = request(context, "/users/$username/events/public?per_page=100&page=$page")
-        if (!r.success) return emptyList()
-        return try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                val payload = j.optJSONObject("payload")
-                GHRepoEvent(
-                    id = j.optString("id", ""),
-                    type = j.optString("type", ""),
-                    actor = j.optJSONObject("actor")?.optString("login") ?: "",
-                    createdAt = j.optString("created_at", ""),
-                    action = payload?.optString("action", "") ?: "",
-                    ref = payload?.optString("ref", "") ?: "",
-                    refType = payload?.optString("ref_type", "") ?: "",
-                    size = payload?.optInt("size", 0) ?: 0,
-                    repoName = j.optJSONObject("repo")?.optString("name") ?: ""
-                )
-            }
-        } catch (e: Exception) { emptyList() }
-    }
 
     suspend fun getQuickGlanceStats(context: Context): QuickGlanceStats {
         var prsCount = 0

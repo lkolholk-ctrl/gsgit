@@ -695,3 +695,15 @@ helper'а/парсера в один файл.
 4. **Чистая сборка `clean compileDebugKotlin` — BUILD SUCCESSFUL (45s), exit 0.**
 
 ### Итог (27 доменов) ✅ — `GitHubManager.kt`: 9008 → 647 (−93%).
+
+## РЕАЛИЗОВАНО: домен Events ✅
+
+`GitHubManager.kt`: 647 → 601 строк (−46). 2 функции + parseGHRepoEvent в один файл.
+
+1. **`GitHubManager+Events.kt`** (~50 строк) — getUserReceivedEvents, getUserPublicEvents.
+   Inline-парсинг (был идентичен) → `parseGHRepoEvent`. GHRepoEvent — модель домена Repos.
+2. **Ядро**: удалён ставший лишним `import …model.GHRepoEvent` (Events был последним потребителем).
+3. **Потребители** GitHubHomeModule, GitHubProfileModule (wildcard) — функции покрыты.
+4. **Чистая сборка `clean compileDebugKotlin` — BUILD SUCCESSFUL (46s), exit 0.**
+
+### Итог (28 доменов) ✅ — `GitHubManager.kt`: 9008 → 601.
