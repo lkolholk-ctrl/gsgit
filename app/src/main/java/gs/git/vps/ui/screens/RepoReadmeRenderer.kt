@@ -1256,7 +1256,7 @@ private fun ReadmeCodeBlock(block: ReadmeRenderBlock.Code) {
             .fillMaxWidth()
             .padding(vertical = 8.dp)
             .clip(RoundedCornerShape(GitHubControlRadius))
-            .background(Color(0xFF161B22))
+            .background(colors.surfaceElevated)
             .border(1.dp, colors.border.copy(alpha = 0.5f), RoundedCornerShape(GitHubControlRadius))
     ) {
         Column(
@@ -1267,7 +1267,7 @@ private fun ReadmeCodeBlock(block: ReadmeRenderBlock.Code) {
         ) {
             lines.forEach { line ->
                 Text(
-                    highlightLine(line.take(README_MAX_LINE_CHARS).ifEmpty { " " }, language),
+                    highlightLine(line.take(README_MAX_LINE_CHARS).ifEmpty { " " }, language, colors),
                     fontSize = 12.sp,
                     fontFamily = FontFamily.Monospace,
                     color = colors.textPrimary,
