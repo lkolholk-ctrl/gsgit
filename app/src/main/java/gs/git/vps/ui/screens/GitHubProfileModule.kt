@@ -1202,7 +1202,7 @@ private fun SystemLifespanTelemetryPanel(profile: GHUserProfile) {
         Modifier
             .fillMaxWidth()
             .border(1.dp, palette.border, RoundedCornerShape(8.dp))
-            .background(Color(0xFF07090E))
+            .background(palette.surface)
             .padding(12.dp)
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -1310,7 +1310,7 @@ private fun DeveloperAccessCard(
                 }
                 .clip(RoundedCornerShape(12.dp))
                 .border(2.dp, palette.accent, RoundedCornerShape(12.dp))
-                .background(Color(0xFF0D1117))
+                .background(palette.surface)
         ) {
             Canvas(Modifier.fillMaxSize()) {
                 val step = 20.dp.toPx()
