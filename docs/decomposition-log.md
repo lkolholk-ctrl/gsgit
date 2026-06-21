@@ -647,3 +647,18 @@ helper'а/парсера в один файл.
 5. **Чистая сборка `clean compileDebugKotlin` — BUILD SUCCESSFUL (38s), exit 0.**
 
 ### Итог (24 домена) ✅ — `GitHubManager.kt`: 9008 → 1228.
+
+## РЕАЛИЗОВАНО: домен Apps ✅
+
+`GitHubManager.kt`: 1228 → 1092 строк (−136). 4 функции + 3 парсера в один файл.
+
+1. **`GitHubManager+Apps.kt`** (~130 строк) — getAppInstallations, getAppInstallationRepositories,
+   add/removeRepositoryToAppInstallation. parseAppInstallation + его хелперы parseStringArray/
+   parseStringMap перенесены сюда (в core они больше не нужны — это был последний потребитель).
+2. **Модели → `model/GHApps.kt`**: GHAppInstallation, GHAppInstallationsPage, GHAppInstallationReposPage.
+3. **Оставлены в core (shared internal)**: parseRepo (getAppInstallationRepositories зовёт его —
+   member, доступен), apiErrorMessage. `parseStringArray` теперь нет в core вообще.
+4. **Потребитель** GitHubAppsModule (без wildcard): импорт модели → `.model`, добавлен `import …github.*`.
+5. **Чистая сборка `clean compileDebugKotlin` — BUILD SUCCESSFUL (39s), exit 0.**
+
+### Итог (25 доменов) ✅ — `GitHubManager.kt`: 9008 → 1092 (−88%).
