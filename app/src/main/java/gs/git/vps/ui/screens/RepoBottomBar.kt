@@ -25,7 +25,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -51,6 +50,8 @@ import gs.git.vps.ui.theme.JetBrainsMono
 internal val RepoBottomBarHeight = 60.dp
 private val RepoBottomBarMargin = 12.dp
 internal val RepoBottomBarReservedHeight = RepoBottomBarHeight + RepoBottomBarMargin * 2
+/** Высота мягкого fade-перехода контента в фон у бара (telegram-style «замыленность», не выше бара). */
+internal val RepoBottomBarFadeHeight = 28.dp
 
 internal data class RepoBottomBarItem(
     val key: String,
@@ -80,7 +81,6 @@ internal fun RepoBottomBar(
             Modifier
                 .fillMaxWidth()
                 .height(RepoBottomBarHeight)
-                .shadow(6.dp, pillShape, clip = false)
                 .clip(pillShape)
                 .background(palette.surface)
                 .border(1.dp, palette.border.copy(alpha = 0.45f), pillShape)
