@@ -19,10 +19,6 @@ import java.net.URLEncoder
  *
  * НЕ здесь: blame (getFileBlame) и git-data объекты (refs/trees/blobs/git-commit) — оставлены в core
  * для домена Contents/GitData. Ветки и защита веток — в GitHubManager+Branches.kt.
- *
- * ВНИМАНИЕ (предсуществующий баг, сохранён как есть — это рефактор, не фикс): в createCommitStatus
- * тело пишет `put("context", context)`, где `context` — это android `Context`, а не `statusContext`.
- * Параметр statusContext по факту игнорируется. Поведение не менял; помечено для отдельного фикса.
  */
 
 // ─── Коммиты: список / детали / сравнение ────────────────────────────────────
@@ -122,7 +118,7 @@ internal suspend fun GitHubManager.getCommitStatuses(context: Context, owner: St
 internal suspend fun GitHubManager.createCommitStatus(context: Context, owner: String, repo: String, sha: String, state: String, statusContext: String, description: String = "", targetUrl: String = ""): Boolean {
     val body = JSONObject().apply {
         put("state", state)
-        put("context", context)
+        put("context", statusContext)
         if (description.isNotBlank()) put("description", description)
         if (targetUrl.isNotBlank()) put("target_url", targetUrl)
     }.toString()

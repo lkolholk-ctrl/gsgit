@@ -15,11 +15,6 @@ import java.net.URLEncoder
  * Сеть — через ядро `request()`, парсинг — чистые `parseGHX`. Сигнатуры вызовов не менялись.
  *
  * GHCollaborator (возвращает getTeamMembers) — домен Collaborators, импортируется из `.model`.
- *
- * ВНИМАНИЕ (предсуществующий баг, сохранён как есть — это рефактор, не фикс): в getTeamMembers/
- * addTeamMember/removeTeamMember/getTeamDiscussions/createTeamDiscussion URL собирается через
- * `${'$'}encodedOrg` → это ЛИТЕРАЛЬНЫЙ `$encodedOrg` в пути (vals encoded* по факту не подставляются).
- * Поведение не менял; отмечено для отдельного фикса.
  */
 
 // ─── Команды репо / организации ──────────────────────────────────────────────
@@ -78,7 +73,7 @@ internal suspend fun GitHubManager.removeRepoTeam(context: Context, org: String,
 internal suspend fun GitHubManager.getTeamMembers(context: Context, org: String, teamSlug: String): List<GHCollaborator> {
     val encodedOrg = java.net.URLEncoder.encode(org, "UTF-8")
     val encodedTeam = java.net.URLEncoder.encode(teamSlug, "UTF-8")
-    val r = request(context, "/orgs/${'$'}encodedOrg/teams/${'$'}encodedTeam/members?per_page=100")
+    val r = request(context, "/orgs/$encodedOrg/teams/$encodedTeam/members?per_page=100")
     if (!r.success) return emptyList()
     return try {
         val arr = JSONArray(r.body)
@@ -98,14 +93,14 @@ internal suspend fun GitHubManager.addTeamMember(context: Context, org: String, 
     val encodedTeam = java.net.URLEncoder.encode(teamSlug, "UTF-8")
     val encodedUser = java.net.URLEncoder.encode(username, "UTF-8")
     val body = JSONObject().apply { put("role", role) }.toString()
-    return request(context, "/orgs/${'$'}encodedOrg/teams/${'$'}encodedTeam/memberships/${'$'}encodedUser", "PUT", body).success
+    return request(context, "/orgs/$encodedOrg/teams/$encodedTeam/memberships/$encodedUser", "PUT", body).success
 }
 
 internal suspend fun GitHubManager.removeTeamMember(context: Context, org: String, teamSlug: String, username: String): Boolean {
     val encodedOrg = java.net.URLEncoder.encode(org, "UTF-8")
     val encodedTeam = java.net.URLEncoder.encode(teamSlug, "UTF-8")
     val encodedUser = java.net.URLEncoder.encode(username, "UTF-8")
-    return request(context, "/orgs/${'$'}encodedOrg/teams/${'$'}encodedTeam/memberships/${'$'}encodedUser", "DELETE").success
+    return request(context, "/orgs/$encodedOrg/teams/$encodedTeam/memberships/$encodedUser", "DELETE").success
 }
 
 // ─── Обсуждения команд ───────────────────────────────────────────────────────
@@ -113,7 +108,7 @@ internal suspend fun GitHubManager.removeTeamMember(context: Context, org: Strin
 internal suspend fun GitHubManager.getTeamDiscussions(context: Context, org: String, teamSlug: String): List<GHTeamDiscussion> {
     val encodedOrg = java.net.URLEncoder.encode(org, "UTF-8")
     val encodedTeam = java.net.URLEncoder.encode(teamSlug, "UTF-8")
-    val r = request(context, "/orgs/${'$'}encodedOrg/teams/${'$'}encodedTeam/discussions?per_page=100")
+    val r = request(context, "/orgs/$encodedOrg/teams/$encodedTeam/discussions?per_page=100")
     if (!r.success) return emptyList()
     return try {
         val arr = JSONArray(r.body)
@@ -142,13 +137,13 @@ internal suspend fun GitHubManager.createTeamDiscussion(context: Context, org: S
         put("title", title)
         put("body", body)
     }.toString()
-    return request(context, "/orgs/${'$'}encodedOrg/teams/${'$'}encodedTeam/discussions", "POST", reqBody).success
+    return request(context, "/orgs/$encodedOrg/teams/$encodedTeam/discussions", "POST", reqBody).success
 }
 
 internal suspend fun GitHubManager.deleteTeamDiscussion(context: Context, org: String, teamSlug: String, number: Int): Boolean {
     val encodedOrg = java.net.URLEncoder.encode(org, "UTF-8")
     val encodedTeam = java.net.URLEncoder.encode(teamSlug, "UTF-8")
-    return request(context, "/orgs/${'$'}encodedOrg/teams/${'$'}encodedTeam/discussions/$number", "DELETE").success
+    return request(context, "/orgs/$encodedOrg/teams/$encodedTeam/discussions/$number", "DELETE").success
 }
 
 // ─── Парсеры / хелперы (чистые, без IO) ──────────────────────────────────────
