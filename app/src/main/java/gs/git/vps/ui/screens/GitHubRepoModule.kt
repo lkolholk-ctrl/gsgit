@@ -248,6 +248,8 @@ internal fun RepoDetailScreen(
     var codeEditorContent by remember { mutableStateOf<String?>(null) }
     // Code-таб: буфер черновика (path → новый контент), скоуп (репо, ветка). In-memory (диск — Стадия 6).
     val codeDraft = remember(repo.fullName, selectedBranch) { mutableStateMapOf<String, String>() }
+    var showCodeCommitSheet by remember { mutableStateOf(false) }
+    var codeCommitting by remember { mutableStateOf(false) }
     var languages by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }; var contributors by remember { mutableStateOf<List<GHContributor>>(emptyList()) }
     // Pagination
     var commitsPage by rememberSaveable(repo.fullName) { mutableIntStateOf(1) }; var commitsHasMore by rememberSaveable(repo.fullName) { mutableStateOf(true) }
@@ -1362,6 +1364,7 @@ internal fun RepoDetailScreen(
                         }
                     }
                 },
+                onCommit = { showCodeCommitSheet = true },
                 onDiscardAll = { codeDraft.clear() },
                 onExit = { nav.selectedSection = null },
             )
@@ -1412,6 +1415,32 @@ internal fun RepoDetailScreen(
     if (deleteTarget != null) DeleteFileDialog(repo, deleteTarget!!, selectedBranch, { deleteTarget = null }) { deleteTarget = null; scope.launch { contents = GitHubManager.getRepoContents(context, repo.owner, repo.name, currentPath, selectedBranch) } }
     if (showBranchPicker) BranchPickerDialog(branches, selectedBranch, canWrite, { selectedBranch = it; showBranchPicker = false }, { showBranchPicker = false }) { showBranchPicker = false; showCreateBranch = true }
     if (showDispatch && workflows.isNotEmpty()) DispatchWorkflowDialog(repo, workflows, branches, { showDispatch = false }) { showDispatch = false; scope.launch { workflowRuns = GitHubManager.getWorkflowRuns(context, repo.owner, repo.name) } }
+    if (showCodeCommitSheet) {
+        CodeCommitSheet(
+            fileCount = codeDraft.size,
+            branch = selectedBranch,
+            committing = codeCommitting,
+            onCommit = { msg ->
+                codeCommitting = true
+                scope.launch {
+                    val res = GitHubManager.commitCodeDraft(context, repo.owner, repo.name, selectedBranch, msg, codeDraft.toMap())
+                    codeCommitting = false
+                    when (res) {
+                        is CodeCommitResult.Success -> {
+                            codeDraft.clear()
+                            showCodeCommitSheet = false
+                            Toast.makeText(context, "закоммичено", Toast.LENGTH_SHORT).show()
+                        }
+                        is CodeCommitResult.Conflict ->
+                            Toast.makeText(context, "ветка уехала — повторите", Toast.LENGTH_LONG).show()
+                        is CodeCommitResult.Error ->
+                            Toast.makeText(context, "ошибка коммита: ${res.message}", Toast.LENGTH_LONG).show()
+                    }
+                }
+            },
+            onDismiss = { if (!codeCommitting) showCodeCommitSheet = false },
+        )
+    }
     }
 }
 

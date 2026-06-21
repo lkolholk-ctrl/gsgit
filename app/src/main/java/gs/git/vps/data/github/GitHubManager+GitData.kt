@@ -164,6 +164,48 @@ internal suspend fun GitHubManager.createGitTree(
     return try { parseGitTree(JSONObject(r.body)) } catch (e: Exception) { null }
 }
 
+/** Запись дерева для батч-коммита: модификация/добавление файла через blob [sha] либо inline [content]. */
+internal data class GHTreeEntry(
+    val path: String,
+    val mode: String = "100644",
+    val type: String = "blob",
+    val sha: String? = null,
+    val content: String? = null,
+)
+
+/**
+ * Создать tree с НЕСКОЛЬКИМИ записями за один вызов (существующий createGitTree кладёт только одну).
+ * Нужно для батч-коммита Code-таба: один tree на все изменённые файлы поверх base_tree.
+ */
+internal suspend fun GitHubManager.createGitTreeBatch(
+    context: Context,
+    owner: String,
+    repo: String,
+    baseTree: String,
+    entries: List<GHTreeEntry>,
+): GHGitTree? {
+    if (entries.isEmpty()) return null
+    val arr = JSONArray()
+    for (e in entries) {
+        arr.put(JSONObject().apply {
+            put("path", e.path)
+            put("mode", e.mode.ifBlank { "100644" })
+            put("type", e.type.ifBlank { "blob" })
+            when {
+                e.sha != null -> put("sha", e.sha)
+                e.content != null -> put("content", e.content)
+            }
+        })
+    }
+    val body = JSONObject().apply {
+        if (baseTree.isNotBlank()) put("base_tree", baseTree.trim())
+        put("tree", arr)
+    }.toString()
+    val r = request(context, "/repos/$owner/$repo/git/trees", "POST", body)
+    if (!r.success) return null
+    return try { parseGitTree(JSONObject(r.body)) } catch (e: Exception) { null }
+}
+
 // ─── Tag- и commit-объекты ───────────────────────────────────────────────────
 
 internal suspend fun GitHubManager.getGitTag(context: Context, owner: String, repo: String, tagSha: String): GHGitTagDetail? {

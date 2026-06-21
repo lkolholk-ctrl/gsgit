@@ -24,6 +24,7 @@ internal fun CodeTabShell(
     branch: String,
     draftPaths: Set<String>,
     onOpenFile: (GHContent) -> Unit,
+    onCommit: () -> Unit,
     onDiscardAll: () -> Unit,
     onExit: () -> Unit,
 ) {
@@ -42,6 +43,7 @@ internal fun CodeTabShell(
         onNavigatePath = { codePath = it },
         draftPaths = draftPaths,
         draftCount = draftPaths.size,
+        onCommit = onCommit,
         onDiscardAll = onDiscardAll,
     )
 }
