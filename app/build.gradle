@@ -36,6 +36,9 @@ def gsGitVersionName = "1.0.${gsGitVersionCode}"
 android {
     namespace 'gs.git.vps'
     compileSdk 36
+    // NDK r26 (clang 17) — обязателен: плагин O-MVLL собран под LLVM 17; NDK 27 (clang 18) даёт
+    // ABI-несовпадение и сегфолт clang при O-MVLL-проходе. См. docs/code-tab-spec.md / CLAUDE.md.
+    ndkVersion "26.3.11579264"
 
     signingConfigs {
         debug {
@@ -75,6 +78,13 @@ android {
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            // Нативка: AGP по умолчанию даёт RelWithDebInfo, но CMakeLists включает O-MVLL только
+            // под CMAKE_BUILD_TYPE=Release. Без этого native-обфускация молча НЕ применялась.
+            externalNativeBuild {
+                cmake {
+                    arguments "-DCMAKE_BUILD_TYPE=Release"
+                }
+            }
         }
     }
 
