@@ -105,7 +105,7 @@ internal fun CodeBrowser(
             ) {
                 Box(Modifier.size(7.dp).clip(CircleShape).background(palette.accent))
                 Spacer(Modifier.width(8.dp))
-                AiModuleText("$draftCount несохранённых", color = palette.accent, fontFamily = JetBrainsMono, fontWeight = FontWeight.Medium, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                AiModuleText("$draftCount unsaved", color = palette.accent, fontFamily = JetBrainsMono, fontWeight = FontWeight.Medium, fontSize = 12.sp, modifier = Modifier.weight(1f))
                 AiModuleText("commit", color = palette.accent, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.clickable(onClick = onCommit))
                 Spacer(Modifier.width(18.dp))
                 AiModuleText("discard", color = palette.error, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.clickable(onClick = onDiscardAll))
@@ -116,10 +116,10 @@ internal fun CodeBrowser(
                 AiModuleSpinner(label = "loading…")
             }
             failed -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                AiModuleText("ошибка загрузки дерева", color = palette.error, fontFamily = JetBrainsMono, fontSize = 13.sp)
+                AiModuleText("failed to load tree", color = palette.error, fontFamily = JetBrainsMono, fontSize = 13.sp)
             }
             items.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                AiModuleText("пусто", color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 13.sp)
+                AiModuleText("empty", color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 13.sp)
             }
             else -> LazyColumn(Modifier.fillMaxSize()) {
                 items(items, key = { it.path }) { item ->

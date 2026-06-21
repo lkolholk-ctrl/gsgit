@@ -51,7 +51,7 @@ internal fun CodeCommitSheet(
         content = {
             Column {
                 AiModuleText(
-                    "Один коммит на $fileCount $plural → ветка $branch.",
+                    "One commit, $fileCount $plural → $branch.",
                     color = palette.textSecondary,
                     fontFamily = JetBrainsMono,
                     fontSize = 12.sp,
@@ -60,7 +60,7 @@ internal fun CodeCommitSheet(
                 AiModuleTextField(
                     value = message,
                     onValueChange = { message = it },
-                    label = "сообщение коммита",
+                    label = "commit message",
                     enabled = !committing,
                 )
             }

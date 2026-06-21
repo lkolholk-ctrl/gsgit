@@ -1429,12 +1429,12 @@ internal fun RepoDetailScreen(
                         is CodeCommitResult.Success -> {
                             codeDraft.clear()
                             showCodeCommitSheet = false
-                            Toast.makeText(context, "закоммичено", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "committed", Toast.LENGTH_SHORT).show()
                         }
                         is CodeCommitResult.Conflict ->
-                            Toast.makeText(context, "ветка уехала — повторите", Toast.LENGTH_LONG).show()
+                            Toast.makeText(context, "branch moved — retry", Toast.LENGTH_LONG).show()
                         is CodeCommitResult.Error ->
-                            Toast.makeText(context, "ошибка коммита: ${res.message}", Toast.LENGTH_LONG).show()
+                            Toast.makeText(context, "commit error: ${res.message}", Toast.LENGTH_LONG).show()
                     }
                 }
             },

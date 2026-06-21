@@ -31,22 +31,22 @@ internal suspend fun GitHubManager.commitCodeDraft(
     message: String,
     changes: Map<String, String>,
 ): CodeCommitResult {
-    if (changes.isEmpty()) return CodeCommitResult.Error("нет изменений")
+    if (changes.isEmpty()) return CodeCommitResult.Error("no changes")
 
     val ref = getGitRef(context, owner, repo, "heads/$branch")
-        ?: return CodeCommitResult.Error("не удалось получить ветку")
+        ?: return CodeCommitResult.Error("failed to get branch ref")
     val headSha = ref.nodeSha
-    if (headSha.isBlank()) return CodeCommitResult.Error("пустой head sha")
+    if (headSha.isBlank()) return CodeCommitResult.Error("empty head sha")
 
     val headCommit = getGitCommit(context, owner, repo, headSha)
-        ?: return CodeCommitResult.Error("не удалось получить базовый коммит")
+        ?: return CodeCommitResult.Error("failed to get base commit")
     val baseTree = headCommit.treeSha
 
     val entries = ArrayList<GHTreeEntry>(changes.size)
     for ((path, content) in changes) {
         if (content.isNotBlank()) {
             val blob = createGitBlob(context, owner, repo, content)
-                ?: return CodeCommitResult.Error("blob не создан: $path")
+                ?: return CodeCommitResult.Error("blob failed: $path")
             entries.add(GHTreeEntry(path = path, sha = blob.sha))
         } else {
             // Пустой/whitespace файл: createGitBlob отвергает blank — кладём inline content.
@@ -55,9 +55,9 @@ internal suspend fun GitHubManager.commitCodeDraft(
     }
 
     val tree = createGitTreeBatch(context, owner, repo, baseTree, entries)
-        ?: return CodeCommitResult.Error("tree не создан")
+        ?: return CodeCommitResult.Error("tree failed")
     val commit = createGitCommit(context, owner, repo, message, tree.sha, listOf(headSha))
-        ?: return CodeCommitResult.Error("commit не создан")
+        ?: return CodeCommitResult.Error("commit failed")
 
     val updated = updateGitRef(context, owner, repo, "heads/$branch", commit.sha, force = false)
     return if (updated != null) CodeCommitResult.Success(commit.sha) else CodeCommitResult.Conflict

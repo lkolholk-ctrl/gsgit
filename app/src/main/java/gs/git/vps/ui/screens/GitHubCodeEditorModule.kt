@@ -831,7 +831,7 @@ fun CodeEditorScreen(
                     if (onSaveDraft != null) {
                         onSaveDraft(currentFile.path, text)
                         savedContent = text
-                        Toast.makeText(context, "сохранено в черновик", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "saved to draft", Toast.LENGTH_SHORT).show()
                     } else { showCommitDialog = true }
                 },
                 onBack = ::handleEditorBack,
