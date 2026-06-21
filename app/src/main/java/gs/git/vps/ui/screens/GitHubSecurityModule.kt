@@ -26,7 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import gs.git.vps.data.github.*
 import gs.git.vps.data.github.model.GHPullRequest
-import gs.git.vps.data.github.GHCodeScanningAlert
+import gs.git.vps.data.github.model.GHCodeScanningAlert
 import gs.git.vps.ui.components.AiModuleAlertDialog
 import gs.git.vps.ui.components.AiModuleHairline
 import gs.git.vps.ui.components.AiModulePillButton
@@ -39,16 +39,16 @@ import gs.git.vps.ui.components.AiModuleSpinner
 import gs.git.vps.ui.components.AiModuleText as Text
 import gs.git.vps.ui.components.AiModuleTextAction
 import gs.git.vps.ui.components.AiModuleTextField
-import gs.git.vps.data.github.GHCommunityProfile
-import gs.git.vps.data.github.GHDependabotAlert
-import gs.git.vps.data.github.GHRepositorySecurityAdvisory
-import gs.git.vps.data.github.GHRepositorySecuritySettings
-import gs.git.vps.data.github.GHRuleSuite
-import gs.git.vps.data.github.GHRuleset
-import gs.git.vps.data.github.GHRulesetBypassActor
-import gs.git.vps.data.github.GHRulesetDetail
-import gs.git.vps.data.github.GHRulesetRule
-import gs.git.vps.data.github.GHSecretScanningAlert
+import gs.git.vps.data.github.model.GHCommunityProfile
+import gs.git.vps.data.github.model.GHDependabotAlert
+import gs.git.vps.data.github.model.GHRepositorySecurityAdvisory
+import gs.git.vps.data.github.model.GHRepositorySecuritySettings
+import gs.git.vps.data.github.model.GHRuleSuite
+import gs.git.vps.data.github.model.GHRuleset
+import gs.git.vps.data.github.model.GHRulesetBypassActor
+import gs.git.vps.data.github.model.GHRulesetDetail
+import gs.git.vps.data.github.model.GHRulesetRule
+import gs.git.vps.data.github.model.GHSecretScanningAlert
 import gs.git.vps.data.github.GitHubManager
 import gs.git.vps.ui.theme.AiModuleTheme
 import gs.git.vps.ui.theme.*

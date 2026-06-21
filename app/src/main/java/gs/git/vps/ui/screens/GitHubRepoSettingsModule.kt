@@ -40,7 +40,7 @@ import gs.git.vps.ui.components.AiModuleTextAction
 import gs.git.vps.ui.components.AiModuleTextField
 import gs.git.vps.data.github.*
 import gs.git.vps.data.github.GHAutolink
-import gs.git.vps.data.github.GHRepositorySecuritySettings
+import gs.git.vps.data.github.model.GHRepositorySecuritySettings
 import gs.git.vps.data.github.GitHubManager
 import gs.git.vps.data.github.model.GHDeployKey
 import gs.git.vps.data.github.model.GHInteractionLimitEntry

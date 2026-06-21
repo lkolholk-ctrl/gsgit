@@ -603,3 +603,31 @@ helper'а/парсера в один файл.
 4. **Чистая сборка `clean compileDebugKotlin` — BUILD SUCCESSFUL (39s), exit 0.**
 
 ### Итог (21 домен) ✅ — `GitHubManager.kt`: 9008 → 1953.
+
+## РЕАЛИЗОВАНО: домен Security ✅
+
+Самый крупный из оставшихся, нарезан в ДВА файла (rulesets отдельно от alerts/advisories),
+один коммит. `GitHubManager.kt`: 1953 → 1346 строк (−607). Вынесено 29 функций + парсеры.
+
+1. **`GitHubManager+Rulesets.kt`** (~230 строк, 7 функций) — repository rulesets (getRulesets,
+   getRulesetDetail, create/update/deleteRuleset) и rule-suites (getRuleSuites, getRuleSuite).
+   Хелперы buildRulesetPayload/parseRulesetDetail/parseRuleSuite/parseRulesetRules/
+   parseRulesetBypassActors перенесены как private.
+2. **`GitHubManager+Security.kt`** (~310 строк, 22 функции) — alerts (dependabot/code-scanning/
+   secret-scanning, get-list+get-one ×3), repository security advisories (CRUD), community profile,
+   security settings (get + setAutomatedSecurityFixes/setVulnerabilityAlerts/
+   setPrivateVulnerabilityReporting). Парсеры parseDependabotAlert/parseCodeScanningAlert/
+   parseSecretScanningAlert/parseRepositorySecurityAdvisory/parseCommunityFiles/
+   parseSecurityAdvisoryVulnerabilities/parseEnabledFlag/parsePausedFlag перенесены как private.
+3. **Модели → `model/`**: `GHRuleset.kt` (GHRuleset, GHRulesetDetail, GHRulesetRule,
+   GHRulesetBypassActor, GHRuleSuite), `GHSecurity.kt` (GHDependabotAlert, GHCodeScanningAlert,
+   GHSecretScanningAlert, GHRepositorySecurityAdvisory, GHAdvisoryVulnerability,
+   GHRepositorySecuritySettings, GHCommunityProfile, GHCommunityProfileFile).
+4. **`parseStringArray`** — общий генерик-хелпер (JSONArray→List<String>): нужен core
+   (parseAppInstallation) И обоим Security-файлам. Оставлен в core как private member; в каждом из
+   двух доменных файлов — private-дубль (3-строчный генерик, не доменная логика). Помечено в шапках.
+5. **Потребители** (GitHubSecurityModule, GitHubRepoSettingsModule — оба wildcard): импорты моделей
+   переключены на `.model` (12 импортов). Функции покрыты wildcard.
+6. **Чистая сборка `clean compileDebugKotlin` — BUILD SUCCESSFUL (49s), exit 0.**
+
+### Итог (23 домена, 2 файла Security) ✅ — `GitHubManager.kt`: 9008 → 1346 (−85%).
