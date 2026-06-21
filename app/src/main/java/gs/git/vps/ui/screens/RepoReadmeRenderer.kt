@@ -355,16 +355,18 @@ internal fun ReadmeHtmlDocument(
     val bgHex = colors.background.toHex()
     val textHex = colors.textPrimary.toHex()
     val mutedHex = colors.textMuted.toHex()
+    val secondaryHex = colors.textSecondary.toHex()
     val borderHex = colors.border.toHex()
     val surfaceHex = colors.surface.toHex()
     val accentHex = colors.accent.toHex()
-    
-    val pageHtml = remember(html, bgHex, textHex, mutedHex, borderHex, surfaceHex, accentHex) {
+
+    val pageHtml = remember(html, bgHex, textHex, mutedHex, secondaryHex, borderHex, surfaceHex, accentHex) {
         buildGitHubReadmeHtmlPage(
             readmeHtml = html,
             bg = bgHex,
             text = textHex,
             muted = mutedHex,
+            secondary = secondaryHex,
             border = borderHex,
             surface = surfaceHex,
             accent = accentHex
@@ -508,6 +510,7 @@ private fun buildGitHubReadmeHtmlPage(
     bg: String,
     text: String,
     muted: String,
+    secondary: String,
     border: String,
     surface: String,
     accent: String
@@ -616,6 +619,7 @@ private fun buildGitHubReadmeHtmlPage(
     --bg: $bg;
     --text: $text;
     --muted: $muted;
+    --secondary: $secondary;
     --border: $border;
     --surface: $surface;
     --inline: ${border}30;
@@ -696,7 +700,7 @@ private fun buildGitHubReadmeHtmlPage(
   pre code { padding: 0; background: transparent; white-space: pre; }
   blockquote {
     padding: 0 1em;
-    color: var(--muted);
+    color: var(--secondary);
     border-left: .25em solid var(--border);
   }
   hr { height: 1px; border: 0; background: var(--border); margin: 28px 0; }
