@@ -34,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -359,8 +360,9 @@ internal fun ReadmeHtmlDocument(
     val borderHex = colors.border.toHex()
     val surfaceHex = colors.surface.toHex()
     val accentHex = colors.accent.toHex()
+    val colorScheme = if (colors.background.luminance() > 0.5f) "light" else "dark"
 
-    val pageHtml = remember(html, bgHex, textHex, mutedHex, secondaryHex, borderHex, surfaceHex, accentHex) {
+    val pageHtml = remember(html, bgHex, textHex, mutedHex, secondaryHex, borderHex, surfaceHex, accentHex, colorScheme) {
         buildGitHubReadmeHtmlPage(
             readmeHtml = html,
             bg = bgHex,
@@ -369,7 +371,8 @@ internal fun ReadmeHtmlDocument(
             secondary = secondaryHex,
             border = borderHex,
             surface = surfaceHex,
-            accent = accentHex
+            accent = accentHex,
+            colorScheme = colorScheme
         )
     }
     
@@ -382,11 +385,11 @@ internal fun ReadmeHtmlDocument(
     
     Box(modifier = modifier) {
         AndroidView(
-            modifier = Modifier.fillMaxSize().background(Color(0xFF000000)),
+            modifier = Modifier.fillMaxSize().background(colors.background),
             factory = { ctx ->
                 WebView(ctx).apply {
                     activeWebView = this
-                    setBackgroundColor(android.graphics.Color.BLACK)
+                    setBackgroundColor(colors.background.toArgb())
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
                     settings.allowFileAccess = false
@@ -513,7 +516,8 @@ private fun buildGitHubReadmeHtmlPage(
     secondary: String,
     border: String,
     surface: String,
-    accent: String
+    accent: String,
+    colorScheme: String
 ): String = """
 <!doctype html>
 <html>
@@ -525,7 +529,7 @@ private fun buildGitHubReadmeHtmlPage(
 <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js"></script>
 <script type="module">
   import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
-  mermaid.initialize({ startOnLoad: true, theme: 'dark' });
+  mermaid.initialize({ startOnLoad: true, theme: '${if (colorScheme == "light") "default" else "dark"}' });
 </script>
 <script>
   document.addEventListener("DOMContentLoaded", function() {
@@ -615,7 +619,7 @@ private fun buildGitHubReadmeHtmlPage(
     color: var(--text);
   }
   :root {
-    color-scheme: dark;
+    color-scheme: $colorScheme;
     --bg: $bg;
     --text: $text;
     --muted: $muted;
