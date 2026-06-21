@@ -748,3 +748,26 @@ Diagnostics, RepoMeta, Events, RepoFeatures, Home.
 Конвенция выдержана: extension-функции объекта, `internal`-ядро, модели в `model/`, парсинг через
 `parseGHX`, сигнатуры вызовов не менялись, после каждого домена — зелёная сборка. Два предсуществующих
 бага задокументированы в TODA.md (team-URL, createCommitStatus) — НЕ чинились (рефактор).
+
+---
+
+# UI-декомпозиция: RepoModule (Фаза 1 — разнесение по файлам)
+
+Эталонный UI god-экран `ui/screens/GitHubRepoModule.kt` (8181 строк, 101 @Composable). Фаза 1 —
+чистое разнесение кластеров по соседним файлам того же пакета `gs.git.vps.ui.screens`, поведение
+НЕ меняется (только перемещение кода). Ключевой нюанс: `private` top-level в Kotlin file-scoped —
+кластер переносится со всеми private-хелперами; шаренные с остающимся кодом → `internal`.
+Билд после каждого файла. Фаза 2 (ViewModel/стейт) — отдельно потом.
+
+## Файл 1: RepoReadmeRenderer.kt ✅
+
+Вынесен весь README-движок (1964 строки): загрузка/парсинг markdown+HTML в блоки, рендер,
+HTML-документ-вьюха, image-loader, резолв ссылок + типы ReadmeRenderBlock/ReadmeInlineSegment/
+ReadmeFetchResult + README_*-константы. `GitHubRepoModule.kt`: 8181 → 6372 строк (−1809).
+
+- Символы, зовущиеся из остающегося RepoDetailScreen, помечены `internal`: ReadmeTab,
+  ReadmeHtmlDocument, fetchReadmeForRender, resolveReadmeLink, openReadmeUrl, README_*-константы
+  (GitHubMarkdownDocument/parseReadmeBlocks/ReadmeBlockView/ReadmeRenderBlock/ReadmeFetchResult
+  уже были internal — используются и другими экранами).
+- Импорты скопированы из god-файла целиком (неиспользуемые — лишь warning).
+- **Чистая сборка `clean compileDebugKotlin` — BUILD SUCCESSFUL, exit 0.** Экран не менялся.
