@@ -902,3 +902,22 @@ FilePickerDialog, ConflictResolverDialog (+парсинг/сборка merge), E
 ## Файл 4: CodeEditorCopilot.kt ✅ — AiQuickActionsRow, askCopilot, generateCommitMessage, CopilotChatPanel, coarseDiff, extractCodeBlocks (684 строки). main: 3388 → 2840. BUILD SUCCESSFUL.
 ## Файл 5: CodeEditorTextHelpers.kt ✅ — подсветка/поиск/символы + утилиты (325 строк). main: 2840 → 2652. BUILD SUCCESSFUL.
 ## Файл 6: CodeEditorCanvases.kt ✅ — ModernEditCanvas/EditorMiniMap/ModernReadCanvas/ModernImageCanvas (401 строка). main: 2652 → 2387. BUILD SUCCESSFUL.
+
+## Файл 7: CodeEditorChrome.kt ✅
+Топ-бар + меню + инфо-полоса + поиск/замена + action-ribbon + pills (754 строки). main: 2387 → 1769.
+
+## ✅ ФАЗА 1 CodeEditor ЗАВЕРШЕНА
+`GitHubCodeEditorModule.kt`: **4441 → 1769 строк (−60%)**. Вынесено 7 файлов: CodeEditorChrome (754),
+CodeEditorDialogs (713), CodeEditorCopilot (684), CodeEditorBars (469), CodeEditorCanvases (401),
+CodeEditorTextHelpers (325), CodeEditorDiff (279). В core осталась CodeEditorScreen (~1620 стр) — одна
+гигантская корневая composable + верхние enum/data class. Дальнейшее ужатие = Фаза 2 (стейт), отложена
+под АПГРЕЙД модуля. Чистое перемещение, каждый файл — коммит с зелёной сборкой.
+
+---
+
+# ИТОГ: все 3 UI-монолита нарезаны (Фаза 1)
+- RepoModule:   8181 → 1462 (−82%), 8 файлов
+- ActionsModule: 5966 → 767  (−87%), 7 файлов
+- CodeEditor:    4441 → 1769 (−60%), 7 файлов
+Фаза 2 (ViewModel/стейт) для всех трёх отложена: RepoModule/ActionsModule — под редизайн,
+CodeEditor — под апгрейд модуля.
