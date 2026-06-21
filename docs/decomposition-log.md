@@ -785,3 +785,9 @@ TelemetryTab + TelemetryGraph + CompactField + GrepResult (710 строк). main
 
 ## Файл 4: RepoTimeTravelTab.kt ✅
 TimeTravelTab (571 строк). main: 5583 → 5162. BUILD SUCCESSFUL.
+
+## Файл 5: RepoGitDataScreens.kt ✅
+RepoInsightsScreen + GitDataToolsScreen + Git*-карточки (1038 строк). main: 5162 → 4275.
+Флипы→internal: RepoInsightsScreen, GitDataToolsScreen, GitDataKv (шарится с IssueEventDetailDialog),
+RepoInsightsTab (enum, использовался блоком). Урок: проверять и enum/class/val, используемые блоком,
+а не только private fun. BUILD SUCCESSFUL.
