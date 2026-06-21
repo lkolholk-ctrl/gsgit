@@ -56,6 +56,8 @@ internal data class RepoBottomBarItem(
     val key: String,
     val label: String,
     val icon: ImageVector,
+    /** Секция, которую айтем занимает в едином selectedSection. null — не секция (напр. settings = отдельный экран). */
+    val section: RepoTab? = null,
     val badgeCount: Int = 0,
 )
 

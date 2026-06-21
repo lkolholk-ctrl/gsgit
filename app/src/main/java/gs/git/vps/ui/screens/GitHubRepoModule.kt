@@ -161,6 +161,22 @@ internal fun RepoDetailScreen(
     val context = LocalContext.current; val scope = rememberCoroutineScope()
     val colors = AiModuleTheme.colors
     val nav = rememberRepoNavState(repo.fullName); var contents by remember { mutableStateOf<List<GHContent>>(emptyList()) }
+    // null selectedSection = лендинг (файлы): контент/загрузка трактуют его как FILES, подсветка — как «ничего».
+    val shownSection = nav.selectedSection ?: RepoTab.FILES
+    // Bottom-bar: 3 пинных + слот-4. «code» — placeholder-секция (README), назначение уточняется отдельно.
+    val bottomBarItems = remember(repo.openIssues) {
+        listOf(
+            RepoBottomBarItem("code", "code", Icons.Rounded.Code, section = RepoTab.README),
+            RepoBottomBarItem("actions", "actions", Icons.Rounded.PlayArrow, section = RepoTab.ACTIONS),
+            RepoBottomBarItem("settings", "settings", Icons.Rounded.Settings, section = null),
+            RepoBottomBarItem("issues", "issues", Icons.Rounded.Adjust, section = RepoTab.ISSUES, badgeCount = repo.openIssues),
+        )
+    }
+    // Верхний ряд чипов = все секции МИНУС секции бара (реактивно к слоту-4). Секция не появляется в двух поверхностях.
+    val topRowSections = remember(bottomBarItems) {
+        val barSections = bottomBarItems.mapNotNull { it.section }.toSet()
+        RepoTab.entries.filter { it !in barSections }
+    }
     var currentPath by rememberSaveable(repo.fullName) { mutableStateOf("") }; var commits by remember { mutableStateOf<List<GHCommit>>(emptyList()) }
     var issues by remember { mutableStateOf<List<GHIssue>>(emptyList()) }; var pulls by remember { mutableStateOf<List<GHPullRequest>>(emptyList()) }
     var releases by remember { mutableStateOf<List<GHRelease>>(emptyList()) }; var readme by remember { mutableStateOf<String?>(null) }
@@ -374,7 +390,7 @@ internal fun RepoDetailScreen(
             showAutolinks -> { showAutolinks = false; restoreRepoSettingsIfNeeded() }
             showLfs -> { showLfs = false; restoreRepoSettingsIfNeeded() }
             showInteractionLimits -> { showInteractionLimits = false; restoreRepoSettingsIfNeeded() }
-            currentPath.isNotBlank() && nav.selectedSection == RepoTab.FILES -> currentPath = currentPath.substringBeforeLast("/", "")
+            currentPath.isNotBlank() && shownSection == RepoTab.FILES -> currentPath = currentPath.substringBeforeLast("/", "")
             else -> onBack()
         }
     }
@@ -396,7 +412,7 @@ internal fun RepoDetailScreen(
         isWatching = GitHubManager.isWatching(context, repo.owner, repo.name)
         branches = GitHubManager.getBranches(context, repo.owner, repo.name)
     }
-    LaunchedEffect(nav.selectedSection, currentPath, selectedBranch, readmeReloadNonce, repoReloadNonce) { loading = true; when (nav.selectedSection) {
+    LaunchedEffect(shownSection, currentPath, selectedBranch, readmeReloadNonce, repoReloadNonce) { loading = true; when (shownSection) {
         RepoTab.FILES -> {
             val rootItems = GitHubManager.getRepoContents(context, repo.owner, repo.name, currentPath, selectedBranch)
             contents = rootItems
@@ -1084,7 +1100,7 @@ internal fun RepoDetailScreen(
                 )
             }
             Spacer(Modifier.weight(1f))
-            when (nav.selectedSection) {
+            when (shownSection) {
                 RepoTab.FILES -> if (canWrite) {
                     AiModulePillButton(label = "+ file", onClick = { showCreateFile = true })
                     AiModulePillButton(label = "upload \u2191", onClick = { showUpload = true })
@@ -1122,7 +1138,7 @@ internal fun RepoDetailScreen(
                 .padding(horizontal = 12.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            RepoTab.entries.forEach { tab ->
+            topRowSections.forEach { tab ->
                 val sel = nav.selectedSection == tab
                 val label = when (tab) {
                     RepoTab.FILES -> "files"
@@ -1156,7 +1172,7 @@ internal fun RepoDetailScreen(
                 }
             }
         }
-        if (nav.selectedSection in listOf(RepoTab.FILES, RepoTab.COMMITS, RepoTab.ISSUES, RepoTab.PULLS)) {
+        if (shownSection in listOf(RepoTab.FILES, RepoTab.COMMITS, RepoTab.ISSUES, RepoTab.PULLS)) {
             val palette = AiModuleTheme.colors
             Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1169,7 +1185,7 @@ internal fun RepoDetailScreen(
                     Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
                         if (repoQuery.isEmpty()) {
                             Text(
-                                when (nav.selectedSection) {
+                                when (shownSection) {
                                     RepoTab.FILES -> "filter files"
                                     RepoTab.COMMITS -> "filter commits"
                                     RepoTab.ISSUES -> "filter issues"
@@ -1210,7 +1226,7 @@ internal fun RepoDetailScreen(
         }
         Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border.copy(alpha = 0.10f)))
         if (loading) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { AiModuleSpinner(label = "loading…") }
-        else when (nav.selectedSection) {
+        else when (shownSection) {
             RepoTab.FILES -> FilesTab(
                 rootContents = filteredContents,
                 childCache = childCache,
@@ -1297,32 +1313,16 @@ internal fun RepoDetailScreen(
         }
     }
 
-        // Стадия 2: статичный glass bottom-bar (3 пинных + слот-4 = Issues; кастомизация слота — Стадия 4).
-        val bottomBarItems = remember(repo.openIssues) {
-            listOf(
-                RepoBottomBarItem("code", "code", Icons.Rounded.Code),
-                RepoBottomBarItem("actions", "actions", Icons.Rounded.PlayArrow),
-                RepoBottomBarItem("settings", "settings", Icons.Rounded.Settings),
-                RepoBottomBarItem("issues", "issues", Icons.Rounded.Adjust, badgeCount = repo.openIssues),
-            )
-        }
-        val activeBarKey = when {
-            nav.selectedSection in listOf(RepoTab.ACTIONS, RepoTab.HISTORY) -> "actions"
-            nav.selectedSection == RepoTab.ISSUES -> "issues"
-            nav.selectedSection in listOf(RepoTab.FILES, RepoTab.COMMITS, RepoTab.README) -> "code"
-            else -> ""
-        }
+        // Bottom-bar (items/topRowSections определены вверху). Подсветка — по совпадению секции айтема с
+        // selectedSection (null-лендинг → activeKey="" → ничего не подсвечено). Диспатч в единый selectedSection.
+        val activeBarKey = bottomBarItems.firstOrNull { it.section != null && it.section == nav.selectedSection }?.key ?: ""
         RepoBottomBar(
             items = bottomBarItems,
             activeKey = activeBarKey,
             onSelect = { item ->
                 repoQuery = ""
-                when (item.key) {
-                    "code" -> nav.selectedSection = RepoTab.FILES
-                    "actions" -> nav.selectedSection = RepoTab.ACTIONS
-                    "issues" -> nav.selectedSection = RepoTab.ISSUES
-                    "settings" -> showRepoSettings = true
-                }
+                if (item.key == "settings") showRepoSettings = true
+                else item.section?.let { nav.selectedSection = it }
             },
             modifier = Modifier.align(Alignment.BottomCenter),
         )
