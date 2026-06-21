@@ -36,3 +36,11 @@
   - Было: `put("context", context)` клало объект android `Context`, параметр `statusContext`
     игнорировался → поле `context` у commit-status было неверным.
   - Фикс: `put("context", statusContext)`.
+
+## Редизайн bottom-bar — правки (НЕ чинить вне своей стадии)
+
+- [ ] **Активный пункт bottom-bar: овальная плашка вместо скруглённого прямоугольника** —
+  `ui/screens/RepoBottomBar.kt`
+  - Сейчас подсветка активного айтема — `RoundedCornerShape(16.dp)` (скруглённый прямоугольник).
+  - Нужно: овальная/stadium-форма (полное скругление) — `RoundedCornerShape(percent = 50)`.
+  - Подтверждено пользователем на скрине (16:25, экран files). Бар в остальном — «отличный».
