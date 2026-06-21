@@ -771,3 +771,10 @@ ReadmeFetchResult + README_*-константы. `GitHubRepoModule.kt`: 8181 →
   уже были internal — используются и другими экранами).
 - Импорты скопированы из god-файла целиком (неиспользуемые — лишь warning).
 - **Чистая сборка `clean compileDebugKotlin` — BUILD SUCCESSFUL, exit 0.** Экран не менялся.
+
+## Файл 2: RepoFileScreens.kt ✅
+
+CommitDiffScreen + BlameViewScreen + FileHistoryScreen (380 строк). `GitHubRepoModule.kt`:
+6372 → 6143. Blame/FileHistory (зовутся из RepoDetailScreen) помечены `internal`.
+Урок: диапазон выноса composable начинать с `@Composable`-строки и заканчивать на `}` функции,
+не захватывая аннотацию следующей. Чистая сборка — BUILD SUCCESSFUL.
