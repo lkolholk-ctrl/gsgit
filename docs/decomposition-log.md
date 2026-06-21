@@ -829,3 +829,15 @@ GitHubManager — это «толстый экран», не god-файл.
 
 → Будущим сессиям: НЕ начинать Фазу 2 RepoModule по своей инициативе. Только по явному запросу
 в контексте редизайна.
+
+---
+
+# UI-декомпозиция: ActionsModule (Фаза 1 — разнесение по файлам)
+
+`ui/screens/GitHubActionsModule.kt` (5966 строк, 69 @Composable). Та же конвенция, что у RepoModule:
+чистое перемещение кластеров по соседним файлам, shared private→internal, билд после каждого.
+
+## Файл 1: ActionsDeploymentsPanels.kt ✅
+DeploymentsPanel + EnvironmentsPanel + CodespacesPanel (473 строки). main: 5966 → 5668.
+Shared-хелперы панелей → internal: ActionsPanelHeader, EmptyActionsText, LoadingActionsText.
+BUILD SUCCESSFUL.
