@@ -21,6 +21,7 @@ data class GHRepo(
     val isArchived: Boolean = false,
     val isTemplate: Boolean = false,
     val id: Long = 0L,
+    val openIssues: Int = 0,
     val permissions: GHPermissions? = null
 )
 

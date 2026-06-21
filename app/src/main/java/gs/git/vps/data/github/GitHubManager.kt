@@ -343,6 +343,7 @@ object GitHubManager {
         isArchived = j.optBoolean("archived", false),
         isTemplate = j.optBoolean("is_template", false),
         id = j.optLong("id", 0L),
+        openIssues = j.optInt("open_issues_count", 0),
         permissions = j.optJSONObject("permissions")?.let { p ->
             GHPermissions(
                 admin = p.optBoolean("admin", false),

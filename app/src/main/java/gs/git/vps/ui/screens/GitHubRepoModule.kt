@@ -895,7 +895,7 @@ internal fun RepoDetailScreen(
     AiModuleSurface {
     val palette = AiModuleTheme.colors
     // Нижний инсет = высота glass bottom-bar + системный nav-инсет, чтобы низ контента не перекрывался.
-    val contentBottomInset = RepoBottomBarHeight + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val contentBottomInset = RepoBottomBarReservedHeight + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().background(palette.background).padding(bottom = contentBottomInset)) {
         GitHubPageBar(
@@ -1298,12 +1298,12 @@ internal fun RepoDetailScreen(
     }
 
         // Стадия 2: статичный glass bottom-bar (3 пинных + слот-4 = Issues; кастомизация слота — Стадия 4).
-        val bottomBarItems = remember {
+        val bottomBarItems = remember(repo.openIssues) {
             listOf(
-                RepoBottomBarItem("code", "code", GhGlyphs.CODE),
-                RepoBottomBarItem("actions", "actions", GhGlyphs.PLAY),
-                RepoBottomBarItem("settings", "settings", GhGlyphs.SETTINGS),
-                RepoBottomBarItem("issues", "issues", GhGlyphs.LIST),
+                RepoBottomBarItem("code", "code", Icons.Rounded.Code),
+                RepoBottomBarItem("actions", "actions", Icons.Rounded.PlayArrow),
+                RepoBottomBarItem("settings", "settings", Icons.Rounded.Settings),
+                RepoBottomBarItem("issues", "issues", Icons.Rounded.Adjust, badgeCount = repo.openIssues),
             )
         }
         val activeBarKey = when {
