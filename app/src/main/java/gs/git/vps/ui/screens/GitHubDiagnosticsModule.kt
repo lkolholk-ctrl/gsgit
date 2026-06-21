@@ -41,14 +41,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import gs.git.vps.data.Strings
 import androidx.compose.ui.platform.LocalContext
-import gs.git.vps.data.github.GHApiDiagnosticCheck
-import gs.git.vps.data.github.GHApiDiagnostics
+import gs.git.vps.data.github.model.GHApiDiagnosticCheck
+import gs.git.vps.data.github.*
+import gs.git.vps.data.github.model.GHApiDiagnostics
 import gs.git.vps.data.github.GHApiErrorLogEntry
 import gs.git.vps.data.github.GHMeta
-import gs.git.vps.data.github.GHRateLimitGraphQL
+import gs.git.vps.data.github.model.GHRateLimitGraphQL
 import gs.git.vps.data.github.GitHubManager
-import gs.git.vps.data.github.GHStatusComponent
-import gs.git.vps.data.github.GHStatusSummary
+import gs.git.vps.data.github.model.GHStatusComponent
+import gs.git.vps.data.github.model.GHStatusSummary
 import gs.git.vps.ui.components.AiModuleSpinner
 import gs.git.vps.ui.components.AiModuleText as Text
 import gs.git.vps.ui.theme.AiModuleTheme

@@ -33,6 +33,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import gs.git.vps.data.github.GHApiErrorLogEntry
+import gs.git.vps.data.github.*
 import gs.git.vps.data.github.GitHubManager
 import gs.git.vps.data.github.KernelErrorPatterns
 import gs.git.vps.data.github.canWrite

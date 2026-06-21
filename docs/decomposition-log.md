@@ -662,3 +662,21 @@ helper'а/парсера в один файл.
 5. **Чистая сборка `clean compileDebugKotlin` — BUILD SUCCESSFUL (39s), exit 0.**
 
 ### Итог (25 доменов) ✅ — `GitHubManager.kt`: 9008 → 1092 (−88%).
+
+## РЕАЛИЗОВАНО: домен Diagnostics ✅
+
+`GitHubManager.kt`: 1092 → 783 строк (−309). 4 функции + 3 парсера в один файл.
+
+1. **`GitHubManager+Diagnostics.kt`** (~300 строк) — getRateLimitSummaryNative, getRateLimitGraphQL,
+   getGitHubStatus (статус github.com), runApiDiagnostics (комплексная проверка токена/доступов
+   с локальными addResult/addSkip). Парсеры parseLogin/diagnosticStatus/parseRateLimitSummary
+   перенесены как private. TAG → локальный DIAG_TAG. ApiResult (вложенный в core) импортирован.
+2. **Модели → `model/GHDiagnostics.kt`**: GHApiDiagnostics, GHApiRateSummary, GHRateLimitGraphQL,
+   GHApiDiagnosticCheck, GHStatusComponent, GHStatusSummary.
+3. **Законное исключение**: openConnection в getGitHubStatus — githubstatus.com внешний сервис,
+   не GitHub API. apiErrorMessage остаётся в core (internal, шарится).
+4. **Потребители**: GitHubDiagnosticsModule (импорты моделей → `.model` + wildcard),
+   GitHubActionsTroubleshootModule (+wildcard для getRateLimitSummaryNative).
+5. **Чистая сборка `clean compileDebugKotlin` — BUILD SUCCESSFUL (45s), exit 0.**
+
+### Итог (26 доменов) ✅ — `GitHubManager.kt`: 9008 → 783 (−91%).
