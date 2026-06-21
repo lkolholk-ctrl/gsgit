@@ -867,3 +867,16 @@ DynamicDispatchInputs + dispatch-поля + ModernRunCard (карточка за
 ActionsHistoryTab + ActionsRunsHistoryScreen (список с фильтрами) + WorkflowRunRow + chips
 (629 строк). main: 1631 → 1176. (Урок повторно: не захватывать @Composable следующей функции —
 поймал, восстановил.) BUILD SUCCESSFUL.
+
+## Файл 7: ActionsOverviewHeader.kt ✅
+ActionsOverviewHeader + UI-хелперы (StatPair/StatCard/SectionLabel/InputGroup/FieldLabel)
+(584 строки). main: 1176 → 767.
+
+## ✅ ФАЗА 1 ActionsModule ЗАВЕРШЕНА
+`GitHubActionsModule.kt`: **5966 → 767 строк (−87%)**. Вынесено 7 файлов: ActionsRunDetailScreen
+(1992), ActionsRunHelpers (1120), ActionsConfigPanels (1099), ActionsHistoryScreen (629),
+ActionsOverviewHeader (584), ActionsRunDispatch (528), ActionsDeploymentsPanels (473). В core остались
+ActionsTab (роутер вкладок), WorkflowDetailScreen, run-status хелперы + общие enum/data class.
+Чистое перемещение, каждый файл — коммит с зелёным clean compileDebugKotlin. Инструмент: двусторонний
+flip→internal (private в обе стороны зависимостей). Фаза 2 — по тому же решению, что и RepoModule
+(только вместе с редизайном).
