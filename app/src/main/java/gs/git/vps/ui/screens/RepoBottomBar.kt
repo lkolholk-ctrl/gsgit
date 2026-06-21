@@ -96,7 +96,7 @@ internal fun RepoBottomBar(
                         .weight(1f)
                         .fillMaxHeight()
                         .padding(horizontal = 4.dp, vertical = 8.dp)
-                        .clip(RoundedCornerShape(16.dp))
+                        .clip(RoundedCornerShape(percent = 50))
                         .background(if (sel) palette.accent.copy(alpha = 0.13f) else Color.Transparent)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
