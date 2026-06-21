@@ -340,118 +340,6 @@ object GitHubManager {
     suspend fun isStarred(context: Context, owner: String, repo: String): Boolean =
         request(context, "/user/starred/$owner/$repo").code == 204
 
-    suspend fun getReadme(context: Context, owner: String, repo: String): String {
-        val r = request(context, "/repos/$owner/$repo/readme")
-        if (!r.success) return ""
-        return try {
-            val j = JSONObject(r.body)
-            val content = j.optString("content", "")
-            String(android.util.Base64.decode(content.replace("\n", ""), android.util.Base64.DEFAULT))
-        } catch (e: Exception) { "" }
-    }
-
-    suspend fun getGitHubMeta(context: Context): GHMeta? {
-        val r = request(context, "/meta", trackErrors = false)
-        if (!r.success) return null
-        return try {
-            val j = JSONObject(r.body)
-            GHMeta(
-                verifiablePasswordAuthentication = j.optBoolean("verifiable_password_authentication"),
-                sshKeys = j.optJSONArray("ssh_keys")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList(),
-                sshKeyFingerprints = j.optJSONArray("ssh_key_fingerprints")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList(),
-                hooks = j.optJSONArray("hooks")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList(),
-                web = j.optJSONArray("web")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList(),
-                api = j.optJSONArray("api")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList(),
-                git = j.optJSONArray("git")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList(),
-                packages = j.optJSONArray("packages")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList(),
-                pages = j.optJSONArray("pages")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList(),
-                importer = j.optJSONArray("importer")?.let { a -> (0 until a.length()).map { a.optString(it) } } ?: emptyList(),
-            )
-        } catch (e: Exception) { null }
-    }
-
-    suspend fun renderMarkdown(context: Context, text: String, mode: String = "markdown", contextRepo: String = ""): String {
-        val body = JSONObject().apply {
-            put("text", text)
-            put("mode", mode)
-            if (contextRepo.isNotBlank()) put("context", contextRepo)
-        }.toString()
-        val r = request(context, "/markdown", "POST", body, trackErrors = false)
-        return if (r.success) r.body else ""
-    }
-
-    suspend fun getLanguages(context: Context, owner: String, repo: String): Map<String, Long> {
-        val r = request(context, "/repos/$owner/$repo/languages")
-        if (!r.success) return emptyMap()
-        return try {
-            val j = JSONObject(r.body)
-            val map = mutableMapOf<String, Long>()
-            j.keys().forEach { key -> map[key] = j.optLong(key) }
-            map
-        } catch (e: Exception) { emptyMap() }
-    }
-
-    suspend fun getEmojis(context: Context): Map<String, String> {
-        val r = request(context, "/emojis", trackErrors = false)
-        if (!r.success) return emptyMap()
-        return try {
-            val j = JSONObject(r.body)
-            val map = mutableMapOf<String, String>()
-            j.keys().forEach { key -> map[key] = j.optString(key) }
-            map
-        } catch (e: Exception) { emptyMap() }
-    }
-
-    suspend fun getGitignoreTemplates(context: Context): List<String> {
-        val r = request(context, "/gitignore/templates", trackErrors = false)
-        if (!r.success) return emptyList()
-        return try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).mapNotNull { arr.optString(it)?.takeIf { s -> s.isNotBlank() } }
-        } catch (e: Exception) { emptyList() }
-    }
-
-    suspend fun getGitignoreTemplate(context: Context, name: String): String? {
-        val r = request(context, "/gitignore/templates/${encPath(name)}", trackErrors = false)
-        if (!r.success) return null
-        return try { JSONObject(r.body).optString("source") } catch (e: Exception) { null }
-    }
-
-    suspend fun getLicenses(context: Context): List<GHLicense> {
-        val r = request(context, "/licenses", trackErrors = false)
-        if (!r.success) return emptyList()
-        return try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                GHLicense(j.optString("key"), j.optString("name"), j.optString("spdx_id"), j.optString("url"), j.optBoolean("featured"))
-            }
-        } catch (e: Exception) { emptyList() }
-    }
-
-    suspend fun getLicense(context: Context, key: String): GHLicenseDetail? {
-        val r = request(context, "/licenses/${encPath(key)}", trackErrors = false)
-        if (!r.success) return null
-        return try {
-            val j = JSONObject(r.body)
-            GHLicenseDetail(j.optString("key"), j.optString("name"), j.optString("spdx_id"),
-                j.optString("description", ""), j.optString("body", ""), j.optString("html_url", ""),
-                j.optBoolean("featured"))
-        } catch (e: Exception) { null }
-    }
-
-    suspend fun getContributors(context: Context, owner: String, repo: String): List<GHContributor> {
-        val r = request(context, "/repos/$owner/$repo/contributors?per_page=30")
-        if (!r.success) return emptyList()
-        return try {
-            val arr = JSONArray(r.body)
-            (0 until arr.length()).map { i ->
-                val j = arr.getJSONObject(i)
-                GHContributor(j.optString("login"), j.optString("avatar_url", ""), j.optInt("contributions", 0))
-            }
-        } catch (e: Exception) { emptyList() }
-    }
-
     suspend fun getUserReceivedEvents(context: Context, username: String, page: Int = 1): List<GHRepoEvent> {
         val r = request(context, "/users/$username/received_events?per_page=30&page=$page")
         if (!r.success) return emptyList()
@@ -718,8 +606,6 @@ fun GHRepo.canWrite(): Boolean = permissions?.let { it.push || it.maintain || it
 fun GHRepo.canAdmin(): Boolean = permissions?.admin == true
 
 
-data class GHContributor(val login: String, val avatarUrl: String, val contributions: Int)
-
 data class QuickGlanceStats(
     val assignedPrsCount: Int = 0,
     val openIssuesCount: Int = 0,
@@ -728,28 +614,6 @@ data class QuickGlanceStats(
 )
 
 data class GHUserLite(val login: String, val avatarUrl: String = "")
-
-data class GHMeta(
-    val verifiablePasswordAuthentication: Boolean,
-    val sshKeys: List<String>,
-    val sshKeyFingerprints: List<String>,
-    val hooks: List<String>,
-    val web: List<String>,
-    val api: List<String>,
-    val git: List<String>,
-    val packages: List<String>,
-    val pages: List<String>,
-    val importer: List<String>,
-)
-
-data class GHLicense(
-    val key: String,
-    val name: String,
-    val spdxId: String,
-    val url: String,
-    val featured: Boolean
-)
-
 
 data class GHAutolink(
     val id: Long,

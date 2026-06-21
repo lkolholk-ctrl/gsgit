@@ -45,7 +45,7 @@ import gs.git.vps.data.github.model.GHApiDiagnosticCheck
 import gs.git.vps.data.github.*
 import gs.git.vps.data.github.model.GHApiDiagnostics
 import gs.git.vps.data.github.GHApiErrorLogEntry
-import gs.git.vps.data.github.GHMeta
+import gs.git.vps.data.github.model.GHMeta
 import gs.git.vps.data.github.model.GHRateLimitGraphQL
 import gs.git.vps.data.github.GitHubManager
 import gs.git.vps.data.github.model.GHStatusComponent

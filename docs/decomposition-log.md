@@ -680,3 +680,18 @@ helper'а/парсера в один файл.
 5. **Чистая сборка `clean compileDebugKotlin` — BUILD SUCCESSFUL (45s), exit 0.**
 
 ### Итог (26 доменов) ✅ — `GitHubManager.kt`: 9008 → 783 (−91%).
+
+## РЕАЛИЗОВАНО: домен RepoMeta ✅
+
+`GitHubManager.kt`: 783 → 647 строк (−136). 10 функций в один файл.
+
+1. **`GitHubManager+RepoMeta.kt`** (~135 строк) — getReadme, getGitHubMeta (/meta), renderMarkdown,
+   getLanguages, getEmojis, getGitignoreTemplates, getGitignoreTemplate, getLicenses, getLicense,
+   getContributors.
+2. **Модели → `model/GHRepoMeta2.kt`**: GHMeta, GHLicense, GHContributor (GHLicenseDetail уже в
+   model/GHLicenseDetail.kt домена Repos).
+3. **Потребители** (Diagnostics, Explore, RepoCreate, RepoModule, Markdown, RepoSettingsScreen):
+   импорты моделей → `.model`, wildcard где нужно.
+4. **Чистая сборка `clean compileDebugKotlin` — BUILD SUCCESSFUL (45s), exit 0.**
+
+### Итог (27 доменов) ✅ — `GitHubManager.kt`: 9008 → 647 (−93%).

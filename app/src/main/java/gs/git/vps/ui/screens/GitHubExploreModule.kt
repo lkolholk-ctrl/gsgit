@@ -49,8 +49,8 @@ import coil.compose.AsyncImage
 import gs.git.vps.data.Strings
 import gs.git.vps.data.github.*
 import gs.git.vps.data.github.model.GHCodeResult
-import gs.git.vps.data.github.GHLicense
-import gs.git.vps.data.github.GHMeta
+import gs.git.vps.data.github.model.GHLicense
+import gs.git.vps.data.github.model.GHMeta
 import gs.git.vps.data.github.model.GHOrg
 import gs.git.vps.data.github.model.GHTopicSearchResult
 import gs.git.vps.data.github.GitHubManager
