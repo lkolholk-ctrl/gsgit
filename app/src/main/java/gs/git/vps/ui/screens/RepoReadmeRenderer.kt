@@ -720,7 +720,7 @@ private fun buildGitHubReadmeHtmlPage(
     vertical-align: top;
   }
   th { font-weight: 700; background: var(--surface); }
-  tr:nth-child(2n) { background: rgba(22, 27, 34, .7); }
+  tr:nth-child(2n) { background: var(--surface); }
   markdown-accessiblity-table { display: block; max-width: 100%; overflow-x: auto; }
   kbd {
     display: inline-block;
