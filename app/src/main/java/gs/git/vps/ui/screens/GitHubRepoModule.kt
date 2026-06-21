@@ -145,7 +145,7 @@ import org.json.JSONObject
 
 // Compact mode — propagates through all sub-screens automatically
 
-internal enum class RepoTab { FILES, COMMITS, ISSUES, PULLS, RELEASES, ACTIONS, HISTORY, PROJECTS, README, CODE_SEARCH, TIME_TRAVEL, TELEMETRY }
+internal enum class RepoTab { FILES, COMMITS, ISSUES, PULLS, RELEASES, ACTIONS, HISTORY, PROJECTS, README, CODE_SEARCH, TIME_TRAVEL, TELEMETRY, CODE }
 
 
 @Composable
@@ -166,7 +166,7 @@ internal fun RepoDetailScreen(
     // Bottom-bar: 3 пинных + слот-4. «code» — placeholder-секция (README), назначение уточняется отдельно.
     val bottomBarItems = remember(repo.openIssues) {
         listOf(
-            RepoBottomBarItem("code", "code", Icons.Rounded.Code, section = RepoTab.README),
+            RepoBottomBarItem("code", "code", Icons.Rounded.Code, section = RepoTab.CODE),
             RepoBottomBarItem("actions", "actions", Icons.Rounded.PlayArrow, section = RepoTab.ACTIONS),
             RepoBottomBarItem("settings", "settings", Icons.Rounded.Settings, section = null),
             RepoBottomBarItem("issues", "issues", Icons.Rounded.Adjust, section = RepoTab.ISSUES, badgeCount = repo.openIssues),
@@ -390,6 +390,7 @@ internal fun RepoDetailScreen(
             showAutolinks -> { showAutolinks = false; restoreRepoSettingsIfNeeded() }
             showLfs -> { showLfs = false; restoreRepoSettingsIfNeeded() }
             showInteractionLimits -> { showInteractionLimits = false; restoreRepoSettingsIfNeeded() }
+            nav.selectedSection == RepoTab.CODE -> nav.selectedSection = null
             currentPath.isNotBlank() && shownSection == RepoTab.FILES -> currentPath = currentPath.substringBeforeLast("/", "")
             else -> onBack()
         }
@@ -525,6 +526,7 @@ internal fun RepoDetailScreen(
         RepoTab.CODE_SEARCH -> { /* searches on demand */ }
         RepoTab.TIME_TRAVEL -> { /* loaded dynamically */ }
         RepoTab.TELEMETRY -> { /* loaded dynamically */ }
+        RepoTab.CODE -> { /* Code-таб владеет своими данными (Стадия 0: заглушка) */ }
     }; loading = false }
 
     if (showIssueEvents) {
@@ -1153,6 +1155,7 @@ internal fun RepoDetailScreen(
                     RepoTab.CODE_SEARCH -> "search"
                     RepoTab.TIME_TRAVEL -> "time travel"
                     RepoTab.TELEMETRY -> "telemetry"
+                    RepoTab.CODE -> "code"
                 }
                 Box(
                     Modifier
@@ -1310,6 +1313,11 @@ internal fun RepoDetailScreen(
                 }
             )
             RepoTab.TELEMETRY -> TelemetryTab(repo, commits)
+            RepoTab.CODE -> CodeTabShell(
+                repo = repo,
+                branch = selectedBranch,
+                onExit = { nav.selectedSection = null },
+            )
         }
     }
 
