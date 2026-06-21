@@ -259,6 +259,17 @@ internal fun RepoDetailScreen(
     var codeCommitting by remember { mutableStateOf(false) }
     // Code-таб: недавно открытые файлы (most-recent-first, для строки «recent»). Скоуп репо.
     val codeRecents = remember(repo.fullName) { mutableStateListOf<GHContent>() }
+    // Внутренняя навигация Code поднята СЮДА, чтобы и жест-назад (BackHandler в CodeTabShell), и
+    // верхняя стрелка топбара (handleRepoBack) шли через ОДИН обработчик — поведение идентично.
+    var codePath by rememberSaveable(repo.fullName) { mutableStateOf("") }
+    var showCodeChanges by rememberSaveable(repo.fullName) { mutableStateOf(false) }
+    fun codeInternalBack() {
+        when {
+            showCodeChanges -> showCodeChanges = false           // панель «изменения» → дерево
+            codePath.isNotBlank() -> codePath = codePath.substringBeforeLast('/', "")  // подпапка → вверх
+            else -> nav.selectedSection = null                   // корень браузера → выход из Code
+        }
+    }
     // Открыть файл в Code-редакторе (из браузера/недавних/панели изменений): recents + draft-aware фетч.
     fun openCodeFile(f: GHContent) {
         codeRecents.removeAll { it.path == f.path }
@@ -426,7 +437,7 @@ internal fun RepoDetailScreen(
             showAutolinks -> { showAutolinks = false; restoreRepoSettingsIfNeeded() }
             showLfs -> { showLfs = false; restoreRepoSettingsIfNeeded() }
             showInteractionLimits -> { showInteractionLimits = false; restoreRepoSettingsIfNeeded() }
-            nav.selectedSection == RepoTab.CODE -> nav.selectedSection = null
+            nav.selectedSection == RepoTab.CODE -> codeInternalBack()
             currentPath.isNotBlank() && shownSection == RepoTab.FILES -> currentPath = currentPath.substringBeforeLast("/", "")
             else -> onBack()
         }
@@ -1374,14 +1385,18 @@ internal fun RepoDetailScreen(
             RepoTab.CODE -> CodeTabShell(
                 repo = repo,
                 branch = selectedBranch,
+                codePath = codePath,
+                showChanges = showCodeChanges,
                 draftPaths = codeDraft.keys,
                 recents = codeRecents,
+                onCodePathChange = { codePath = it },
+                onShowChanges = { showCodeChanges = true },
                 onOpenFile = { openCodeFile(it) },
                 onOpenPath = { path -> openCodeFile(GHContent(path.substringAfterLast('/'), path, "file", 0L, "", "")) },
                 onCommit = { showCodeCommitSheet = true },
                 onDiscardFile = { codeDraft.remove(it); persistCodeDraft() },
                 onDiscardAll = { codeDraft.clear(); persistCodeDraft() },
-                onExit = { nav.selectedSection = null },
+                onBack = { codeInternalBack() },
             )
         }
     }
