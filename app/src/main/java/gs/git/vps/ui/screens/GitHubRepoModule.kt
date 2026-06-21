@@ -160,7 +160,7 @@ internal fun RepoDetailScreen(
 ) {
     val context = LocalContext.current; val scope = rememberCoroutineScope()
     val colors = AiModuleTheme.colors
-    var selectedTab by rememberSaveable(repo.fullName) { mutableStateOf(RepoTab.FILES) }; var contents by remember { mutableStateOf<List<GHContent>>(emptyList()) }
+    val nav = rememberRepoNavState(repo.fullName); var contents by remember { mutableStateOf<List<GHContent>>(emptyList()) }
     var currentPath by rememberSaveable(repo.fullName) { mutableStateOf("") }; var commits by remember { mutableStateOf<List<GHCommit>>(emptyList()) }
     var issues by remember { mutableStateOf<List<GHIssue>>(emptyList()) }; var pulls by remember { mutableStateOf<List<GHPullRequest>>(emptyList()) }
     var releases by remember { mutableStateOf<List<GHRelease>>(emptyList()) }; var readme by remember { mutableStateOf<String?>(null) }
@@ -270,11 +270,11 @@ internal fun RepoDetailScreen(
         val target = initialTarget ?: return@LaunchedEffect
         when (target.subjectType) {
             "PullRequest" -> {
-                selectedTab = RepoTab.PULLS
+                nav.selectedSection = RepoTab.PULLS
                 target.number?.let { selectedPullNumber = it }
             }
             "Issue" -> {
-                selectedTab = RepoTab.ISSUES
+                nav.selectedSection = RepoTab.ISSUES
                 target.number?.let {
                     selectedIssue = GHIssue(
                         number = it,
@@ -287,7 +287,7 @@ internal fun RepoDetailScreen(
                     )
                 }
             }
-            "Release" -> selectedTab = RepoTab.RELEASES
+            "Release" -> nav.selectedSection = RepoTab.RELEASES
             "Discussion" -> showDiscussions = true
             "File" -> {
                 target.branch?.let { selectedBranch = it }
@@ -311,7 +311,7 @@ internal fun RepoDetailScreen(
                 }
             }
             "Dir" -> {
-                selectedTab = RepoTab.FILES
+                nav.selectedSection = RepoTab.FILES
                 target.branch?.let { selectedBranch = it }
                 val path = target.filePath.orEmpty()
                 if (path.isNotBlank()) {
@@ -320,7 +320,7 @@ internal fun RepoDetailScreen(
                 }
             }
             else -> {
-                selectedTab = if (target.number != null) RepoTab.ISSUES else RepoTab.FILES
+                nav.selectedSection = if (target.number != null) RepoTab.ISSUES else RepoTab.FILES
             }
         }
         onInitialTargetConsumed()
@@ -374,7 +374,7 @@ internal fun RepoDetailScreen(
             showAutolinks -> { showAutolinks = false; restoreRepoSettingsIfNeeded() }
             showLfs -> { showLfs = false; restoreRepoSettingsIfNeeded() }
             showInteractionLimits -> { showInteractionLimits = false; restoreRepoSettingsIfNeeded() }
-            currentPath.isNotBlank() && selectedTab == RepoTab.FILES -> currentPath = currentPath.substringBeforeLast("/", "")
+            currentPath.isNotBlank() && nav.selectedSection == RepoTab.FILES -> currentPath = currentPath.substringBeforeLast("/", "")
             else -> onBack()
         }
     }
@@ -396,7 +396,7 @@ internal fun RepoDetailScreen(
         isWatching = GitHubManager.isWatching(context, repo.owner, repo.name)
         branches = GitHubManager.getBranches(context, repo.owner, repo.name)
     }
-    LaunchedEffect(selectedTab, currentPath, selectedBranch, readmeReloadNonce, repoReloadNonce) { loading = true; when (selectedTab) {
+    LaunchedEffect(nav.selectedSection, currentPath, selectedBranch, readmeReloadNonce, repoReloadNonce) { loading = true; when (nav.selectedSection) {
         RepoTab.FILES -> {
             val rootItems = GitHubManager.getRepoContents(context, repo.owner, repo.name, currentPath, selectedBranch)
             contents = rootItems
@@ -699,13 +699,13 @@ internal fun RepoDetailScreen(
     }
 
     // Releases screen
-    if (selectedTab == RepoTab.RELEASES) {
+    if (nav.selectedSection == RepoTab.RELEASES) {
         gs.git.vps.ui.screens.ReleasesScreen(
             repoOwner = repo.owner,
             repoName = repo.name,
             defaultBranch = repo.defaultBranch,
             canWrite = canWrite,
-            onBack = { selectedTab = RepoTab.FILES },
+            onBack = { nav.selectedSection = RepoTab.FILES },
             onReleaseClick = { /* optional */ }
         )
         return
@@ -1082,7 +1082,7 @@ internal fun RepoDetailScreen(
                 )
             }
             Spacer(Modifier.weight(1f))
-            when (selectedTab) {
+            when (nav.selectedSection) {
                 RepoTab.FILES -> if (canWrite) {
                     AiModulePillButton(label = "+ file", onClick = { showCreateFile = true })
                     AiModulePillButton(label = "upload \u2191", onClick = { showUpload = true })
@@ -1121,7 +1121,7 @@ internal fun RepoDetailScreen(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             RepoTab.entries.forEach { tab ->
-                val sel = selectedTab == tab
+                val sel = nav.selectedSection == tab
                 val label = when (tab) {
                     RepoTab.FILES -> "files"
                     RepoTab.COMMITS -> "commits"
@@ -1141,7 +1141,7 @@ internal fun RepoDetailScreen(
                         .clip(RoundedCornerShape(GitHubControlRadius))
                         .background(if (sel) palette.accent.copy(alpha = 0.12f) else Color.Transparent)
                         .border(1.dp, if (sel) palette.accent.copy(alpha = 0.55f) else palette.border, RoundedCornerShape(GitHubControlRadius))
-                        .clickable { selectedTab = tab; repoQuery = "" }
+                        .clickable { nav.selectedSection = tab; repoQuery = "" }
                         .padding(horizontal = 8.dp, vertical = 5.dp),
                 ) {
                     Text(
@@ -1154,7 +1154,7 @@ internal fun RepoDetailScreen(
                 }
             }
         }
-        if (selectedTab in listOf(RepoTab.FILES, RepoTab.COMMITS, RepoTab.ISSUES, RepoTab.PULLS)) {
+        if (nav.selectedSection in listOf(RepoTab.FILES, RepoTab.COMMITS, RepoTab.ISSUES, RepoTab.PULLS)) {
             val palette = AiModuleTheme.colors
             Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1167,7 +1167,7 @@ internal fun RepoDetailScreen(
                     Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
                         if (repoQuery.isEmpty()) {
                             Text(
-                                when (selectedTab) {
+                                when (nav.selectedSection) {
                                     RepoTab.FILES -> "filter files"
                                     RepoTab.COMMITS -> "filter commits"
                                     RepoTab.ISSUES -> "filter issues"
@@ -1208,7 +1208,7 @@ internal fun RepoDetailScreen(
         }
         Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border.copy(alpha = 0.10f)))
         if (loading) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { AiModuleSpinner(label = "loading…") }
-        else when (selectedTab) {
+        else when (nav.selectedSection) {
             RepoTab.FILES -> FilesTab(
                 rootContents = filteredContents,
                 childCache = childCache,
@@ -1242,7 +1242,7 @@ internal fun RepoDetailScreen(
                     Toast.makeText(context, Strings.done, Toast.LENGTH_SHORT).show()
                 },
             )
-            RepoTab.COMMITS -> CommitsTab(filteredCommits, commitsHasMore, { scope.launch { commitsPage++; val r = GitHubManager.getCommits(context, repo.owner, repo.name, commitsPage); if (r.size < 30) commitsHasMore = false; commits = commits + r } }, listState = commitsListState, onClick = { selectedCommitSha = it.sha }, onExploreFiles = { selectedBranch = it; selectedTab = RepoTab.FILES })
+            RepoTab.COMMITS -> CommitsTab(filteredCommits, commitsHasMore, { scope.launch { commitsPage++; val r = GitHubManager.getCommits(context, repo.owner, repo.name, commitsPage); if (r.size < 30) commitsHasMore = false; commits = commits + r } }, listState = commitsListState, onClick = { selectedCommitSha = it.sha }, onExploreFiles = { selectedBranch = it; nav.selectedSection = RepoTab.FILES })
             RepoTab.ISSUES -> IssuesTab(filteredIssues, issuesHasMore, { scope.launch { issuesPage++; val r = GitHubManager.getIssues(context, repo.owner, repo.name, page = issuesPage); if (r.size < 30) issuesHasMore = false; issues = issues + r } }, listState = issuesListState) { selectedIssue = it }
             RepoTab.PULLS -> PullsTab(
                 pulls = filteredPulls,
