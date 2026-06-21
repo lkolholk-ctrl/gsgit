@@ -402,7 +402,7 @@ private fun RenderMarkdownBlock(block: MarkdownBlock) {
                     ) {
                         block.codeText.lines().forEach { line ->
                             Text(
-                                text = highlightLine(line, block.lang),
+                                text = highlightLine(line, block.lang, palette),
                                 fontSize = 14.sp,
                                 fontFamily = JetBrainsMono,
                                 lineHeight = 19.sp

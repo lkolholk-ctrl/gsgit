@@ -864,7 +864,7 @@ internal fun RepoDetailScreen(
                     items(cachedLines.size) { idx ->
                         Row(Modifier.fillMaxWidth()) {
                             Text("${idx + 1}".padStart(4), fontSize = 11.sp, fontFamily = JetBrainsMono, color = viewerPalette.textMuted, modifier = Modifier.padding(end = 10.dp))
-                            Text(highlightLine(cachedLines[idx], ext), fontSize = 12.sp, fontFamily = JetBrainsMono, lineHeight = 16.sp)
+                            Text(highlightLine(cachedLines[idx], ext, viewerPalette), fontSize = 12.sp, fontFamily = JetBrainsMono, lineHeight = 16.sp)
                         }
                     }
                 }
