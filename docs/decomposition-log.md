@@ -778,3 +778,7 @@ CommitDiffScreen + BlameViewScreen + FileHistoryScreen (380 строк). `GitHub
 6372 → 6143. Blame/FileHistory (зовутся из RepoDetailScreen) помечены `internal`.
 Урок: диапазон выноса composable начинать с `@Composable`-строки и заканчивать на `}` функции,
 не захватывая аннотацию следующей. Чистая сборка — BUILD SUCCESSFUL.
+
+## Файл 3: RepoTelemetryTab.kt ✅
+TelemetryTab + TelemetryGraph + CompactField + GrepResult (710 строк). main: 6143 → 5583.
+Флипов не нужно (TelemetryTab уже internal, остальное локально). BUILD SUCCESSFUL.
