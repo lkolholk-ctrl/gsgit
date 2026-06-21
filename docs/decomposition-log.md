@@ -849,3 +849,8 @@ BUILD SUCCESSFUL.
 блоком (JobListItem, MatrixJobGroup, JobLogMeta, ArtifactGroup, FailureEvidence, ACTIONS_JOB_LOG_*,
 isJobActive, displayRunStatus). Конвенция: после выноса проверять ОБЕ стороны зависимостей.
 BUILD SUCCESSFUL.
+
+## Файл 3: ActionsRunDetailScreen.kt ✅
+WorkflowRunDetailScreen + секции (summary/jobs/pipeline/checks/artifacts), job/step-карточки,
+лог-вьюер, диалоги (1992 строки). main: 4724 → 2908. Двусторонний flip→internal отработал автоматом.
+BUILD SUCCESSFUL.
