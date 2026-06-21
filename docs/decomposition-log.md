@@ -901,3 +901,4 @@ FilePickerDialog, ConflictResolverDialog (+парсинг/сборка merge), E
 ## Файл 3: CodeEditorBars.kt ✅ — UpgradedEditorAccessoryBar + EditorStatusBar (469 строк). main: 3721 → 3388. BUILD SUCCESSFUL.
 ## Файл 4: CodeEditorCopilot.kt ✅ — AiQuickActionsRow, askCopilot, generateCommitMessage, CopilotChatPanel, coarseDiff, extractCodeBlocks (684 строки). main: 3388 → 2840. BUILD SUCCESSFUL.
 ## Файл 5: CodeEditorTextHelpers.kt ✅ — подсветка/поиск/символы + утилиты (325 строк). main: 2840 → 2652. BUILD SUCCESSFUL.
+## Файл 6: CodeEditorCanvases.kt ✅ — ModernEditCanvas/EditorMiniMap/ModernReadCanvas/ModernImageCanvas (401 строка). main: 2652 → 2387. BUILD SUCCESSFUL.
