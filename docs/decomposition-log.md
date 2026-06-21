@@ -854,3 +854,7 @@ BUILD SUCCESSFUL.
 WorkflowRunDetailScreen + секции (summary/jobs/pipeline/checks/artifacts), job/step-карточки,
 лог-вьюер, диалоги (1992 строки). main: 4724 → 2908. Двусторонний flip→internal отработал автоматом.
 BUILD SUCCESSFUL.
+
+## Файл 4: ActionsConfigPanels.kt ✅
+Config-панели (артефакты/кэши/variables/secrets/runners/settings) + инфраструктура (1099 строк).
+main: 2908 → 1984. Двусторонний flip→internal. BUILD SUCCESSFUL.
