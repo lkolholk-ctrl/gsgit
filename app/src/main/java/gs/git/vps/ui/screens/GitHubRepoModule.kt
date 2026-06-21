@@ -243,6 +243,9 @@ internal fun RepoDetailScreen(
     var showBuilds by remember { mutableStateOf(false) }
     var returnToRepoSettings by remember { mutableStateOf(false) }
     var editorInitialLine by remember { mutableStateOf<Int?>(null) }
+    // Code-таб: открытый в редакторе файл (full-screen read-only, Стадия 2). null = редактор закрыт.
+    var codeEditorFile by remember { mutableStateOf<GHContent?>(null) }
+    var codeEditorContent by remember { mutableStateOf<String?>(null) }
     var languages by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }; var contributors by remember { mutableStateOf<List<GHContributor>>(emptyList()) }
     // Pagination
     var commitsPage by rememberSaveable(repo.fullName) { mutableIntStateOf(1) }; var commitsHasMore by rememberSaveable(repo.fullName) { mutableStateOf(true) }
@@ -641,6 +644,28 @@ internal fun RepoDetailScreen(
         return
     }
     
+    // Code-таб: редактор файла full-screen, read-only (Стадия 2). Бэк редактора → назад в Code-браузер.
+    val codeFile = codeEditorFile
+    if (nav.selectedSection == RepoTab.CODE && codeFile != null) {
+        val codeContent = codeEditorContent
+        if (codeContent == null) {
+            AiModuleSurface {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { AiModuleSpinner(label = "loading…") }
+            }
+        } else {
+            CodeEditorScreen(
+                repoOwner = repo.owner,
+                repoName = repo.name,
+                file = codeFile,
+                branch = selectedBranch,
+                initialContent = codeContent,
+                readOnly = true,
+                onBack = { codeEditorFile = null; codeEditorContent = null },
+            )
+        }
+        return
+    }
+
     // File editor screen
     val safeEditingFile = editingFile
     val safeFileContent = fileContent
@@ -1316,6 +1341,19 @@ internal fun RepoDetailScreen(
             RepoTab.CODE -> CodeTabShell(
                 repo = repo,
                 branch = selectedBranch,
+                onOpenFile = { f ->
+                    codeEditorFile = f
+                    codeEditorContent = null
+                    scope.launch {
+                        val c = runCatching {
+                            GitHubManager.getFileContent(context, repo.owner, repo.name, f.path, selectedBranch)
+                        }.getOrNull()
+                        if (c == null) {
+                            codeEditorFile = null
+                            Toast.makeText(context, Strings.error, Toast.LENGTH_SHORT).show()
+                        } else codeEditorContent = c
+                    }
+                },
                 onExit = { nav.selectedSection = null },
             )
         }

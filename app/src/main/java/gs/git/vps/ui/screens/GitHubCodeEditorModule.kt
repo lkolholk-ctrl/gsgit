@@ -153,6 +153,7 @@ fun CodeEditorScreen(
     branch: String,
     initialContent: String,
     initialLine: Int? = null,
+    readOnly: Boolean = false,
     onBack: () -> Unit,
     onAskAi: ((prompt: String?) -> Unit)? = null
 ) {
@@ -173,7 +174,7 @@ fun CodeEditorScreen(
                     textState = TextFieldValue(initialContent),
                     savedContent = initialContent,
                     savedSha = file.sha,
-                    mode = GitHubEditorMode.EDIT,
+                    mode = if (readOnly) GitHubEditorMode.READ else GitHubEditorMode.EDIT,
                     undoStack = emptyList(),
                     redoStack = emptyList()
                 )
