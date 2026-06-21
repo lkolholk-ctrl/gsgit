@@ -841,3 +841,11 @@ GitHubManager — это «толстый экран», не god-файл.
 DeploymentsPanel + EnvironmentsPanel + CodespacesPanel (473 строки). main: 5966 → 5668.
 Shared-хелперы панелей → internal: ActionsPanelHeader, EmptyActionsText, LoadingActionsText.
 BUILD SUCCESSFUL.
+
+## Файл 2: ActionsRunHelpers.kt ✅
+Хелперы рана (1120 строк): статусы/иконки/цвета job/step/check, длительности, обработка+экспорт
+логов, диагностика падений, форматтеры артефактов, мелкие фильтр-composable. main: 5668 → 4724.
+Двусторонний flip→internal: ~40 хелперов (используются main) + типы/константы из main, используемые
+блоком (JobListItem, MatrixJobGroup, JobLogMeta, ArtifactGroup, FailureEvidence, ACTIONS_JOB_LOG_*,
+isJobActive, displayRunStatus). Конвенция: после выноса проверять ОБЕ стороны зависимостей.
+BUILD SUCCESSFUL.
