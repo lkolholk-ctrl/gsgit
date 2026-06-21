@@ -791,3 +791,7 @@ RepoInsightsScreen + GitDataToolsScreen + Git*-карточки (1038 строк
 Флипы→internal: RepoInsightsScreen, GitDataToolsScreen, GitDataKv (шарится с IssueEventDetailDialog),
 RepoInsightsTab (enum, использовался блоком). Урок: проверять и enum/class/val, используемые блоком,
 а не только private fun. BUILD SUCCESSFUL.
+
+## Файл 6: RepoPullsScreens.kt ✅
+PullsTab + PullRequestDetailScreen + Pull*-карточки/диалоги/AI-summary (1310 строк, 2 диапазона).
+main: 4275 → 3114. Флипы→internal: PullRequestDetailScreen, PullBadge (шарится). BUILD SUCCESSFUL.
