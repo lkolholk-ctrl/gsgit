@@ -799,3 +799,18 @@ main: 4275 → 3114. Флипы→internal: PullRequestDetailScreen, PullBadge (
 ## Файл 7: RepoIssuesScreens.kt ✅
 IssueEventsScreen + IssueDetailScreen + Issue*-карточки/диалоги/реакции/timeline (1251 строк,
 2 диапазона). main: 3114 → 2013. Флип→internal: IssueEventsScreen. BUILD SUCCESSFUL.
+
+## Файл 8: RepoTabs.kt ✅
+FilesTab, CommitsTab (+ git-граф), IssuesTab, ReleasesTab, fileIcon/fileTint (700 строк, 2 диапазона).
+main: 2013 → 1462. Флип→internal: FilesTreeRow (data class, используется FilesTab).
+
+## ✅ ФАЗА 1 RepoModule ЗАВЕРШЕНА
+
+`GitHubRepoModule.kt`: **8181 → 1462 строки (−82%)**. Вынесено 8 файлов:
+RepoReadmeRenderer (1964), RepoPullsScreens (1310), RepoIssuesScreens (1251), RepoGitDataScreens
+(1038), RepoTabs (700), RepoTelemetryTab (710), RepoTimeTravelTab (571), RepoFileScreens (380).
+В god-файле остался корень RepoDetailScreen (роутер табов) + GitHubAdminRequiredScreen + общие
+мелочи (Chip, FilesTreeRow, RepoInsightsTab, HeadingItem/ToCInterface, Color.toHex, константы).
+
+Чистое перемещение, поведение не менялось; каждый файл — отдельный коммит с зелёным clean
+compileDebugKotlin. Shared-символы помечены internal. Фаза 2 (RepoDetailViewModel/стейт) — отдельно.
