@@ -898,3 +898,4 @@ FilePickerDialog, ConflictResolverDialog (+парсинг/сборка merge), E
 резолв в Telemetry; переименована в EditorCompactField (только в своих файлах). Урок: проверять
 одноимённые file-private хелперы перед flip→internal. BUILD SUCCESSFUL.
 ## Файл 2: CodeEditorDiff.kt ✅ — diff-типы, generateDiff, ModernDiffCanvas, formatRelativeTime (279 строк). main: 3864 → 3721. BUILD SUCCESSFUL.
+## Файл 3: CodeEditorBars.kt ✅ — UpgradedEditorAccessoryBar + EditorStatusBar (469 строк). main: 3721 → 3388. BUILD SUCCESSFUL.
