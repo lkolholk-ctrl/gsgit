@@ -720,3 +720,31 @@ helper'а/парсера в один файл.
 4. **Чистая сборка `clean compileDebugKotlin` — BUILD SUCCESSFUL (45s), exit 0.**
 
 ### Итог (29 доменов) ✅ — `GitHubManager.kt`: 9008 → 503.
+
+## РЕАЛИЗОВАНО: финальные одиночки (Home + Repos-довесок) ✅
+
+`GitHubManager.kt`: 503 → 420 строк (−83). Хвостовые функции разнесены по местам.
+
+1. **searchRepos, isStarred** дописаны в существующий `GitHubManager+Repos.kt` (базовые Repos-эндпоинты,
+   зовут ядровый `parseRepo`).
+2. **getQuickGlanceStats** → новый `GitHubManager+Home.kt` (дашборд-агрегат), модель QuickGlanceStats
+   → `model/GHHome.kt`.
+3. Потребитель GitHubHomeModule — добавлен `import …model.QuickGlanceStats`.
+4. **Чистая сборка `clean compileDebugKotlin` — BUILD SUCCESSFUL, exit 0.**
+
+## ✅ ДЕКОМПОЗИЦИЯ DATA-СЛОЯ ЗАВЕРШЕНА
+
+`GitHubManager.kt`: **9008 → 420 строк (−95%)**. Из god-файла на 452 функции остался чистый
+сетевой слой (~420 строк): управление API-URL, rate-limit/etag, валидация токена + делегаты в
+GitHubAuth, ядро `request`/`requestBasic`/`graphql`/`repoPath`/`encPath`/`parseNextPage`/`refQuery`/
+`recordApiError`/`responseHeaders`, шаренные `parseRepo`/`apiErrorMessage`, вложенные ApiResult/
+TokenValidation. Всё остальное — в 33 доменных файлах `GitHubManager+*.kt` и 35 файлах моделей `model/`.
+
+Домены (порядок нарезки): Releases, Gists, Webhooks, Notifications, Search, Secrets, Repos,
+Workflows, Actions, Projects, Issues, PullRequests, Users, Orgs, Teams, Commits, Branches, GitData,
+Contents, Reactions, Discussions, Packages, Collaborators, Security (Rulesets+Alerts), Auth, Apps,
+Diagnostics, RepoMeta, Events, RepoFeatures, Home.
+
+Конвенция выдержана: extension-функции объекта, `internal`-ядро, модели в `model/`, парсинг через
+`parseGHX`, сигнатуры вызовов не менялись, после каждого домена — зелёная сборка. Два предсуществующих
+бага задокументированы в TODA.md (team-URL, createCommitStatus) — НЕ чинились (рефактор).

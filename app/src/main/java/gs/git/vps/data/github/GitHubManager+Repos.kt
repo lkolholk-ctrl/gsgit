@@ -567,3 +567,17 @@ private fun parseRepoPerson(j: JSONObject, starred: Boolean): GHRepoPerson? {
         starredAt = if (starred) j.optString("starred_at", "") else ""
     )
 }
+
+// ─── Поиск репозиториев / star-статус (базовые Repos-эндпоинты) ───────────────
+
+internal suspend fun GitHubManager.searchRepos(context: Context, query: String): List<GHRepo> {
+    val r = request(context, "/search/repositories?q=$query&sort=stars&per_page=20")
+    if (!r.success) return emptyList()
+    return try {
+        val arr = JSONObject(r.body).getJSONArray("items")
+        (0 until arr.length()).map { parseRepo(arr.getJSONObject(it)) }
+    } catch (e: Exception) { emptyList() }
+}
+
+internal suspend fun GitHubManager.isStarred(context: Context, owner: String, repo: String): Boolean =
+    request(context, "/user/starred/$owner/$repo").code == 204
