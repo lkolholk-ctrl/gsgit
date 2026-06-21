@@ -894,8 +894,10 @@ internal fun RepoDetailScreen(
 
     AiModuleSurface {
     val palette = AiModuleTheme.colors
+    // Нижний инсет = высота glass bottom-bar + системный nav-инсет, чтобы низ контента не перекрывался.
+    val contentBottomInset = RepoBottomBarHeight + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     Box(Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize().background(palette.background)) {
+        Column(Modifier.fillMaxSize().background(palette.background).padding(bottom = contentBottomInset)) {
         GitHubPageBar(
             title = "> ${repo.name}",
             subtitle = if (currentPath.isNotBlank()) "${repo.fullName} \u00B7 $currentPath" else repo.fullName,
@@ -1294,6 +1296,36 @@ internal fun RepoDetailScreen(
             RepoTab.TELEMETRY -> TelemetryTab(repo, commits)
         }
     }
+
+        // Стадия 2: статичный glass bottom-bar (3 пинных + слот-4 = Issues; кастомизация слота — Стадия 4).
+        val bottomBarItems = remember {
+            listOf(
+                RepoBottomBarItem("code", "code", GhGlyphs.CODE),
+                RepoBottomBarItem("actions", "actions", GhGlyphs.PLAY),
+                RepoBottomBarItem("settings", "settings", GhGlyphs.SETTINGS),
+                RepoBottomBarItem("issues", "issues", GhGlyphs.LIST),
+            )
+        }
+        val activeBarKey = when {
+            nav.selectedSection in listOf(RepoTab.ACTIONS, RepoTab.HISTORY) -> "actions"
+            nav.selectedSection == RepoTab.ISSUES -> "issues"
+            nav.selectedSection in listOf(RepoTab.FILES, RepoTab.COMMITS, RepoTab.README) -> "code"
+            else -> ""
+        }
+        RepoBottomBar(
+            items = bottomBarItems,
+            activeKey = activeBarKey,
+            onSelect = { item ->
+                repoQuery = ""
+                when (item.key) {
+                    "code" -> nav.selectedSection = RepoTab.FILES
+                    "actions" -> nav.selectedSection = RepoTab.ACTIONS
+                    "issues" -> nav.selectedSection = RepoTab.ISSUES
+                    "settings" -> showRepoSettings = true
+                }
+            },
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
 
         AnimatedVisibility(
             visible = showCopilotChat,
