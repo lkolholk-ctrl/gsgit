@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Article
 import androidx.compose.material.icons.rounded.Code
@@ -78,7 +79,9 @@ internal fun CodeBrowser(
     onNavigatePath: (String) -> Unit,
     draftPaths: Set<String>,
     draftCount: Int,
+    recents: List<GHContent>,
     onCommit: () -> Unit,
+    onShowChanges: () -> Unit,
     onDiscardAll: () -> Unit,
 ) {
     val palette = AiModuleTheme.colors
@@ -97,6 +100,7 @@ internal fun CodeBrowser(
 
     Column(Modifier.fillMaxSize()) {
         CodeBreadcrumbs(path = path, branch = branch, onNavigatePath = onNavigatePath)
+        if (recents.isNotEmpty()) CodeRecentsRow(recents = recents, onOpen = onOpenFile)
         Box(Modifier.fillMaxWidth().height(1.dp).background(palette.border.copy(alpha = 0.12f)))
         if (draftCount > 0) {
             Row(
@@ -105,7 +109,7 @@ internal fun CodeBrowser(
             ) {
                 Box(Modifier.size(7.dp).clip(CircleShape).background(palette.accent))
                 Spacer(Modifier.width(8.dp))
-                AiModuleText("$draftCount unsaved", color = palette.accent, fontFamily = JetBrainsMono, fontWeight = FontWeight.Medium, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                AiModuleText("$draftCount unsaved", color = palette.accent, fontFamily = JetBrainsMono, fontWeight = FontWeight.Medium, fontSize = 12.sp, modifier = Modifier.weight(1f).clickable(onClick = onShowChanges))
                 AiModuleText("commit", color = palette.accent, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.clickable(onClick = onCommit))
                 Spacer(Modifier.width(18.dp))
                 AiModuleText("discard", color = palette.error, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.clickable(onClick = onDiscardAll))
@@ -125,7 +129,7 @@ internal fun CodeBrowser(
                 items(items, key = { it.path }) { item ->
                     CodeEntryRow(
                         item = item,
-                        dirty = item.type != "dir" && item.path in draftPaths,
+                        dirty = if (item.type == "dir") draftPaths.any { it.startsWith(item.path + "/") } else item.path in draftPaths,
                         onClick = { if (item.type == "dir") onOpenDir(item) else onOpenFile(item) },
                     )
                 }
@@ -164,6 +168,32 @@ private fun CodeBreadcrumbs(path: String, branch: String, onNavigatePath: (Strin
                 fontSize = 13.sp,
                 modifier = Modifier.clickable(enabled = !isLast) { onNavigatePath(subPath) },
             )
+        }
+    }
+}
+
+@Composable
+private fun CodeRecentsRow(recents: List<GHContent>, onOpen: (GHContent) -> Unit) {
+    val palette = AiModuleTheme.colors
+    Row(
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        AiModuleText("recent", color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 10.sp)
+        recents.forEach { f ->
+            Row(
+                Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(palette.surfaceElevated)
+                    .clickable { onOpen(f) }
+                    .padding(horizontal = 10.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(codeEntryIcon(f), contentDescription = null, modifier = Modifier.size(13.dp), tint = palette.textSecondary)
+                Spacer(Modifier.width(5.dp))
+                AiModuleText(f.name, color = palette.textSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
         }
     }
 }

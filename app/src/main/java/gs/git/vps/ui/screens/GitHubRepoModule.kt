@@ -250,6 +250,28 @@ internal fun RepoDetailScreen(
     val codeDraft = remember(repo.fullName, selectedBranch) { mutableStateMapOf<String, String>() }
     var showCodeCommitSheet by remember { mutableStateOf(false) }
     var codeCommitting by remember { mutableStateOf(false) }
+    // Code-таб: недавно открытые файлы (most-recent-first, для строки «recent»). Скоуп репо.
+    val codeRecents = remember(repo.fullName) { mutableStateListOf<GHContent>() }
+    // Открыть файл в Code-редакторе (из браузера/недавних/панели изменений): recents + draft-aware фетч.
+    fun openCodeFile(f: GHContent) {
+        codeRecents.removeAll { it.path == f.path }
+        codeRecents.add(0, f)
+        while (codeRecents.size > 8) codeRecents.removeAt(codeRecents.lastIndex)
+        codeEditorFile = f
+        val draft = codeDraft[f.path]
+        if (draft != null) {
+            codeEditorContent = draft
+        } else {
+            codeEditorContent = null
+            scope.launch {
+                val c = runCatching { GitHubManager.getFileContent(context, repo.owner, repo.name, f.path, selectedBranch) }.getOrNull()
+                if (c == null) {
+                    codeEditorFile = null
+                    Toast.makeText(context, Strings.error, Toast.LENGTH_SHORT).show()
+                } else codeEditorContent = c
+            }
+        }
+    }
     var languages by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }; var contributors by remember { mutableStateOf<List<GHContributor>>(emptyList()) }
     // Pagination
     var commitsPage by rememberSaveable(repo.fullName) { mutableIntStateOf(1) }; var commitsHasMore by rememberSaveable(repo.fullName) { mutableStateOf(true) }
@@ -1346,25 +1368,11 @@ internal fun RepoDetailScreen(
                 repo = repo,
                 branch = selectedBranch,
                 draftPaths = codeDraft.keys,
-                onOpenFile = { f ->
-                    codeEditorFile = f
-                    val draft = codeDraft[f.path]
-                    if (draft != null) {
-                        codeEditorContent = draft
-                    } else {
-                        codeEditorContent = null
-                        scope.launch {
-                            val c = runCatching {
-                                GitHubManager.getFileContent(context, repo.owner, repo.name, f.path, selectedBranch)
-                            }.getOrNull()
-                            if (c == null) {
-                                codeEditorFile = null
-                                Toast.makeText(context, Strings.error, Toast.LENGTH_SHORT).show()
-                            } else codeEditorContent = c
-                        }
-                    }
-                },
+                recents = codeRecents,
+                onOpenFile = { openCodeFile(it) },
+                onOpenPath = { path -> openCodeFile(GHContent(path.substringAfterLast('/'), path, "file", 0L, "", "")) },
                 onCommit = { showCodeCommitSheet = true },
+                onDiscardFile = { codeDraft.remove(it) },
                 onDiscardAll = { codeDraft.clear() },
                 onExit = { nav.selectedSection = null },
             )
