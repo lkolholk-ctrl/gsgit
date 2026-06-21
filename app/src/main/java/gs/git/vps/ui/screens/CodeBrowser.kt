@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Article
 import androidx.compose.material.icons.rounded.Code
@@ -32,6 +33,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -61,10 +63,10 @@ private fun codeEntryIcon(item: GHContent): ImageVector {
 }
 
 /**
- * Read-only браузер «рабочего дерева» для Code-таба (Стадия 1). Фетчит содержимое одной директории
- * (GitHubManager.getRepoContents), показывает крошки пути, навигацию по папкам и иконки по типу.
- * Маркеры грязных/коммит/инлайн create-rename-delete — поздние стадии. GitHub-логика живёт ЗДЕСЬ
- * (в табе Code), не в редакторе. См. docs/code-tab-spec.md.
+ * Браузер «рабочего дерева» Code-таба. Фетчит содержимое директории (GitHubManager.getRepoContents),
+ * крошки пути, навигация по папкам, иконки по типу. Стадия 3: грязные маркеры (точка у файла с
+ * черновиком) + header с числом несохранённых и discard. Роллап-маркеры на папках, панель «изменения»
+ * и инлайн create/rename/delete — поздние стадии. См. docs/code-tab-spec.md.
  */
 @Composable
 internal fun CodeBrowser(
@@ -74,6 +76,9 @@ internal fun CodeBrowser(
     onOpenDir: (GHContent) -> Unit,
     onOpenFile: (GHContent) -> Unit,
     onNavigatePath: (String) -> Unit,
+    draftPaths: Set<String>,
+    draftCount: Int,
+    onDiscardAll: () -> Unit,
 ) {
     val palette = AiModuleTheme.colors
     val context = LocalContext.current
@@ -92,6 +97,17 @@ internal fun CodeBrowser(
     Column(Modifier.fillMaxSize()) {
         CodeBreadcrumbs(path = path, branch = branch, onNavigatePath = onNavigatePath)
         Box(Modifier.fillMaxWidth().height(1.dp).background(palette.border.copy(alpha = 0.12f)))
+        if (draftCount > 0) {
+            Row(
+                Modifier.fillMaxWidth().background(palette.accent.copy(alpha = 0.08f)).padding(horizontal = 16.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.size(7.dp).clip(CircleShape).background(palette.accent))
+                Spacer(Modifier.width(8.dp))
+                AiModuleText("$draftCount несохранённых", color = palette.accent, fontFamily = JetBrainsMono, fontWeight = FontWeight.Medium, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                AiModuleText("discard", color = palette.error, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.clickable(onClick = onDiscardAll))
+            }
+        }
         when {
             loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 AiModuleSpinner(label = "loading…")
@@ -106,6 +122,7 @@ internal fun CodeBrowser(
                 items(items, key = { it.path }) { item ->
                     CodeEntryRow(
                         item = item,
+                        dirty = item.type != "dir" && item.path in draftPaths,
                         onClick = { if (item.type == "dir") onOpenDir(item) else onOpenFile(item) },
                     )
                 }
@@ -149,7 +166,7 @@ private fun CodeBreadcrumbs(path: String, branch: String, onNavigatePath: (Strin
 }
 
 @Composable
-private fun CodeEntryRow(item: GHContent, onClick: () -> Unit) {
+private fun CodeEntryRow(item: GHContent, dirty: Boolean, onClick: () -> Unit) {
     val palette = AiModuleTheme.colors
     Row(
         Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 11.dp),
@@ -171,6 +188,10 @@ private fun CodeEntryRow(item: GHContent, onClick: () -> Unit) {
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+        if (dirty) {
+            Box(Modifier.size(7.dp).clip(CircleShape).background(palette.accent))
+            Spacer(Modifier.width(10.dp))
+        }
         if (item.type != "dir" && item.size > 0) {
             AiModuleText(formatCodeSize(item.size), color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 10.sp)
         }

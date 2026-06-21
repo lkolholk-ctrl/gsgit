@@ -246,6 +246,8 @@ internal fun RepoDetailScreen(
     // Code-таб: открытый в редакторе файл (full-screen read-only, Стадия 2). null = редактор закрыт.
     var codeEditorFile by remember { mutableStateOf<GHContent?>(null) }
     var codeEditorContent by remember { mutableStateOf<String?>(null) }
+    // Code-таб: буфер черновика (path → новый контент), скоуп (репо, ветка). In-memory (диск — Стадия 6).
+    val codeDraft = remember(repo.fullName, selectedBranch) { mutableStateMapOf<String, String>() }
     var languages by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }; var contributors by remember { mutableStateOf<List<GHContributor>>(emptyList()) }
     // Pagination
     var commitsPage by rememberSaveable(repo.fullName) { mutableIntStateOf(1) }; var commitsHasMore by rememberSaveable(repo.fullName) { mutableStateOf(true) }
@@ -659,7 +661,7 @@ internal fun RepoDetailScreen(
                 file = codeFile,
                 branch = selectedBranch,
                 initialContent = codeContent,
-                readOnly = true,
+                onSaveDraft = { p, c -> codeDraft[p] = c },
                 onBack = { codeEditorFile = null; codeEditorContent = null },
             )
         }
@@ -1341,19 +1343,26 @@ internal fun RepoDetailScreen(
             RepoTab.CODE -> CodeTabShell(
                 repo = repo,
                 branch = selectedBranch,
+                draftPaths = codeDraft.keys,
                 onOpenFile = { f ->
                     codeEditorFile = f
-                    codeEditorContent = null
-                    scope.launch {
-                        val c = runCatching {
-                            GitHubManager.getFileContent(context, repo.owner, repo.name, f.path, selectedBranch)
-                        }.getOrNull()
-                        if (c == null) {
-                            codeEditorFile = null
-                            Toast.makeText(context, Strings.error, Toast.LENGTH_SHORT).show()
-                        } else codeEditorContent = c
+                    val draft = codeDraft[f.path]
+                    if (draft != null) {
+                        codeEditorContent = draft
+                    } else {
+                        codeEditorContent = null
+                        scope.launch {
+                            val c = runCatching {
+                                GitHubManager.getFileContent(context, repo.owner, repo.name, f.path, selectedBranch)
+                            }.getOrNull()
+                            if (c == null) {
+                                codeEditorFile = null
+                                Toast.makeText(context, Strings.error, Toast.LENGTH_SHORT).show()
+                            } else codeEditorContent = c
+                        }
                     }
                 },
+                onDiscardAll = { codeDraft.clear() },
                 onExit = { nav.selectedSection = null },
             )
         }

@@ -22,7 +22,9 @@ import gs.git.vps.data.github.model.GHRepo
 internal fun CodeTabShell(
     repo: GHRepo,
     branch: String,
+    draftPaths: Set<String>,
     onOpenFile: (GHContent) -> Unit,
+    onDiscardAll: () -> Unit,
     onExit: () -> Unit,
 ) {
     var codePath by rememberSaveable(repo.fullName) { mutableStateOf("") }
@@ -38,5 +40,8 @@ internal fun CodeTabShell(
         onOpenDir = { codePath = it.path },
         onOpenFile = onOpenFile,
         onNavigatePath = { codePath = it },
+        draftPaths = draftPaths,
+        draftCount = draftPaths.size,
+        onDiscardAll = onDiscardAll,
     )
 }

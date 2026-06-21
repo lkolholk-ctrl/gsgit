@@ -154,6 +154,7 @@ fun CodeEditorScreen(
     initialContent: String,
     initialLine: Int? = null,
     readOnly: Boolean = false,
+    onSaveDraft: ((path: String, content: String) -> Unit)? = null,
     onBack: () -> Unit,
     onAskAi: ((prompt: String?) -> Unit)? = null
 ) {
@@ -826,7 +827,13 @@ fun CodeEditorScreen(
                 showMoreMenu = showMoreMenu,
                 hasChanges = hasChanges,
                 onToggleMoreMenu = { showMoreMenu = !showMoreMenu },
-                onSave = { showCommitDialog = true },
+                onSave = {
+                    if (onSaveDraft != null) {
+                        onSaveDraft(currentFile.path, text)
+                        savedContent = text
+                        Toast.makeText(context, "сохранено в черновик", Toast.LENGTH_SHORT).show()
+                    } else { showCommitDialog = true }
+                },
                 onBack = ::handleEditorBack,
                 onAskAi = {
                     copilotInitialPrompt = it
