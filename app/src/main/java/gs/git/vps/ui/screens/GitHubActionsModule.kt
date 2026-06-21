@@ -96,7 +96,7 @@ import gs.git.vps.data.Strings
 import gs.git.vps.data.github.*
 import gs.git.vps.data.github.model.GHActionSecret
 import gs.git.vps.data.github.model.GHActionVariable
-import gs.git.vps.data.github.GHCodespace
+import gs.git.vps.data.github.model.GHCodespace
 import gs.git.vps.data.github.model.GHEnvironment
 import gs.git.vps.data.github.model.GHEnvironmentProtectionRule
 import gs.git.vps.data.github.model.GHDeploymentBranchPolicy

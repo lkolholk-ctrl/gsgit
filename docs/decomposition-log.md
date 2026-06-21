@@ -707,3 +707,16 @@ helper'а/парсера в один файл.
 4. **Чистая сборка `clean compileDebugKotlin` — BUILD SUCCESSFUL (46s), exit 0.**
 
 ### Итог (28 доменов) ✅ — `GitHubManager.kt`: 9008 → 601.
+
+## РЕАЛИЗОВАНО: домен RepoFeatures ✅
+
+`GitHubManager.kt`: 601 → 503 строк (−97). 7 функций (мелкие фиче-эндпоинты) в один файл.
+
+1. **`GitHubManager+RepoFeatures.kt`** (~95 строк) — autolinks (get/create/delete), codespaces
+   (get/delete), Git LFS (enable/disable). Три мелких эндпоинт-группы, не тянущие на отдельный
+   god-файл, объединены.
+2. **Модели → `model/GHRepoFeatures.kt`**: GHAutolink, GHCodespace.
+3. **Потребители** GitHubRepoSettingsModule, GitHubActionsModule (wildcard) — импорты моделей → `.model`.
+4. **Чистая сборка `clean compileDebugKotlin` — BUILD SUCCESSFUL (45s), exit 0.**
+
+### Итог (29 доменов) ✅ — `GitHubManager.kt`: 9008 → 503.
