@@ -862,3 +862,8 @@ main: 2908 → 1984. Двусторонний flip→internal. BUILD SUCCESSFUL.
 ## Файл 5: ActionsRunDispatch.kt ✅
 DynamicDispatchInputs + dispatch-поля + ModernRunCard (карточка запуска) + сохранение инпутов
 (528 строк). main: 1984 → 1631. Run-status хелперы оставлены в core (шарятся). BUILD SUCCESSFUL.
+
+## Файл 6: ActionsHistoryScreen.kt ✅
+ActionsHistoryTab + ActionsRunsHistoryScreen (список с фильтрами) + WorkflowRunRow + chips
+(629 строк). main: 1631 → 1176. (Урок повторно: не захватывать @Composable следующей функции —
+поймал, восстановил.) BUILD SUCCESSFUL.
