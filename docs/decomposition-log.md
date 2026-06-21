@@ -782,3 +782,6 @@ CommitDiffScreen + BlameViewScreen + FileHistoryScreen (380 строк). `GitHub
 ## Файл 3: RepoTelemetryTab.kt ✅
 TelemetryTab + TelemetryGraph + CompactField + GrepResult (710 строк). main: 6143 → 5583.
 Флипов не нужно (TelemetryTab уже internal, остальное локально). BUILD SUCCESSFUL.
+
+## Файл 4: RepoTimeTravelTab.kt ✅
+TimeTravelTab (571 строк). main: 5583 → 5162. BUILD SUCCESSFUL.
