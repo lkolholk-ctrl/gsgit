@@ -84,6 +84,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextRange
@@ -162,6 +163,7 @@ fun CodeEditorScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
+    val focusManager = LocalFocusManager.current
 
     val tabs = remember { mutableStateListOf<EditorTab>() }
     var activeTabIndex by remember { mutableStateOf(0) }
@@ -357,9 +359,9 @@ fun CodeEditorScreen(
             showGoToLine -> showGoToLine = false
             showOutline -> showOutline = false
             showSearch -> showSearch = false
-            onSaveDraft != null && hasChanges -> { onSaveDraft(currentFile.path, text); onBack() }
+            onSaveDraft != null && hasChanges -> { focusManager.clearFocus(); onSaveDraft(currentFile.path, text); onBack() }
             hasChanges && !isImage -> showDiscardDialog = true
-            else -> onBack()
+            else -> { focusManager.clearFocus(); onBack() }
         }
     }
 
