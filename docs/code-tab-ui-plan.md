@@ -7,8 +7,9 @@
 > **Прогресс (overnight, коммиты 90f6fc8/77e04f4/84b4779):**
 > - ✅ **P1** — change-type цвета (M=amber-чип, грязная точка amber), панель = bottom-sheet поверх дерева, commit-sheet + список файлов.
 > - ✅ **P2** — browser polish: цветные иконки по типу (syntax-токены), иерархия рядов (имя Medium/dir Bold+chevron), крошки с иконкой ветки, skeleton/empty/error+retry.
-> - 🟡 **P3** — частично: slide-up+fade появления панели. ❌ browser↔editor переход и лёгкий editor-chrome (Phase-2 редактора) — отложены (крупный заход, нужен явный go).
-> - ⏳ Device-проверка на Light/Dark/AMOLED — за пользователем (см. чек-лист в чате).
+> - ✅ **P3** — переходы (slide-up панели `84b4779`, browser→editor `b0107ca`) + лёгкий editor-chrome / **Phase-2 редактора** (`9ce468b`, lite-режим CodeEditorScreen) + фикс back-фокуса (`fde2e73`). Все блоки P3 закрыты.
+> - ✅ Канон-рерайт Code-таба под терминальный стиль проекта (`d9a10d5`).
+> - ⏳ Device-проверка на Light/Dark/AMOLED + фикс двойного back-тапа — за пользователем.
 
 ## Где мы сейчас (после Стадий 0-6)
 - **Browser** (`CodeBrowser.kt`, 238): крошки `branch / seg / seg` → recent-чипы → hairline →
