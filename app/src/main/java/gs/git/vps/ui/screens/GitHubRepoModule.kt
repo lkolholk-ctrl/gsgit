@@ -38,6 +38,11 @@ import dev.chrisbanes.haze.HazeProgressive
 import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.core.tween
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -696,21 +701,31 @@ internal fun RepoDetailScreen(
     val codeFile = codeEditorFile
     if (nav.selectedSection == RepoTab.CODE && codeFile != null) {
         val codeContent = codeEditorContent
-        if (codeContent == null) {
-            AiModuleSurface {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { AiModuleSpinner(label = "loading…") }
+        // browser→editor переход: редактор появляется slide-in справа + fade (push-open).
+        // Закрытие мгновенное (early-return снимается на codeEditorFile=null).
+        var editorShown by remember(codeFile.path) { mutableStateOf(false) }
+        LaunchedEffect(codeFile.path) { editorShown = true }
+        AnimatedVisibility(
+            visible = editorShown,
+            enter = slideInHorizontally(animationSpec = tween(260)) { it } + fadeIn(tween(260)),
+            exit = fadeOut(tween(120)),
+        ) {
+            if (codeContent == null) {
+                AiModuleSurface {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { AiModuleSpinner(label = "loading…") }
+                }
+            } else {
+                CodeEditorScreen(
+                    repoOwner = repo.owner,
+                    repoName = repo.name,
+                    file = codeFile,
+                    branch = selectedBranch,
+                    initialContent = codeContent,
+                    lite = true,
+                    onSaveDraft = { p, c -> codeDraft[p] = c; persistCodeDraft() },
+                    onBack = { codeEditorFile = null; codeEditorContent = null },
+                )
             }
-        } else {
-            CodeEditorScreen(
-                repoOwner = repo.owner,
-                repoName = repo.name,
-                file = codeFile,
-                branch = selectedBranch,
-                initialContent = codeContent,
-                lite = true,
-                onSaveDraft = { p, c -> codeDraft[p] = c; persistCodeDraft() },
-                onBack = { codeEditorFile = null; codeEditorContent = null },
-            )
         }
         return
     }
