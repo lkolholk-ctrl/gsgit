@@ -1,5 +1,10 @@
 package gs.git.vps.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -26,7 +31,11 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,11 +48,12 @@ import gs.git.vps.ui.theme.AiModuleTheme
 import gs.git.vps.ui.theme.JetBrainsMono
 
 /**
- * Панель «изменения» Code-таба (P1) — **bottom-sheet поверх дерева** в духе VS Code SCM: дерево видно
- * сверху (тап по нему закрывает панель), снизу выезжает скруглённый sheet со списком ВСЕХ файлов с
- * незакоммиченными правками. Маркер изменения цветной (M — modified/amber), per-file discard, тап →
- * открыть файл, commit-pill. Sheet поднят над плавающим bottom-bar. Источник правды — buffer
- * черновика (path → content) на уровне RepoDetailScreen. См. docs/code-tab-spec.md.
+ * Панель «изменения» Code-таба (P1 + P3) — **bottom-sheet поверх дерева** в духе VS Code SCM: дерево
+ * видно сверху (тап по нему закрывает), снизу выезжает скруглённый sheet (P3: slide-up + fade при
+ * появлении) со списком ВСЕХ файлов с незакоммиченными правками. Маркер изменения цветной (M —
+ * modified/amber), per-file discard, тап → открыть файл, commit-pill. Sheet поднят над плавающим
+ * bottom-bar. Источник правды — buffer черновика (path → content) в RepoDetailScreen. См.
+ * docs/code-tab-spec.md.
  */
 @Composable
 internal fun CodeChangesPanel(
@@ -56,6 +66,10 @@ internal fun CodeChangesPanel(
     val palette = AiModuleTheme.colors
     val sorted = remember(draftPaths) { draftPaths.sorted() }
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    // P3: sheet выезжает снизу при появлении (slide-up + fade). Закрытие — мгновенное (панель
+    // снимается на showChanges=false выше).
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { shown = true }
 
     Column(Modifier.fillMaxSize()) {
         // Зона над sheet'ом = видимое дерево; тап по ней закрывает панель (dismiss). Без скрима, чтобы
@@ -70,69 +84,75 @@ internal fun CodeChangesPanel(
                     onClick = onBack,
                 ),
         )
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .padding(bottom = RepoBottomBarReservedHeight + navBottom) // над плавающим bottom-bar
-                .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
-                .background(palette.surfaceElevated),
+        AnimatedVisibility(
+            visible = shown,
+            enter = slideInVertically(animationSpec = tween(240)) { it } + fadeIn(tween(240)),
+            exit = fadeOut(tween(120)),
         ) {
-            // drag-handle
-            Box(Modifier.fillMaxWidth().padding(top = 10.dp), contentAlignment = Alignment.Center) {
-                Box(
-                    Modifier
-                        .width(36.dp)
-                        .height(4.dp)
-                        .clip(RoundedCornerShape(percent = 50))
-                        .background(palette.border.copy(alpha = 0.5f)),
-                )
-            }
-            // header: «changes» + чип-счётчик | commit-pill
-            Row(
-                Modifier.fillMaxWidth().padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = RepoBottomBarReservedHeight + navBottom) // над плавающим bottom-bar
+                    .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+                    .background(palette.surfaceElevated),
             ) {
-                AiModuleText("changes", color = palette.textPrimary, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                Spacer(Modifier.width(8.dp))
-                Box(
-                    Modifier.clip(RoundedCornerShape(percent = 50)).background(palette.warning.copy(alpha = 0.16f)).padding(horizontal = 8.dp, vertical = 2.dp),
-                ) {
-                    AiModuleText("${sorted.size}", color = palette.warning, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                }
-                Spacer(Modifier.weight(1f))
-                if (sorted.isNotEmpty()) {
-                    Row(
+                // drag-handle
+                Box(Modifier.fillMaxWidth().padding(top = 10.dp), contentAlignment = Alignment.Center) {
+                    Box(
                         Modifier
+                            .width(36.dp)
+                            .height(4.dp)
                             .clip(RoundedCornerShape(percent = 50))
-                            .background(palette.accent.copy(alpha = 0.14f))
-                            .clickable(onClick = onCommit)
-                            .padding(horizontal = 14.dp, vertical = 7.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                            .background(palette.border.copy(alpha = 0.5f)),
+                    )
+                }
+                // header: «changes» + чип-счётчик | commit-pill
+                Row(
+                    Modifier.fillMaxWidth().padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    AiModuleText("changes", color = palette.textPrimary, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Spacer(Modifier.width(8.dp))
+                    Box(
+                        Modifier.clip(RoundedCornerShape(percent = 50)).background(palette.warning.copy(alpha = 0.16f)).padding(horizontal = 8.dp, vertical = 2.dp),
                     ) {
-                        Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(14.dp), tint = palette.accent)
-                        Spacer(Modifier.width(5.dp))
-                        AiModuleText("commit", color = palette.accent, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        AiModuleText("${sorted.size}", color = palette.warning, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    }
+                    Spacer(Modifier.weight(1f))
+                    if (sorted.isNotEmpty()) {
+                        Row(
+                            Modifier
+                                .clip(RoundedCornerShape(percent = 50))
+                                .background(palette.accent.copy(alpha = 0.14f))
+                                .clickable(onClick = onCommit)
+                                .padding(horizontal = 14.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(14.dp), tint = palette.accent)
+                            Spacer(Modifier.width(5.dp))
+                            AiModuleText("commit", color = palette.accent, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
                     }
                 }
-            }
-            Box(Modifier.fillMaxWidth().height(1.dp).background(palette.border.copy(alpha = 0.12f)))
-            if (sorted.isEmpty()) {
-                Column(
-                    Modifier.fillMaxWidth().padding(vertical = 36.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(22.dp), tint = palette.textMuted)
-                    AiModuleText("no changes", color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 13.sp)
-                }
-            } else {
-                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp)) {
-                    items(sorted, key = { it }) { path ->
-                        CodeChangeRow(
-                            path = path,
-                            onOpen = { onOpenPath(path) },
-                            onDiscard = { onDiscardPath(path) },
-                        )
+                Box(Modifier.fillMaxWidth().height(1.dp).background(palette.border.copy(alpha = 0.12f)))
+                if (sorted.isEmpty()) {
+                    Column(
+                        Modifier.fillMaxWidth().padding(vertical = 36.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(22.dp), tint = palette.textMuted)
+                        AiModuleText("no changes", color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 13.sp)
+                    }
+                } else {
+                    LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp)) {
+                        items(sorted, key = { it }) { path ->
+                            CodeChangeRow(
+                                path = path,
+                                onOpen = { onOpenPath(path) },
+                                onDiscard = { onDiscardPath(path) },
+                            )
+                        }
                     }
                 }
             }
