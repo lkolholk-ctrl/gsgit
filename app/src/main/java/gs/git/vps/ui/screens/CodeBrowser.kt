@@ -1,5 +1,10 @@
 package gs.git.vps.ui.screens
 
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -20,23 +25,31 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AccountTree
 import androidx.compose.material.icons.rounded.Article
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.Code
-import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Description
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -47,7 +60,6 @@ import gs.git.vps.data.github.GitHubManager
 import gs.git.vps.data.github.getRepoContents
 import gs.git.vps.data.github.model.GHContent
 import gs.git.vps.data.github.model.GHRepo
-import gs.git.vps.ui.components.AiModuleSpinner
 import gs.git.vps.ui.components.AiModuleText
 import gs.git.vps.ui.theme.AiModuleTheme
 import gs.git.vps.ui.theme.JetBrainsMono
@@ -65,11 +77,26 @@ private fun codeEntryIcon(item: GHContent): ImageVector {
     }
 }
 
+/** Цвет иконки по типу — из syntax-токенов темы (не хардкод), читается «с первого взгляда». */
+private fun codeEntryTint(item: GHContent, palette: gs.git.vps.ui.theme.AiModuleColors): Color {
+    if (item.type == "dir") return palette.accent
+    return when (item.name.substringAfterLast('.', "").lowercase()) {
+        "kt", "java", "js", "ts", "tsx", "jsx", "py", "c", "cc", "cpp", "h", "hpp", "go", "rs",
+        "rb", "swift", "cs", "php", "kts" -> palette.syntaxKeyword
+        "sh", "bash", "gradle" -> palette.syntaxFlag
+        "json", "yml", "yaml", "toml" -> palette.syntaxNumber
+        "xml", "html", "css", "sql" -> palette.syntaxArg
+        "png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico" -> palette.syntaxString
+        "md", "markdown", "txt", "rst", "adoc" -> palette.syntaxComment
+        else -> palette.textSecondary
+    }
+}
+
 /**
  * Браузер «рабочего дерева» Code-таба. Фетчит содержимое директории (GitHubManager.getRepoContents),
- * крошки пути, навигация по папкам, иконки по типу. Стадия 3: грязные маркеры (точка у файла с
- * черновиком) + header с числом несохранённых и discard. Роллап-маркеры на папках, панель «изменения»
- * и инлайн create/rename/delete — поздние стадии. См. docs/code-tab-spec.md.
+ * крошки пути (с иконкой ветки), навигация по папкам, цветные иконки по типу. P1: грязные маркеры
+ * (amber). P2: иерархия рядов (имя Medium / dir Bold + chevron), цветные иконки из syntax-токенов,
+ * skeleton-загрузка, empty/error-состояния с retry. См. docs/code-tab-spec.md.
  */
 @Composable
 internal fun CodeBrowser(
@@ -91,8 +118,9 @@ internal fun CodeBrowser(
     var items by remember { mutableStateOf<List<GHContent>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var failed by remember { mutableStateOf(false) }
+    var reloadNonce by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(repo.fullName, branch, path) {
+    LaunchedEffect(repo.fullName, branch, path, reloadNonce) {
         loading = true; failed = false
         val r = runCatching { GitHubManager.getRepoContents(context, repo.owner, repo.name, path, branch) }.getOrNull()
         if (r == null) failed = true
@@ -150,15 +178,9 @@ internal fun CodeBrowser(
             Box(Modifier.fillMaxWidth().height(1.dp).background(palette.border.copy(alpha = 0.12f)))
         }
         when {
-            loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                AiModuleSpinner(label = "loading…")
-            }
-            failed -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                AiModuleText("failed to load tree", color = palette.error, fontFamily = JetBrainsMono, fontSize = 13.sp)
-            }
-            items.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                AiModuleText("empty", color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 13.sp)
-            }
+            loading -> CodeBrowserSkeleton()
+            failed -> CodeBrowserError(onRetry = { reloadNonce++ })
+            items.isEmpty() -> CodeBrowserEmpty()
             else -> LazyColumn(Modifier.fillMaxSize()) {
                 items(items, key = { it.path }) { item ->
                     CodeEntryRow(
@@ -180,6 +202,8 @@ private fun CodeBreadcrumbs(path: String, branch: String, onNavigatePath: (Strin
         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        Icon(Icons.Rounded.AccountTree, contentDescription = null, modifier = Modifier.size(13.dp), tint = palette.textMuted)
+        Spacer(Modifier.width(5.dp))
         AiModuleText(branch, color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 11.sp)
         AiModuleText("  ", color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 11.sp)
         AiModuleText(
@@ -224,7 +248,7 @@ private fun CodeRecentsRow(recents: List<GHContent>, onOpen: (GHContent) -> Unit
                     .padding(horizontal = 10.dp, vertical = 5.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(codeEntryIcon(f), contentDescription = null, modifier = Modifier.size(13.dp), tint = palette.textSecondary)
+                Icon(codeEntryIcon(f), contentDescription = null, modifier = Modifier.size(13.dp), tint = codeEntryTint(f, palette))
                 Spacer(Modifier.width(5.dp))
                 AiModuleText(f.name, color = palette.textSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
@@ -235,6 +259,7 @@ private fun CodeRecentsRow(recents: List<GHContent>, onOpen: (GHContent) -> Unit
 @Composable
 private fun CodeEntryRow(item: GHContent, dirty: Boolean, onClick: () -> Unit) {
     val palette = AiModuleTheme.colors
+    val isDir = item.type == "dir"
     Row(
         Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -243,13 +268,14 @@ private fun CodeEntryRow(item: GHContent, dirty: Boolean, onClick: () -> Unit) {
             codeEntryIcon(item),
             contentDescription = null,
             modifier = Modifier.size(18.dp),
-            tint = if (item.type == "dir") palette.accent else palette.textSecondary,
+            tint = codeEntryTint(item, palette),
         )
         Spacer(Modifier.width(12.dp))
         AiModuleText(
             item.name,
             color = palette.textPrimary,
             fontFamily = JetBrainsMono,
+            fontWeight = if (isDir) FontWeight.Bold else FontWeight.Medium,
             fontSize = 13.sp,
             modifier = Modifier.weight(1f),
             maxLines = 1,
@@ -260,8 +286,69 @@ private fun CodeEntryRow(item: GHContent, dirty: Boolean, onClick: () -> Unit) {
             Box(Modifier.size(7.dp).clip(CircleShape).background(palette.warning))
             Spacer(Modifier.width(10.dp))
         }
-        if (item.type != "dir" && item.size > 0) {
+        if (isDir) {
+            Icon(Icons.Rounded.ChevronRight, contentDescription = null, modifier = Modifier.size(18.dp), tint = palette.textMuted)
+        } else if (item.size > 0) {
             AiModuleText(formatCodeSize(item.size), color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 10.sp)
+        }
+    }
+}
+
+/** Skeleton-загрузка: ряды-плейсхолдеры с мягким пульсом вместо спиннера. */
+@Composable
+private fun CodeBrowserSkeleton() {
+    val palette = AiModuleTheme.colors
+    val transition = rememberInfiniteTransition(label = "skeleton")
+    val pulse by transition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 0.7f,
+        animationSpec = infiniteRepeatable(tween(900), RepeatMode.Reverse),
+        label = "pulse",
+    )
+    Column(Modifier.fillMaxSize()) {
+        listOf(0.70f, 0.50f, 0.82f, 0.60f, 0.44f, 0.73f).forEach { w ->
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 11.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.size(18.dp).clip(RoundedCornerShape(5.dp)).alpha(pulse).background(palette.border))
+                Spacer(Modifier.width(12.dp))
+                Box(Modifier.height(11.dp).fillMaxWidth(w).clip(RoundedCornerShape(4.dp)).alpha(pulse).background(palette.border))
+            }
+        }
+    }
+}
+
+@Composable
+private fun CodeBrowserEmpty() {
+    val palette = AiModuleTheme.colors
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Icon(Icons.Rounded.FolderOpen, contentDescription = null, modifier = Modifier.size(28.dp), tint = palette.textMuted)
+            AiModuleText("empty directory", color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 13.sp)
+        }
+    }
+}
+
+@Composable
+private fun CodeBrowserError(onRetry: () -> Unit) {
+    val palette = AiModuleTheme.colors
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Icon(Icons.Rounded.CloudOff, contentDescription = null, modifier = Modifier.size(28.dp), tint = palette.error)
+            AiModuleText("failed to load", color = palette.textSecondary, fontFamily = JetBrainsMono, fontSize = 13.sp)
+            Row(
+                Modifier
+                    .clip(RoundedCornerShape(percent = 50))
+                    .background(palette.accent.copy(alpha = 0.14f))
+                    .clickable(onClick = onRetry)
+                    .padding(horizontal = 14.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(14.dp), tint = palette.accent)
+                Spacer(Modifier.width(5.dp))
+                AiModuleText("retry", color = palette.accent, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            }
         }
     }
 }
