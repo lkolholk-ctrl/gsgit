@@ -707,6 +707,7 @@ internal fun RepoDetailScreen(
                 file = codeFile,
                 branch = selectedBranch,
                 initialContent = codeContent,
+                lite = true,
                 onSaveDraft = { p, c -> codeDraft[p] = c; persistCodeDraft() },
                 onBack = { codeEditorFile = null; codeEditorContent = null },
             )

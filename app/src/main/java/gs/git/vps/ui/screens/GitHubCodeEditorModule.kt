@@ -154,6 +154,7 @@ fun CodeEditorScreen(
     initialContent: String,
     initialLine: Int? = null,
     readOnly: Boolean = false,
+    lite: Boolean = false,
     onSaveDraft: ((path: String, content: String) -> Unit)? = null,
     onBack: () -> Unit,
     onAskAi: ((prompt: String?) -> Unit)? = null
@@ -820,7 +821,25 @@ fun CodeEditorScreen(
     val palette = AiModuleTheme.colors
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().background(palette.background)) {
-        if (!zenMode) {
+        val onSaveAction: () -> Unit = {
+            if (onSaveDraft != null) {
+                onSaveDraft(currentFile.path, text)
+                savedContent = text
+                Toast.makeText(context, "saved to draft", Toast.LENGTH_SHORT).show()
+            } else { showCommitDialog = true }
+        }
+        // Lite-chrome (Code-таб): тонкий канонный топбар вместо всего тяжёлого chrome (топбар + tabs +
+        // search + autocomplete — всё внутри ветки !zenMode). Ядро редактирования (ModernEditCanvas) и
+        // accessory гейтятся отдельно. См. docs/code-tab-ui-plan.md (Phase-2 редактора).
+        if (lite) {
+            LiteEditorTopBar(
+                file = currentFile,
+                ext = ext,
+                hasChanges = hasChanges,
+                onSave = onSaveAction,
+                onBack = ::handleEditorBack,
+            )
+        } else if (!zenMode) {
             GitHubEditorTopBar(
                 fileName = currentFile.name,
                 subtitle = buildEditorSubtitle(ext, lines.size, text.length, hasChanges),
@@ -828,13 +847,7 @@ fun CodeEditorScreen(
                 showMoreMenu = showMoreMenu,
                 hasChanges = hasChanges,
                 onToggleMoreMenu = { showMoreMenu = !showMoreMenu },
-                onSave = {
-                    if (onSaveDraft != null) {
-                        onSaveDraft(currentFile.path, text)
-                        savedContent = text
-                        Toast.makeText(context, "saved to draft", Toast.LENGTH_SHORT).show()
-                    } else { showCommitDialog = true }
-                },
+                onSave = onSaveAction,
                 onBack = ::handleEditorBack,
                 onAskAi = {
                     copilotInitialPrompt = it
@@ -1254,7 +1267,7 @@ fun CodeEditorScreen(
             }
         }
 
-        if (!isImage && mode == GitHubEditorMode.EDIT && !zenMode) {
+        if (!isImage && mode == GitHubEditorMode.EDIT && !zenMode && !lite) {
             UpgradedEditorAccessoryBar(
                 palette = palette,
                 onInsert = { insertText(it) },
@@ -1772,6 +1785,63 @@ fun CodeEditorScreen(
             },
             dismissButton = { AiModuleTextAction(label = Strings.cancel.lowercase(), onClick = { showCommitDialog = false }, tint = AiModuleTheme.colors.textSecondary) }
         )
+    }
+}
+
+/**
+ * Лёгкий топбар Code-таб-редактора (Phase-2): тонкий канонный chrome вместо тяжёлого
+ * GitHubEditorTopBar+tabs+accessory. Глиф-back + путь файла + индикатор dirty + save
+ * (GitHubTerminalButton). Ядро редактирования (ModernEditCanvas) переиспользуется без изменений.
+ */
+@Composable
+private fun LiteEditorTopBar(
+    file: GHContent,
+    ext: String,
+    hasChanges: Boolean,
+    onSave: () -> Unit,
+    onBack: () -> Unit,
+) {
+    val colors = AiModuleTheme.colors
+    val sub = file.path.substringBeforeLast('/', "").ifEmpty { ext }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(colors.background)
+            .statusBarsPadding()
+            .padding(start = 4.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
+    ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            GitHubTopBarAction(glyph = GhGlyphs.BACK, onClick = onBack, tint = colors.textPrimary, contentDescription = "back")
+            Spacer(Modifier.width(8.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = file.name,
+                    color = colors.textPrimary,
+                    fontFamily = JetBrainsMono,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 14.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (sub.isNotEmpty()) {
+                    Text(
+                        text = sub,
+                        color = colors.textMuted,
+                        fontFamily = JetBrainsMono,
+                        fontSize = 10.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            if (hasChanges) {
+                Text(text = "●", color = colors.warning, fontFamily = JetBrainsMono, fontSize = 11.sp)
+                Spacer(Modifier.width(8.dp))
+            }
+            GitHubTerminalButton(label = "save", onClick = onSave, color = colors.accent)
+        }
+        Spacer(Modifier.height(4.dp))
+        Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border))
     }
 }
 
