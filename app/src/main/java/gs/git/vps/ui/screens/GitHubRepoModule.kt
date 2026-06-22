@@ -34,6 +34,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import dev.chrisbanes.haze.HazeProgressive
+import dev.chrisbanes.haze.hazeEffect
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import androidx.compose.ui.graphics.painter.ColorPainter
@@ -1408,10 +1410,22 @@ internal fun RepoDetailScreen(
         // Bottom-bar (items/topRowSections определены вверху). Подсветка — по совпадению секции айтема с
         // selectedSection (null-лендинг → activeKey="" → ничего не подсвечено). Диспатч в единый selectedSection.
         val activeBarKey = bottomBarItems.firstOrNull { it.section != null && it.section == nav.selectedSection }?.key ?: ""
+        // Frosted «мыло» в нижней полосе: контент под баром блюрится прогрессивно — снизу полный блюр,
+        // плавно к нулю вверху полосы (до высоты бара). Сам бар (solid, непрозрачный) рисуется поверх.
+        Box(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(contentBottomInset)
+                .hazeEffect(state = hazeState) {
+                    blurRadius = 24.dp
+                    noiseFactor = 0f
+                    progressive = HazeProgressive.verticalGradient(startIntensity = 0f, endIntensity = 1f)
+                },
+        )
         RepoBottomBar(
             items = bottomBarItems,
             activeKey = activeBarKey,
-            hazeState = hazeState,
             onSelect = { item ->
                 repoQuery = ""
                 if (item.key == "settings") showRepoSettings = true
