@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -27,7 +28,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
@@ -48,12 +48,11 @@ import gs.git.vps.ui.theme.AiModuleTheme
 import gs.git.vps.ui.theme.JetBrainsMono
 
 /**
- * Панель «изменения» Code-таба (P1 + P3) — **bottom-sheet поверх дерева** в духе VS Code SCM: дерево
- * видно сверху (тап по нему закрывает), снизу выезжает скруглённый sheet (P3: slide-up + fade при
- * появлении) со списком ВСЕХ файлов с незакоммиченными правками. Маркер изменения цветной (M —
- * modified/amber), per-file discard, тап → открыть файл, commit-pill. Sheet поднят над плавающим
- * bottom-bar. Источник правды — buffer черновика (path → content) в RepoDetailScreen. См.
- * docs/code-tab-spec.md.
+ * Панель «изменения» Code-таба — **bottom-sheet поверх дерева** (VS Code SCM), терминальный стиль:
+ * mono-заголовок, бордерная поверхность (как ghGlassCard), GitHubTerminalButton для commit, mono-маркер
+ * «M» (modified/amber). Дерево видно сверху (тап закрывает); sheet выезжает снизу (slide-up + fade) и
+ * поднят над плавающим bottom-bar. Источник правды — buffer черновика (path → content) в
+ * RepoDetailScreen. См. docs/code-tab-spec.md.
  */
 @Composable
 internal fun CodeChangesPanel(
@@ -66,14 +65,12 @@ internal fun CodeChangesPanel(
     val palette = AiModuleTheme.colors
     val sorted = remember(draftPaths) { draftPaths.sorted() }
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    // P3: sheet выезжает снизу при появлении (slide-up + fade). Закрытие — мгновенное (панель
-    // снимается на showChanges=false выше).
+    val sheetShape = RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp)
     var shown by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { shown = true }
 
     Column(Modifier.fillMaxSize()) {
-        // Зона над sheet'ом = видимое дерево; тап по ней закрывает панель (dismiss). Без скрима, чтобы
-        // дерево оставалось читаемым (решение: «видно и дерево, и изменения»).
+        // Зона над sheet'ом = видимое дерево; тап по ней закрывает панель (dismiss). Без скрима.
         Box(
             Modifier
                 .fillMaxWidth()
@@ -93,55 +90,29 @@ internal fun CodeChangesPanel(
                 Modifier
                     .fillMaxWidth()
                     .padding(bottom = RepoBottomBarReservedHeight + navBottom) // над плавающим bottom-bar
-                    .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
-                    .background(palette.surfaceElevated),
+                    .clip(sheetShape)
+                    .background(palette.surface)
+                    .border(1.dp, palette.border.copy(alpha = 0.65f), sheetShape),
             ) {
-                // drag-handle
-                Box(Modifier.fillMaxWidth().padding(top = 10.dp), contentAlignment = Alignment.Center) {
-                    Box(
-                        Modifier
-                            .width(36.dp)
-                            .height(4.dp)
-                            .clip(RoundedCornerShape(percent = 50))
-                            .background(palette.border.copy(alpha = 0.5f)),
-                    )
-                }
-                // header: «changes» + чип-счётчик | commit-pill
+                // header: «changes (N)» mono | commit (бордерный GitHubTerminalButton)
                 Row(
-                    Modifier.fillMaxWidth().padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 10.dp),
+                    Modifier.fillMaxWidth().padding(start = 14.dp, end = 12.dp, top = 12.dp, bottom = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    AiModuleText("changes", color = palette.textPrimary, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                    Spacer(Modifier.width(8.dp))
-                    Box(
-                        Modifier.clip(RoundedCornerShape(percent = 50)).background(palette.warning.copy(alpha = 0.16f)).padding(horizontal = 8.dp, vertical = 2.dp),
-                    ) {
-                        AiModuleText("${sorted.size}", color = palette.warning, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                    }
+                    AiModuleText("changes (${sorted.size})", color = palette.textPrimary, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     Spacer(Modifier.weight(1f))
                     if (sorted.isNotEmpty()) {
-                        Row(
-                            Modifier
-                                .clip(RoundedCornerShape(percent = 50))
-                                .background(palette.accent.copy(alpha = 0.14f))
-                                .clickable(onClick = onCommit)
-                                .padding(horizontal = 14.dp, vertical = 7.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(14.dp), tint = palette.accent)
-                            Spacer(Modifier.width(5.dp))
-                            AiModuleText("commit", color = palette.accent, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                        }
+                        GitHubTerminalButton(label = "commit", onClick = onCommit, color = palette.accent)
                     }
                 }
                 Box(Modifier.fillMaxWidth().height(1.dp).background(palette.border.copy(alpha = 0.12f)))
                 if (sorted.isEmpty()) {
                     Column(
-                        Modifier.fillMaxWidth().padding(vertical = 36.dp),
+                        Modifier.fillMaxWidth().padding(vertical = 32.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(22.dp), tint = palette.textMuted)
+                        AiModuleText("·", color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 22.sp)
                         AiModuleText("no changes", color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 13.sp)
                     }
                 } else {
@@ -166,16 +137,12 @@ private fun CodeChangeRow(path: String, onOpen: () -> Unit, onDiscard: () -> Uni
     val name = path.substringAfterLast('/')
     val dir = path.substringBeforeLast('/', "")
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(horizontal = 16.dp, vertical = 10.dp),
+        Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Чип типа изменения: M (modified) — amber/warning. Будущие A (green) / D (error) — по типу.
-        Box(
-            Modifier.clip(RoundedCornerShape(6.dp)).background(palette.warning.copy(alpha = 0.16f)).padding(horizontal = 6.dp, vertical = 2.dp),
-        ) {
-            AiModuleText("M", color = palette.warning, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 11.sp)
-        }
-        Spacer(Modifier.width(12.dp))
+        // mono-маркер типа изменения: M (modified) — amber/warning. Будущие A (green) / D (error).
+        AiModuleText("M", color = palette.warning, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.width(16.dp))
+        Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
             AiModuleText(name, color = palette.textPrimary, fontFamily = JetBrainsMono, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (dir.isNotEmpty()) {
