@@ -34,7 +34,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Brush
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -984,8 +985,10 @@ internal fun RepoDetailScreen(
     val palette = AiModuleTheme.colors
     // Нижний инсет = высота glass bottom-bar + системный nav-инсет, чтобы низ контента не перекрывался.
     val contentBottomInset = RepoBottomBarReservedHeight + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    // haze: контент — backdrop-источник, бар блюрит его под собой (frosted glass, telegram-style).
+    val hazeState = rememberHazeState()
     Box(Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize().background(palette.background).padding(bottom = contentBottomInset - RepoBottomBarFadeHeight)) {
+        Column(Modifier.fillMaxSize().background(palette.background).hazeSource(hazeState)) {
         GitHubPageBar(
             title = "> ${repo.name}",
             subtitle = if (currentPath.isNotBlank()) "${repo.fullName} \u00B7 $currentPath" else repo.fullName,
@@ -1405,18 +1408,10 @@ internal fun RepoDetailScreen(
         // Bottom-bar (items/topRowSections определены вверху). Подсветка — по совпадению секции айтема с
         // selectedSection (null-лендинг → activeKey="" → ничего не подсвечено). Диспатч в единый selectedSection.
         val activeBarKey = bottomBarItems.firstOrNull { it.section != null && it.section == nav.selectedSection }?.key ?: ""
-        // Telegram-style мягкий fade: контент плавно растворяется в фон у бара (не выше бара), сам бар
-        // без подложки/тени. Градиент Transparent→background перекрывает нижний край контента.
-        Box(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .height(contentBottomInset)
-                .background(Brush.verticalGradient(listOf(Color.Transparent, palette.background))),
-        )
         RepoBottomBar(
             items = bottomBarItems,
             activeKey = activeBarKey,
+            hazeState = hazeState,
             onSelect = { item ->
                 repoQuery = ""
                 if (item.key == "settings") showRepoSettings = true

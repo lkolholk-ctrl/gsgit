@@ -31,6 +31,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import gs.git.vps.ui.components.AiModuleText
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeEffect
 import gs.git.vps.ui.theme.AiModuleTheme
 import gs.git.vps.ui.theme.JetBrainsMono
 
@@ -50,8 +53,6 @@ import gs.git.vps.ui.theme.JetBrainsMono
 internal val RepoBottomBarHeight = 60.dp
 private val RepoBottomBarMargin = 12.dp
 internal val RepoBottomBarReservedHeight = RepoBottomBarHeight + RepoBottomBarMargin * 2
-/** Высота мягкого fade-перехода контента в фон у бара (telegram-style «замыленность», не выше бара). */
-internal val RepoBottomBarFadeHeight = 28.dp
 
 internal data class RepoBottomBarItem(
     val key: String,
@@ -66,6 +67,7 @@ internal data class RepoBottomBarItem(
 internal fun RepoBottomBar(
     items: List<RepoBottomBarItem>,
     activeKey: String,
+    hazeState: HazeState,
     onSelect: (RepoBottomBarItem) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -82,7 +84,13 @@ internal fun RepoBottomBar(
                 .fillMaxWidth()
                 .height(RepoBottomBarHeight)
                 .clip(pillShape)
-                .background(palette.surface)
+                // Frosted-glass: блюрим контент под баром (haze). Только blur + полупрозрачный
+                // surface-tint, без noise/refraction. На Android <12 — мягкий фолбэк (см. haze).
+                .hazeEffect(state = hazeState) {
+                    blurRadius = 24.dp
+                    tints = listOf(HazeTint(palette.surface.copy(alpha = 0.5f)))
+                    noiseFactor = 0f
+                }
                 .border(1.dp, palette.border.copy(alpha = 0.45f), pillShape)
                 .padding(horizontal = 6.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
