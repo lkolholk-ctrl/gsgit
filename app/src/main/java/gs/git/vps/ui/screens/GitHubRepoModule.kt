@@ -1467,6 +1467,7 @@ internal fun RepoDetailScreen(
     if (showCodeCommitSheet) {
         CodeCommitSheet(
             fileCount = codeDraft.size,
+            paths = codeDraft.keys,
             branch = selectedBranch,
             committing = codeCommitting,
             onCommit = { msg ->

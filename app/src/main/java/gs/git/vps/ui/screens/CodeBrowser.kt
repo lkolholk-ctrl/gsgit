@@ -256,7 +256,8 @@ private fun CodeEntryRow(item: GHContent, dirty: Boolean, onClick: () -> Unit) {
             overflow = TextOverflow.Ellipsis,
         )
         if (dirty) {
-            Box(Modifier.size(7.dp).clip(CircleShape).background(palette.accent))
+            // Грязный маркер = «modified» (amber/warning), консистентно с «M» в панели изменений.
+            Box(Modifier.size(7.dp).clip(CircleShape).background(palette.warning))
             Spacer(Modifier.width(10.dp))
         }
         if (item.type != "dir" && item.size > 0) {

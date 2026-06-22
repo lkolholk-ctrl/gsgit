@@ -1,7 +1,10 @@
 package gs.git.vps.ui.screens
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import gs.git.vps.data.github.model.GHContent
 import gs.git.vps.data.github.model.GHRepo
 
@@ -30,15 +33,10 @@ internal fun CodeTabShell(
 ) {
     BackHandler(enabled = true) { onBack() }
 
-    if (showChanges) {
-        CodeChangesPanel(
-            draftPaths = draftPaths,
-            onOpenPath = onOpenPath,
-            onDiscardPath = onDiscardFile,
-            onCommit = onCommit,
-            onBack = onBack,
-        )
-    } else {
+    // Браузер виден всегда; панель «изменения» — bottom-sheet ПОВЕРХ дерева (VS Code SCM-вид),
+    // а не подмена экрана: видно и дерево, и изменения. onBack/тап-снаружи закрывают панель
+    // (codeInternalBack: панель → дерево → вверх по пути → выход).
+    Box(Modifier.fillMaxSize()) {
         CodeBrowser(
             repo = repo,
             branch = branch,
@@ -53,5 +51,14 @@ internal fun CodeTabShell(
             onShowChanges = onShowChanges,
             onDiscardAll = onDiscardAll,
         )
+        if (showChanges) {
+            CodeChangesPanel(
+                draftPaths = draftPaths,
+                onOpenPath = onOpenPath,
+                onDiscardPath = onDiscardFile,
+                onCommit = onCommit,
+                onBack = onBack,
+            )
+        }
     }
 }
