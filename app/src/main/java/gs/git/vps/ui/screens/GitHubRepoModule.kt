@@ -266,6 +266,7 @@ internal fun RepoDetailScreen(
     }
     var showCodeCommitSheet by remember { mutableStateOf(false) }
     var codeCommitting by remember { mutableStateOf(false) }
+    var showCodeDiscardAllDialog by remember { mutableStateOf(false) }
     // Code-таб: недавно открытые файлы (most-recent-first, для строки «recent»). Скоуп репо.
     val codeRecents = remember(repo.fullName) { mutableStateListOf<GHContent>() }
     // Внутренняя навигация Code поднята СЮДА, чтобы и жест-назад (BackHandler в CodeTabShell), и
@@ -1417,7 +1418,7 @@ internal fun RepoDetailScreen(
                 onOpenPath = { path -> openCodeFile(GHContent(path.substringAfterLast('/'), path, "file", 0L, "", "")) },
                 onCommit = { showCodeCommitSheet = true },
                 onDiscardFile = { codeDraft.remove(it); persistCodeDraft() },
-                onDiscardAll = { codeDraft.clear(); persistCodeDraft() },
+                onDiscardAll = { showCodeDiscardAllDialog = true },
                 onBack = { codeInternalBack() },
             )
         }
@@ -1506,6 +1507,31 @@ internal fun RepoDetailScreen(
                 }
             },
             onDismiss = { if (!codeCommitting) showCodeCommitSheet = false },
+        )
+    }
+    if (showCodeDiscardAllDialog) {
+        val n = codeDraft.size
+        AiModuleAlertDialog(
+            onDismissRequest = { showCodeDiscardAllDialog = false },
+            title = "discard all changes?",
+            confirmButton = {
+                GitHubTerminalButton(
+                    label = "discard $n",
+                    onClick = { codeDraft.clear(); persistCodeDraft(); showCodeDiscardAllDialog = false },
+                    color = palette.error,
+                )
+            },
+            dismissButton = {
+                GitHubTerminalButton(label = "cancel", onClick = { showCodeDiscardAllDialog = false }, color = palette.textSecondary)
+            },
+            content = {
+                AiModuleText(
+                    "Discard all $n uncommitted ${if (n == 1) "file" else "files"}? This can't be undone.",
+                    color = palette.textSecondary,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 12.sp,
+                )
+            },
         )
     }
     }

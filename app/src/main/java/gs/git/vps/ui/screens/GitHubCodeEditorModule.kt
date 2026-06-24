@@ -65,6 +65,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.rounded.Send
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -85,6 +87,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextRange
@@ -260,6 +265,23 @@ fun CodeEditorScreen(
     val text = textState.text
     val lines = remember(text) { text.lines() }
     val hasChanges = text != savedContent
+    // Авто-сейв черновика при уходе в фон (ON_STOP) — правки не теряются при смерти процесса.
+    // Спека: «авто-сохраняется молча на уход в фон». Только когда есть onSaveDraft (Code-таб draft-режим).
+    if (onSaveDraft != null) {
+        val lifecycleOwner = LocalLifecycleOwner.current
+        val latestText by rememberUpdatedState(text)
+        val latestPath by rememberUpdatedState(currentFile.path)
+        val latestHasChanges by rememberUpdatedState(hasChanges)
+        DisposableEffect(lifecycleOwner) {
+            val obs = LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_STOP && latestHasChanges) {
+                    onSaveDraft(latestPath, latestText)
+                }
+            }
+            lifecycleOwner.lifecycle.addObserver(obs)
+            onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
+        }
+    }
     val commentPrefix = remember(ext) { commentPrefixForExtension(ext) }
     val currentLine = remember(textState.selection, text) {
         text.take(textState.selection.start.coerceIn(0, text.length)).count { it == '\n' } + 1
