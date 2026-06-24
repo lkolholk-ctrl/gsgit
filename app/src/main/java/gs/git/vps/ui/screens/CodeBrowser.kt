@@ -109,6 +109,7 @@ internal fun CodeBrowser(
     var loading by remember { mutableStateOf(true) }
     var failed by remember { mutableStateOf(false) }
     var reloadNonce by remember { mutableIntStateOf(0) }
+    var query by remember(path) { mutableStateOf("") }   // фильтр файлов, сброс при смене папки
 
     LaunchedEffect(repo.fullName, branch, path, reloadNonce) {
         loading = true; failed = false
@@ -159,13 +160,23 @@ internal fun CodeBrowser(
                 }
             }
             items.isEmpty() -> GitHubMonoEmpty(title = "empty directory")
-            else -> LazyColumn(Modifier.fillMaxSize()) {
-                items(items, key = { it.path }) { item ->
-                    CodeEntryRow(
-                        item = item,
-                        dirty = if (item.type == "dir") draftPaths.any { it.startsWith(item.path + "/") } else item.path in draftPaths,
-                        onClick = { if (item.type == "dir") onOpenDir(item) else onOpenFile(item) },
-                    )
+            else -> {
+                val shown = if (query.isBlank()) items else items.filter { it.name.contains(query, ignoreCase = true) }
+                Column(Modifier.fillMaxSize()) {
+                    if (items.size > 8) CodeBrowserFilter(query = query, onChange = { query = it })
+                    if (shown.isEmpty()) {
+                        GitHubMonoEmpty(title = "no matches")
+                    } else {
+                        LazyColumn(Modifier.fillMaxSize()) {
+                            items(shown, key = { it.path }) { item ->
+                                CodeEntryRow(
+                                    item = item,
+                                    dirty = if (item.type == "dir") draftPaths.any { it.startsWith(item.path + "/") } else item.path in draftPaths,
+                                    onClick = { if (item.type == "dir") onOpenDir(item) else onOpenFile(item) },
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -278,3 +289,31 @@ private fun formatCodeSize(bytes: Long): String = when {
     bytes >= 1024 -> "${bytes / 1024} KB"
     else -> "$bytes B"
 }
+
+/** Фильтр файлов (показывается при > 8 элементов) — канонное терминальное текст-поле. */
+@Composable
+private fun CodeBrowserFilter(query: String, onChange: (String) -> Unit) {
+    GitHubTerminalTextField(
+        value = query,
+        onValueChange = onChange,
+        placeholder = "filter files",
+        singleLine = true,
+        minHeight = 38.dp,
+        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+    )
+}
+
+/**
+ * Расширения, которые НЕ открываем в текст-редакторе (бинарники/медиа/шрифты/архивы) — иначе мусор.
+ * Гард S5: openCodeFile проверяет это перед открытием. internal — зовётся из RepoModule.
+ */
+private val CODE_BINARY_EXTS = setOf(
+    "png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "tiff", "heic", "psd", "ai", "sketch", "fig",
+    "pdf", "zip", "tar", "gz", "tgz", "bz2", "xz", "7z", "rar", "jar", "apk", "aab", "war", "aar",
+    "exe", "dll", "so", "o", "a", "class", "dex", "bin", "dat", "db", "sqlite", "realm", "lock",
+    "mp3", "wav", "flac", "ogg", "m4a", "aac", "opus", "mp4", "mkv", "mov", "avi", "webm", "m4v",
+    "ttf", "otf", "woff", "woff2", "eot", "glb", "gltf", "obj", "fbx", "blend", "wasm",
+)
+
+internal fun isLikelyBinaryFile(name: String): Boolean =
+    name.substringAfterLast('.', "").lowercase() in CODE_BINARY_EXTS

@@ -266,6 +266,7 @@ internal fun RepoDetailScreen(
     }
     var showCodeCommitSheet by remember { mutableStateOf(false) }
     var codeCommitting by remember { mutableStateOf(false) }
+    var codeCommitConflict by remember { mutableStateOf(false) }
     var showCodeDiscardAllDialog by remember { mutableStateOf(false) }
     // Code-таб: недавно открытые файлы (most-recent-first, для строки «recent»). Скоуп репо.
     val codeRecents = remember(repo.fullName) { mutableStateListOf<GHContent>() }
@@ -282,6 +283,10 @@ internal fun RepoDetailScreen(
     }
     // Открыть файл в Code-редакторе (из браузера/недавних/панели изменений): recents + draft-aware фетч.
     fun openCodeFile(f: GHContent) {
+        if (isLikelyBinaryFile(f.name)) {
+            Toast.makeText(context, "binary file — can't open in editor", Toast.LENGTH_SHORT).show()
+            return
+        }
         codeRecents.removeAll { it.path == f.path }
         codeRecents.add(0, f)
         while (codeRecents.size > 8) codeRecents.removeAt(codeRecents.lastIndex)
@@ -1487,8 +1492,10 @@ internal fun RepoDetailScreen(
             paths = codeDraft.keys,
             branch = selectedBranch,
             committing = codeCommitting,
+            conflict = codeCommitConflict,
             onCommit = { msg ->
                 codeCommitting = true
+                codeCommitConflict = false
                 scope.launch {
                     val res = GitHubManager.commitCodeDraft(context, repo.owner, repo.name, selectedBranch, msg, codeDraft.toMap())
                     codeCommitting = false
@@ -1499,14 +1506,13 @@ internal fun RepoDetailScreen(
                             showCodeCommitSheet = false
                             Toast.makeText(context, "committed", Toast.LENGTH_SHORT).show()
                         }
-                        is CodeCommitResult.Conflict ->
-                            Toast.makeText(context, "branch moved — retry", Toast.LENGTH_LONG).show()
+                        is CodeCommitResult.Conflict -> codeCommitConflict = true  // sheet остаётся, кнопка → «retry»
                         is CodeCommitResult.Error ->
                             Toast.makeText(context, "commit error: ${res.message}", Toast.LENGTH_LONG).show()
                     }
                 }
             },
-            onDismiss = { if (!codeCommitting) showCodeCommitSheet = false },
+            onDismiss = { if (!codeCommitting) { showCodeCommitSheet = false; codeCommitConflict = false } },
         )
     }
     if (showCodeDiscardAllDialog) {

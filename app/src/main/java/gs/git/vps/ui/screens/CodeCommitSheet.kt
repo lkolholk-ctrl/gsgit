@@ -39,6 +39,7 @@ internal fun CodeCommitSheet(
     paths: Set<String>,
     branch: String,
     committing: Boolean,
+    conflict: Boolean = false,
     onCommit: (message: String) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -52,7 +53,7 @@ internal fun CodeCommitSheet(
         title = "commit $fileCount $plural",
         confirmButton = {
             AiModulePrimaryButton(
-                label = if (committing) "committing…" else "commit",
+                label = if (committing) "committing…" else if (conflict) "retry" else "commit",
                 enabled = !committing && message.isNotBlank(),
                 onClick = { onCommit(message.trim()) },
             )
@@ -62,6 +63,15 @@ internal fun CodeCommitSheet(
         },
         content = {
             Column {
+                if (conflict) {
+                    AiModuleText(
+                        "Branch moved on the server. Commit again to retry — no auto-merge.",
+                        color = palette.error,
+                        fontFamily = JetBrainsMono,
+                        fontSize = 12.sp,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
                 AiModuleText(
                     "One commit, $fileCount $plural → $branch.",
                     color = palette.textSecondary,
