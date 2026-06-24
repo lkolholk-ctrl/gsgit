@@ -263,6 +263,8 @@ internal fun RepoDetailScreen(
     LaunchedEffect(repo.fullName, selectedBranch) {
         val loaded = CodeDraftStore.load(context, repo.fullName, selectedBranch)
         codeDraft.clear(); codeDraft.putAll(loaded)
+        // S2: контент per-ветка — при смене ветки закрываем открытый редактор (не показываем стейл).
+        codeEditorFile = null; codeEditorContent = null
     }
     var showCodeCommitSheet by remember { mutableStateOf(false) }
     var codeCommitting by remember { mutableStateOf(false) }
@@ -270,6 +272,16 @@ internal fun RepoDetailScreen(
     var showCodeDiscardAllDialog by remember { mutableStateOf(false) }
     // Code-таб: недавно открытые файлы (most-recent-first, для строки «recent»). Скоуп репо.
     val codeRecents = remember(repo.fullName) { mutableStateListOf<GHContent>() }
+    // S4: восстановить недавние с диска (переживают рестарт процесса).
+    LaunchedEffect(repo.fullName) {
+        if (codeRecents.isEmpty()) {
+            codeRecents.addAll(
+                CodeDraftStore.loadRecents(context, repo.fullName).map {
+                    GHContent(it.substringAfterLast('/'), it, "file", 0L, "", "")
+                },
+            )
+        }
+    }
     // Внутренняя навигация Code поднята СЮДА, чтобы и жест-назад (BackHandler в CodeTabShell), и
     // верхняя стрелка топбара (handleRepoBack) шли через ОДИН обработчик — поведение идентично.
     var codePath by rememberSaveable(repo.fullName) { mutableStateOf("") }
@@ -290,6 +302,7 @@ internal fun RepoDetailScreen(
         codeRecents.removeAll { it.path == f.path }
         codeRecents.add(0, f)
         while (codeRecents.size > 8) codeRecents.removeAt(codeRecents.lastIndex)
+        CodeDraftStore.saveRecents(context, repo.fullName, codeRecents.map { it.path })  // S4: персист
         codeEditorFile = f
         val draft = codeDraft[f.path]
         if (draft != null) {

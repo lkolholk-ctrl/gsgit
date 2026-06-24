@@ -135,7 +135,7 @@ internal fun CodeBrowser(
                     Modifier.weight(1f).clickable(onClick = onShowChanges),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(Icons.Rounded.Edit, contentDescription = null, modifier = Modifier.size(14.dp), tint = palette.accent)
+                    Icon(Icons.Rounded.Edit, contentDescription = "view changes", modifier = Modifier.size(14.dp), tint = palette.accent)
                     Spacer(Modifier.width(8.dp))
                     AiModuleText(
                         "$draftCount ${if (draftCount == 1) "change" else "changes"}",
@@ -191,7 +191,7 @@ private fun CodeBreadcrumbs(path: String, branch: String, onNavigatePath: (Strin
         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Rounded.AccountTree, contentDescription = null, modifier = Modifier.size(13.dp), tint = palette.textMuted)
+        Icon(Icons.Rounded.AccountTree, contentDescription = "branch", modifier = Modifier.size(13.dp), tint = palette.textMuted)
         Spacer(Modifier.width(5.dp))
         AiModuleText(branch, color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 11.sp)
         AiModuleText("  ", color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 11.sp)

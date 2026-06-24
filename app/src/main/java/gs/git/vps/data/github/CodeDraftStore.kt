@@ -1,6 +1,7 @@
 package gs.git.vps.data.github
 
 import android.content.Context
+import org.json.JSONArray
 import org.json.JSONObject
 
 /**
@@ -44,6 +45,34 @@ object CodeDraftStore {
         }
         val j = JSONObject()
         for ((path, content) in draft) j.put(path, content)
-        prefs.edit().putString(k, j.toString()).apply()
+        val s = j.toString()
+        // S6: лимит, чтобы огромный черновик не раздувал SharedPreferences (грузится в память целиком).
+        // При превышении не персистим — in-memory черновик сессии остаётся рабочим.
+        if (s.length > MAX_PERSIST_CHARS) return
+        prefs.edit().putString(k, s).apply()
+    }
+
+    private const val MAX_PERSIST_CHARS = 4_000_000  // ~4 МБ JSON
+    private const val RECENTS_PREFS = "code_recents"
+    private const val RECENTS_MAX = 8
+
+    /** Загрузить недавно открытые файлы (пути, most-recent-first) для репо. */
+    fun loadRecents(context: Context, repoFullName: String): List<String> {
+        val raw = context.getSharedPreferences(RECENTS_PREFS, Context.MODE_PRIVATE)
+            .getString(repoFullName, null) ?: return emptyList()
+        return try {
+            val a = JSONArray(raw)
+            (0 until a.length()).map { a.getString(it) }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    /** Сохранить недавние (пути) для репо — переживает рестарт. */
+    fun saveRecents(context: Context, repoFullName: String, paths: List<String>) {
+        val a = JSONArray()
+        paths.take(RECENTS_MAX).forEach { a.put(it) }
+        context.getSharedPreferences(RECENTS_PREFS, Context.MODE_PRIVATE)
+            .edit().putString(repoFullName, a.toString()).apply()
     }
 }
