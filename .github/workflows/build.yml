@@ -9,6 +9,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -22,11 +24,21 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Build debug APK
-        run: ./gradlew assembleDebug --stacktrace
+      # Релизный keystore не хранится в репо. Если задан секрет RELEASE_KEYSTORE_BASE64 —
+      # восстанавливаем его, и сборка подписывается; иначе соберётся unsigned APK.
+      - name: Restore release keystore
+        if: env.RELEASE_KEYSTORE_BASE64 != ''
+        run: echo "$RELEASE_KEYSTORE_BASE64" | base64 -d > release.keystore
+
+      - name: Build release APK
+        run: ./gradlew assembleRelease --stacktrace
+        env:
+          ORG_GRADLE_PROJECT_GSGIT_RELEASE_STORE_PASSWORD: ${{ secrets.GSGIT_RELEASE_STORE_PASSWORD }}
+          ORG_GRADLE_PROJECT_GSGIT_RELEASE_KEY_ALIAS: ${{ secrets.GSGIT_RELEASE_KEY_ALIAS }}
+          ORG_GRADLE_PROJECT_GSGIT_RELEASE_KEY_PASSWORD: ${{ secrets.GSGIT_RELEASE_KEY_PASSWORD }}
 
       - uses: actions/upload-artifact@v4
         with:
-          name: gsgit-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          name: gsgit-release-apk
+          path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error

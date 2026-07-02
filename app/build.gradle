@@ -74,7 +74,11 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
-            signingConfig signingConfigs.release
+            // Подписываем только если keystore реально есть (локально или восстановлен из
+            // секрета на CI); иначе — unsigned-сборка вместо падения validateSigningRelease.
+            if (file('../release.keystore').exists()) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
