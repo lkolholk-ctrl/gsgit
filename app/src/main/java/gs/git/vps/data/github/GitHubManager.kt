@@ -53,14 +53,20 @@ object GitHubManager {
     internal const val KEY_USER = "user_json"
     private const val CODE_NOT_MODIFIED = 304
 
-    private val etagCache = mutableMapOf<String, Pair<String, Map<String, String>>>()
+    // LRU с потолком: тела ответов живут в памяти, без лимита кэш растёт бесконечно.
+    // Доступ только под synchronized(etagCache) — request() зовут конкурентные корутины.
+    private const val ETAG_CACHE_MAX_ENTRIES = 100
+    private val etagCache = object : LinkedHashMap<String, Pair<String, Map<String, String>>>(32, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Pair<String, Map<String, String>>>): Boolean =
+            size > ETAG_CACHE_MAX_ENTRIES
+    }
     @Volatile private var lastRateRemaining: Int = Int.MAX_VALUE
     @Volatile private var lastRateReset: Long = 0L
 
     fun getRateLimitRemaining(): Int = lastRateRemaining
     fun getRateLimitResetEpoch(): Long = lastRateReset
     fun isRateLimitLow(): Boolean = lastRateRemaining < 10
-    fun clearEtagCache() { etagCache.clear() }
+    fun clearEtagCache() { synchronized(etagCache) { etagCache.clear() } }
 
     data class TokenValidation(val valid: Boolean, val scopes: String, val login: String, val error: String)
 
@@ -143,7 +149,7 @@ object GitHubManager {
                 
                 val url = if (finalEndpoint.startsWith("http")) finalEndpoint else "${getApiUrl()}$finalEndpoint"
                 val cacheKey = "$method:$url"
-                val cachedEtag = if (method == "GET") etagCache[cacheKey]?.let { (_, h) -> h["etag"] } else null
+                val cachedEtag = if (method == "GET") synchronized(etagCache) { etagCache[cacheKey]?.second?.get("etag") } else null
                 
                 val proxyEnabled = prefs.getBoolean("network_proxy_enabled", false)
                 val proxyHost = prefs.getString("network_proxy_host", "") ?: ""
@@ -176,9 +182,11 @@ object GitHubManager {
                 val code = conn.responseCode
                 val headers = responseHeaders(conn)
 
-                if (code == CODE_NOT_MODIFIED && etagCache.containsKey(cacheKey)) {
-                    val (cachedBody, cachedHeaders) = etagCache[cacheKey]!!
-                    return@withContext ApiResult(true, cachedBody, CODE_NOT_MODIFIED, cachedHeaders)
+                if (code == CODE_NOT_MODIFIED) {
+                    val cached = synchronized(etagCache) { etagCache[cacheKey] }
+                    if (cached != null) {
+                        return@withContext ApiResult(true, cached.first, CODE_NOT_MODIFIED, cached.second)
+                    }
                 }
 
                 val stream = if (code in 200..299) conn.inputStream else conn.errorStream
@@ -188,7 +196,7 @@ object GitHubManager {
                 headers["x-ratelimit-reset"]?.toLongOrNull()?.let { lastRateReset = it }
 
                 if (code in 200..299 && method == "GET" && headers.containsKey("etag")) {
-                    etagCache[cacheKey] = text to headers
+                    synchronized(etagCache) { etagCache[cacheKey] = text to headers }
                 }
 
                 if (code == 403 && rateLimitRetries > 0 && headers["x-ratelimit-remaining"] == "0") {
@@ -210,7 +218,9 @@ object GitHubManager {
                 if (!result.success && trackErrors) recordApiError(context, endpoint, method, result)
                 result
             } catch (e: Exception) {
-                if (backoffRetries > 0) {
+                // Повторяем только сетевые сбои: не-IO исключения (битый URL, JSON и т.п.)
+                // детерминированы, retry их не вылечит.
+                if (e is IOException && backoffRetries > 0) {
                     val delayMs = (1000L * (4 - backoffRetries)).coerceIn(1000, 3000)
                     Log.w(TAG, "Network error: ${e.message}, retrying in ${delayMs}ms ($backoffRetries left)")
                     kotlinx.coroutines.delay(delayMs)
