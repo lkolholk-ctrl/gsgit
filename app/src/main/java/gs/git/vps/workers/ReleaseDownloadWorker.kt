@@ -4,8 +4,10 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.Environment
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
@@ -50,7 +52,13 @@ class ReleaseDownloadWorker(
 
         createNotificationChannel()
 
-        setForeground(createForegroundInfo(assetName, 0))
+        // Android 12+ запрещает старт FGS из фона (ForegroundServiceStartNotAllowedException) —
+        // в этом случае качаем обычным воркером с теми же notify()-уведомлениями, не падаем.
+        try {
+            setForeground(createForegroundInfo(assetName, 0))
+        } catch (e: Exception) {
+            Log.w("ReleaseDownload", "setForeground rejected, continuing as background worker: ${e.message}")
+        }
 
         val destFile = File(
             Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
@@ -79,7 +87,13 @@ class ReleaseDownloadWorker(
     }
 
     private fun createForegroundInfo(assetName: String, progress: Int): ForegroundInfo {
-        return ForegroundInfo(NOTIFICATION_ID, createNotification(assetName, progress))
+        val notification = createNotification(assetName, progress)
+        // Android 14+ требует явный тип FGS, совпадающий с foregroundServiceType из манифеста
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ForegroundInfo(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        } else {
+            ForegroundInfo(NOTIFICATION_ID, notification)
+        }
     }
 
     private fun createNotification(assetName: String, progress: Int): Notification {
