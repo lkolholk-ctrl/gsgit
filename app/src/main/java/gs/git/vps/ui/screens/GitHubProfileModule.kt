@@ -378,7 +378,6 @@ private fun ProfileHeader(profile: GHUserProfile, isSelf: Boolean) {
                     .clip(RoundedCornerShape(6.dp))
                     .background(palette.accent.copy(alpha = 0.1f))
                     .border(1.dp, palette.accent.copy(alpha = 0.3f), RoundedCornerShape(6.dp))
-                    .clickable { }
                     .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
                 Text("you", fontFamily = JetBrainsMono, fontSize = 10.sp, fontWeight = FontWeight.Medium, color = palette.accent)

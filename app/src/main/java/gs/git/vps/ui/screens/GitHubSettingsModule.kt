@@ -1338,6 +1338,8 @@ internal fun GitHubSettingsScreen(
                                                 .clickable {
                                                     cacheLimitMb = limit
                                                     prefs.edit().putInt("cache_limit_mb", limit).apply()
+                                                    BackupManager.enforceCacheLimit(context, limit)
+                                                    currentCacheSize = getCacheSize(context)
                                                     addLog("Cache limit set to ${limit}MB")
                                                 }
                                                 .padding(horizontal = 8.dp, vertical = 4.dp)

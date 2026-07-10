@@ -133,4 +133,27 @@ object BackupManager {
             }
         }
     }
+
+    /** Applies the cache and log retention settings at app startup. */
+    fun runMaintenance(context: Context) {
+        val prefs = context.getSharedPreferences("github_prefs", Context.MODE_PRIVATE)
+        if (prefs.getBoolean("auto_clean_logs", true)) {
+            autoCleanOldLogs(context)
+        }
+        enforceCacheLimit(context, prefs.getInt("cache_limit_mb", 100))
+    }
+
+    fun enforceCacheLimit(context: Context, limitMb: Int) {
+        val limitBytes = limitMb.coerceAtLeast(1).toLong() * 1024L * 1024L
+        val files = context.cacheDir.walkTopDown()
+            .filter { it.isFile }
+            .sortedBy { it.lastModified() }
+            .toList()
+        var totalBytes = files.sumOf { it.length() }
+        for (file in files) {
+            if (totalBytes <= limitBytes) break
+            val size = file.length()
+            if (file.delete()) totalBytes -= size
+        }
+    }
 }

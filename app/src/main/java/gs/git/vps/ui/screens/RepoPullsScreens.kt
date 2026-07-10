@@ -490,30 +490,87 @@ internal fun PullRequestDetailScreen(
                             Text(":${c.line}", fontSize = 11.sp, color = TextTertiary, fontFamily = JetBrainsMono)
                         }
                         Text(c.body, fontSize = 12.sp, color = TextPrimary, lineHeight = 16.sp)
+                        val rcContext = LocalContext.current
+                        val rcScope = rememberCoroutineScope()
+                        var rcReactions by remember { mutableStateOf<List<GHReaction>>(emptyList()) }
+                        var showReactionPicker by remember(c.id) { mutableStateOf(false) }
+                        var editingComment by remember(c.id) { mutableStateOf(false) }
+                        var editedBody by remember(c.id) { mutableStateOf(c.body) }
+                        LaunchedEffect(c.id) {
+                            rcReactions = GitHubManager.getPullRequestReviewCommentReactions(rcContext, repo.owner, repo.name, c.id)
+                        }
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            val rcContext = LocalContext.current
-                            val rcScope = rememberCoroutineScope()
-                            var rcReactions by remember { mutableStateOf<List<GHReaction>>(emptyList()) }
-                            LaunchedEffect(c.id) { rcReactions = GitHubManager.getPullRequestReviewCommentReactions(rcContext, repo.owner, repo.name, c.id) }
                             rcReactions.groupBy { it.content }.forEach { (emoji, reacts) ->
-                                AiModulePillButton(label = "$emoji ${reacts.size}", onClick = {}, accent = false)
+                                AiModulePillButton(label = "$emoji ${reacts.size}", onClick = {
+                                    rcScope.launch {
+                                        GitHubManager.addPullRequestReviewCommentReaction(rcContext, repo.owner, repo.name, c.id, emoji)
+                                        rcReactions = GitHubManager.getPullRequestReviewCommentReactions(rcContext, repo.owner, repo.name, c.id)
+                                    }
+                                }, accent = false)
                             }
                             AiModulePillButton(label = "+react", onClick = {
-                                rcScope.launch {
-                                    val emojis = listOf("+1", "-1", "laugh", "hooray", "rocket", "heart", "eyes")
-                                    val picked = emojis.first()
-                                    GitHubManager.addPullRequestReviewCommentReaction(rcContext, repo.owner, repo.name, c.id, picked)
-                                    rcReactions = GitHubManager.getPullRequestReviewCommentReactions(rcContext, repo.owner, repo.name, c.id)
-                                }
+                                showReactionPicker = !showReactionPicker
                             }, accent = true)
-                            AiModulePillButton(label = "edit", onClick = {
-                                rcScope.launch {
-                                    val newBody = c.body
-                                    if (newBody.isNotBlank()) {
-                                        GitHubManager.updatePullRequestReviewComment(rcContext, repo.owner, repo.name, c.id, newBody)
-                                    }
+                            if (c.author == GitHubManager.getCachedUser(rcContext)?.login) {
+                                AiModulePillButton(label = "edit", onClick = {
+                                    editedBody = c.body
+                                    editingComment = true
+                                })
+                            }
+                        }
+                        if (showReactionPicker) {
+                            Row(
+                                Modifier.horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                listOf("+1", "-1", "laugh", "hooray", "rocket", "heart", "eyes").forEach { emoji ->
+                                    AiModulePillButton(label = emoji, onClick = {
+                                        rcScope.launch {
+                                            GitHubManager.addPullRequestReviewCommentReaction(rcContext, repo.owner, repo.name, c.id, emoji)
+                                            rcReactions = GitHubManager.getPullRequestReviewCommentReactions(rcContext, repo.owner, repo.name, c.id)
+                                            showReactionPicker = false
+                                        }
+                                    }, accent = false)
                                 }
-                            })
+                            }
+                        }
+                        if (editingComment) {
+                            AiModuleAlertDialog(
+                                onDismissRequest = { editingComment = false },
+                                title = "Edit review comment",
+                                content = {
+                                    AiModuleTextField(
+                                        value = editedBody,
+                                        onValueChange = { editedBody = it },
+                                        label = "Comment",
+                                        minLines = 3,
+                                        maxLines = 8,
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                },
+                                confirmButton = {
+                                    AiModuleTextAction(label = "save", onClick = {
+                                        val nextBody = editedBody.trim()
+                                        if (nextBody.isBlank()) return@AiModuleTextAction
+                                        rcScope.launch {
+                                            val updated = GitHubManager.updatePullRequestReviewComment(
+                                                rcContext, repo.owner, repo.name, c.id, nextBody
+                                            )
+                                            if (updated) {
+                                                comments = comments.map { comment ->
+                                                    if (comment.id == c.id) comment.copy(body = nextBody) else comment
+                                                }
+                                                editingComment = false
+                                            } else {
+                                                Toast.makeText(rcContext, "Could not update review comment", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    })
+                                },
+                                dismissButton = {
+                                    AiModuleTextAction(label = Strings.cancel.lowercase(), onClick = { editingComment = false })
+                                },
+                            )
                         }
                     }
                 }
