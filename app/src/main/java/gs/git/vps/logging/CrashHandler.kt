@@ -1,7 +1,6 @@
 package gs.git.vps.logging
 
 import android.content.Context
-import android.os.Environment
 import android.os.Process
 import java.io.File
 import java.io.PrintWriter
@@ -29,12 +28,6 @@ object CrashHandler {
                 val internalDir = File(appContext.filesDir, "crash_logs").apply { mkdirs() }
                 File(internalDir, "java_crash_$ts.txt").writeText(text)
 
-                // 2. External Downloads/GsGit/ (user-accessible)
-                try {
-                    val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-                    val gsgitDir = File(downloadsDir, "GsGit").apply { mkdirs() }
-                    File(gsgitDir, "crash_$ts.txt").writeText(text)
-                } catch (_: Throwable) {}
             } catch (_: Throwable) {}
 
             Process.killProcess(Process.myPid())

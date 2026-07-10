@@ -1,10 +1,9 @@
 package gs.git.vps.security
 
 import android.content.Context
-import android.os.Environment
+import gs.git.vps.util.DownloadStorage
 import org.json.JSONObject
 import java.io.File
-import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.security.SecureRandom
 import javax.crypto.Cipher
@@ -20,10 +19,7 @@ object BackupManager {
     private const val KEY_LEN = 256
     private const val BACKUP_FILENAME = "gsgit-backup.enc"
 
-    fun getBackupFile(): File {
-        val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-        return File(downloadsDir, BACKUP_FILENAME)
-    }
+    fun getBackupFile(context: Context): File = DownloadStorage.file(context, BACKUP_FILENAME)
 
     fun createBackup(context: Context, password: CharArray): File {
         // Remove legacy plaintext PGP secrets before serialising github_prefs.
@@ -67,7 +63,7 @@ object BackupManager {
         System.arraycopy(ciphertext, 0, result, salt.size + iv.size, ciphertext.size)
 
         // 3. Save to file
-        val file = getBackupFile()
+        val file = getBackupFile(context)
         FileOutputStream(file).use { fos ->
             fos.write(result)
         }
@@ -75,14 +71,11 @@ object BackupManager {
     }
 
     fun restoreBackup(context: Context, password: CharArray): Boolean {
-        val file = getBackupFile()
+        val file = getBackupFile(context)
         if (!file.exists()) return false
 
         // 1. Read file
-        val bytes = ByteArray(file.length().toInt())
-        FileInputStream(file).use { fis ->
-            fis.read(bytes)
-        }
+        val bytes = file.inputStream().use { it.readBytes() }
 
         if (bytes.size < SALT_LEN + IV_LEN) return false
 

@@ -5,13 +5,16 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
+import androidx.core.content.ContextCompat
 import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import gs.git.vps.MainActivity
 import gs.git.vps.data.github.*
 import gs.git.vps.data.github.GitHubManager
+import gs.git.vps.data.github.model.GHNotification
 
 class NotificationSyncWorker(
     appContext: Context,
@@ -21,12 +24,18 @@ class NotificationSyncWorker(
     companion object {
         const val CHANNEL_ID = "github_sync_channel"
         const val NOTIFICATION_ID = 9500
+        private const val KEY_LAST_NOTIFIED_SIGNATURE = "last_notified_signature"
 
         fun schedule(context: Context, intervalMins: Int) {
             try {
                 val workManager = androidx.work.WorkManager.getInstance(context)
+                val wifiOnly = context.getSharedPreferences("github_prefs", Context.MODE_PRIVATE)
+                    .getBoolean("sync_wifi_only", false)
                 val constraints = androidx.work.Constraints.Builder()
-                    .setRequiredNetworkType(androidx.work.NetworkType.CONNECTED)
+                    .setRequiredNetworkType(
+                        if (wifiOnly) androidx.work.NetworkType.UNMETERED
+                        else androidx.work.NetworkType.CONNECTED
+                    )
                     .build()
 
                 val syncRequest = androidx.work.PeriodicWorkRequestBuilder<NotificationSyncWorker>(
@@ -60,15 +69,6 @@ class NotificationSyncWorker(
         val enabled = prefs.getBoolean("sync_background_enabled", false)
         if (!enabled) return Result.success()
 
-        val wifiOnly = prefs.getBoolean("sync_wifi_only", false)
-        if (wifiOnly) {
-            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
-            val activeNetwork = cm?.activeNetwork
-            val capabilities = cm?.getNetworkCapabilities(activeNetwork)
-            val isWifi = capabilities?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) == true
-            if (!isWifi) return Result.success()
-        }
-
         if (!GitHubManager.isLoggedIn(context)) return Result.success()
 
         val notifications = try {
@@ -78,16 +78,25 @@ class NotificationSyncWorker(
         }
 
         if (notifications.isNotEmpty()) {
-            val count = notifications.size
-            showNotification(count, notifications.first().repoName, notifications.first().title)
+            val signature = notifications
+                .sortedBy { it.id }
+                .joinToString("|") { "${it.id}:${it.updatedAt}" }
+            if (signature != prefs.getString(KEY_LAST_NOTIFIED_SIGNATURE, "")) {
+                if (showNotification(notifications)) {
+                    prefs.edit().putString(KEY_LAST_NOTIFIED_SIGNATURE, signature).apply()
+                }
+            }
         }
 
         return Result.success()
     }
 
-    private fun showNotification(count: Int, repoName: String, latestTitle: String) {
+    private fun showNotification(notifications: List<GHNotification>): Boolean {
         val context = applicationContext
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) return false
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
@@ -98,24 +107,28 @@ class NotificationSyncWorker(
             notificationManager.createNotificationChannel(channel)
         }
 
+        val latest = notifications.first()
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            data = latest.htmlUrl.takeIf { it.isNotBlank() }?.let(Uri::parse)
         }
         val pendingIntent = PendingIntent.getActivity(
             context,
-            0,
+            latest.id.hashCode(),
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setContentTitle("New GitHub Notifications ($count)")
-            .setContentText("Latest from $repoName: $latestTitle")
+            .setContentTitle("New GitHub Notifications (${notifications.size})")
+            .setContentText("Latest from ${latest.repoName}: ${latest.title}")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setAutoCancel(true)
+            .setOnlyAlertOnce(true)
             .setContentIntent(pendingIntent)
             .build()
 
         notificationManager.notify(NOTIFICATION_ID, notification)
+        return true
     }
 }

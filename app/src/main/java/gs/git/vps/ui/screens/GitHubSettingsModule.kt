@@ -1,7 +1,13 @@
 package gs.git.vps.ui.screens
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -154,6 +160,13 @@ internal fun GitHubSettingsScreen(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (!granted) {
+            Toast.makeText(context, "Notifications are disabled; background sync will run silently", Toast.LENGTH_LONG).show()
+        }
+    }
 
     var user by remember { mutableStateOf<GHUser?>(GitHubManager.getCachedUser(context)) }
     var currentSection by remember { mutableStateOf<SettingsSection?>(null) }
@@ -1286,7 +1299,7 @@ internal fun GitHubSettingsScreen(
                                 showExportPasswordDialog = true
                             }
                             ActionRow(Icons.Rounded.Restore, "Import backup from downloads") {
-                                if (BackupManager.getBackupFile().exists()) {
+                                if (BackupManager.getBackupFile(context).exists()) {
                                     showImportPasswordDialog = true
                                 } else {
                                     Toast.makeText(context, "Backup file not found in Downloads folder.", Toast.LENGTH_LONG).show()
@@ -1636,6 +1649,11 @@ internal fun GitHubSettingsScreen(
                                 prefs.edit().putBoolean("sync_background_enabled", it).apply()
                                 if (it) {
                                     NotificationSyncWorker.schedule(context, syncIntervalMins)
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                                        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                                    ) {
+                                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                    }
                                 } else {
                                     NotificationSyncWorker.cancel(context)
                                 }
@@ -1649,6 +1667,9 @@ internal fun GitHubSettingsScreen(
                             ) {
                                 syncWifiOnly = it
                                 prefs.edit().putBoolean("sync_wifi_only", it).apply()
+                                if (syncBackgroundEnabled) {
+                                    NotificationSyncWorker.schedule(context, syncIntervalMins)
+                                }
                                 addLog("Sync Wi-Fi only limit ${if (it) "enabled" else "disabled"}")
                             }
                             

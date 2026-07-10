@@ -93,6 +93,7 @@ import androidx.compose.material3.MenuDefaults
 import coil.compose.AsyncImage
 import gs.git.vps.R
 import gs.git.vps.data.Strings
+import gs.git.vps.util.DownloadStorage
 import gs.git.vps.data.github.*
 import gs.git.vps.data.github.model.GHActionSecret
 import gs.git.vps.data.github.model.GHActionVariable
@@ -282,7 +283,7 @@ private fun RepositoryArtifactsPanel(repo: GHRepo) {
                 onDownload = {
                     busyArtifact = artifact.id
                     scope.launch {
-                        val dest = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "GlassFiles_Git/${safeArtifactZipName(artifact)}")
+                        val dest = DownloadStorage.file(context, safeArtifactZipName(artifact))
                         val ok = GitHubManager.downloadArtifact(context, repo.owner, repo.name, artifact.id, dest)
                         Toast.makeText(context, if (ok) "${Strings.done}: ${dest.name}" else Strings.error, Toast.LENGTH_SHORT).show()
                         busyArtifact = null

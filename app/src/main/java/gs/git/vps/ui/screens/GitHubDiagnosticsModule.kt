@@ -2,6 +2,7 @@ package gs.git.vps.ui.screens
 
 import android.content.Context
 import gs.git.vps.security.NativeSecurity
+import gs.git.vps.util.DownloadStorage
 import android.os.Environment
 import android.widget.Toast
 import androidx.compose.foundation.background
@@ -455,10 +456,8 @@ private fun saveGitHubDiagnosticsExport(
     format: String,
 ): File? =
     try {
-        val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "GlassFiles_Git")
-        dir.mkdirs()
         val extension = if (format == "json") "json" else "txt"
-        val file = File(dir, "github_diagnostics_${githubDiagnosticsFileStamp(report.generatedAt)}.$extension")
+        val file = DownloadStorage.file(context, "github_diagnostics_${githubDiagnosticsFileStamp(report.generatedAt)}.$extension")
         val content = if (extension == "json") {
             githubDiagnosticsJson(report, errors).toString(2)
         } else {

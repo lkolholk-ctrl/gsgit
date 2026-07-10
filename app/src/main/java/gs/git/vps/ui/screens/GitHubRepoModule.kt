@@ -84,6 +84,7 @@ import coil.request.CachePolicy
 import coil.request.ImageRequest
 import androidx.compose.material.icons.outlined.Link
 import gs.git.vps.data.Strings
+import gs.git.vps.util.DownloadStorage
 import gs.git.vps.data.github.*
 import gs.git.vps.data.github.model.GHContributor
 import gs.git.vps.data.github.model.GHReaction
@@ -887,10 +888,7 @@ internal fun RepoDetailScreen(
                         glyph = GhGlyphs.DOWNLOAD,
                         onClick = {
                             scope.launch {
-                                val dest = File(
-                                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-                                    "GlassFiles_Git/${safeOpenedFile.name}"
-                                )
+                                val dest = DownloadStorage.file(context, safeOpenedFile.name)
                                 val ok = GitHubManager.downloadFile(
                                     context, repo.owner, repo.name, safeOpenedFile.path, dest, selectedBranch
                                 )
@@ -1090,7 +1088,7 @@ internal fun RepoDetailScreen(
                     GitHubTerminalButton("\u2193 download zip", {
                         cloneProgress = "starting"
                         scope.launch {
-                            val dest = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "GlassFiles_Git")
+                            val dest = DownloadStorage.directory(context)
                             val ok = GitHubManager.cloneRepo(context, repo.owner, repo.name, dest) { cloneProgress = it.lowercase() }
                             Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
                             cloneProgress = null
@@ -1366,7 +1364,7 @@ internal fun RepoDetailScreen(
                 onFileClick = { scope.launch { openedFile = it; fileContent = GitHubManager.getFileContent(context, repo.owner, repo.name, it.path, selectedBranch) } },
                 onEdit = { openedFile = null; fileContent = null; editingFile = it },
                 onDelete = { deleteTarget = it },
-                onDownload = { scope.launch { val dest = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "GlassFiles_Git/${it.name}"); val ok = GitHubManager.downloadFile(context, repo.owner, repo.name, it.path, dest, selectedBranch); Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show() } },
+                onDownload = { scope.launch { val dest = DownloadStorage.file(context, it.name); val ok = GitHubManager.downloadFile(context, repo.owner, repo.name, it.path, dest, selectedBranch); Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show() } },
                 onCopyPath = { item ->
                     val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                     cm.setPrimaryClip(android.content.ClipData.newPlainText("path", item.path))
@@ -1687,4 +1685,3 @@ fun Color.toHex(): String {
     val b = (blue * 255).toInt().coerceIn(0, 255)
     return String.format("#%02X%02X%02X", r, g, b)
 }
-

@@ -75,6 +75,7 @@ import coil.request.CachePolicy
 import coil.request.ImageRequest
 import androidx.compose.material.icons.outlined.Link
 import gs.git.vps.data.Strings
+import gs.git.vps.util.DownloadStorage
 import gs.git.vps.data.github.*
 import gs.git.vps.data.github.model.GHContributor
 import gs.git.vps.data.github.model.GHReaction
@@ -692,7 +693,7 @@ internal fun ReleasesTab(releases: List<GHRelease>, repo: GHRepo) { val context 
         if (r.assets.isNotEmpty()) {
             Spacer(Modifier.height(8.dp))
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                r.assets.forEach { a -> Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(colors.background).clickable { scope.launch { val dest = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "GlassFiles_Git/${a.name}"); GitHubManager.downloadFile(context, repo.owner, repo.name, a.downloadUrl, dest) } }.padding(9.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                r.assets.forEach { a -> Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(colors.background).clickable { scope.launch { val dest = DownloadStorage.file(context, a.name); GitHubManager.downloadFile(context, repo.owner, repo.name, a.downloadUrl, dest) } }.padding(9.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Icon(releaseAssetIcon(a.name), null, Modifier.size(24.dp), tint = colors.accent.copy(alpha = 0.72f)); Column(Modifier.weight(1f)) { Text(a.name, fontSize = 12.sp, color = colors.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis); Text("${ghFmtSize(a.size)} · ${formatGitHubNumber(a.downloadCount)} downloads", fontSize = 10.sp, color = colors.textMuted) }; Icon(Icons.Rounded.Download, null, Modifier.size(16.dp), tint = colors.textMuted) } }
             }
         }

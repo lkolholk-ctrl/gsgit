@@ -93,6 +93,8 @@ import androidx.compose.material3.MenuDefaults
 import coil.compose.AsyncImage
 import gs.git.vps.R
 import gs.git.vps.data.Strings
+import gs.git.vps.App
+import gs.git.vps.util.DownloadStorage
 import gs.git.vps.data.github.*
 import gs.git.vps.data.github.model.GHActionSecret
 import gs.git.vps.data.github.model.GHActionVariable
@@ -576,8 +578,7 @@ internal fun actionsFriendlyError(message: String?): String {
 internal fun safeLogFileName(job: GHJob): String =
     "job-${job.id}-${job.name.replace(Regex("""[\\/:*?"<>|]+"""), "_").trim().ifBlank { "log" }}"
 
-private fun actionsExportDir(): File =
-    File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "GlassFiles_Git")
+private fun actionsExportDir(): File = DownloadStorage.directory(App.instance)
 
 private fun actionsExportTimestamp(): String =
     SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(java.util.Date())
@@ -1117,4 +1118,3 @@ private val linuxPatterns = listOf("appimage", ".deb", ".rpm", "linux")
 private val ISO_FMT = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
     timeZone = TimeZone.getTimeZone("UTC")
 }
-

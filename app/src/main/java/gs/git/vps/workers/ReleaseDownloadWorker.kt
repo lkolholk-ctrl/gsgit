@@ -5,7 +5,6 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.os.Build
-import android.os.Environment
 import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
@@ -14,7 +13,7 @@ import androidx.work.workDataOf
 import gs.git.vps.data.github.*
 import gs.git.vps.data.github.GitHubManager
 import gs.git.vps.data.github.model.GHAsset
-import java.io.File
+import gs.git.vps.util.DownloadStorage
 
 class ReleaseDownloadWorker(
     appContext: Context,
@@ -39,6 +38,7 @@ class ReleaseDownloadWorker(
         val assetSize = inputData.getLong(KEY_ASSET_SIZE, 0L)
         val assetUrl = inputData.getString(KEY_ASSET_URL) ?: ""
         val assetId = inputData.getLong(KEY_ASSET_ID, 0L)
+        val notificationId = NOTIFICATION_ID + (assetId % 100_000L).toInt()
 
         val asset = GHAsset(
             name = assetName,
@@ -50,12 +50,9 @@ class ReleaseDownloadWorker(
 
         createNotificationChannel()
 
-        setForeground(createForegroundInfo(assetName, 0))
+        setForeground(createForegroundInfo(notificationId, assetName, 0))
 
-        val destFile = File(
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-            "GlassFiles_Git/$assetName"
-        )
+        val destFile = DownloadStorage.file(applicationContext, assetName)
 
         val success = GitHubManager.downloadReleaseAssetWithProgress(
             context = applicationContext,
@@ -64,22 +61,22 @@ class ReleaseDownloadWorker(
         ) { bytesDownloaded, totalBytes ->
             val progress = if (totalBytes > 0) ((bytesDownloaded * 100) / totalBytes).toInt() else 0
             notificationManager.notify(
-                NOTIFICATION_ID,
+                notificationId,
                 createNotification(assetName, progress)
             )
         }
 
         if (success) {
-            showCompletedNotification(assetName, destFile.absolutePath)
+            showCompletedNotification(notificationId, assetName)
             return Result.success(workDataOf("dest_path" to destFile.absolutePath))
         } else {
-            showFailedNotification(assetName)
+            showFailedNotification(notificationId, assetName)
             return Result.failure()
         }
     }
 
-    private fun createForegroundInfo(assetName: String, progress: Int): ForegroundInfo {
-        return ForegroundInfo(NOTIFICATION_ID, createNotification(assetName, progress))
+    private fun createForegroundInfo(notificationId: Int, assetName: String, progress: Int): ForegroundInfo {
+        return ForegroundInfo(notificationId, createNotification(assetName, progress))
     }
 
     private fun createNotification(assetName: String, progress: Int): Notification {
@@ -96,19 +93,19 @@ class ReleaseDownloadWorker(
             .build()
     }
 
-    private fun showCompletedNotification(assetName: String, path: String) {
+    private fun showCompletedNotification(notificationId: Int, assetName: String) {
         val title = "Download completed"
-        val text = "Saved $assetName to Downloads"
+        val text = "Saved $assetName to GsGit downloads"
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(text)
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
             .setAutoCancel(true)
             .build()
-        notificationManager.notify(NOTIFICATION_ID + 1, notification)
+        notificationManager.notify(notificationId + 1, notification)
     }
 
-    private fun showFailedNotification(assetName: String) {
+    private fun showFailedNotification(notificationId: Int, assetName: String) {
         val title = "Download failed"
         val text = "Could not download $assetName"
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
@@ -117,7 +114,7 @@ class ReleaseDownloadWorker(
             .setSmallIcon(android.R.drawable.stat_notify_error)
             .setAutoCancel(true)
             .build()
-        notificationManager.notify(NOTIFICATION_ID + 2, notification)
+        notificationManager.notify(notificationId + 2, notification)
     }
 
     private fun createNotificationChannel() {
