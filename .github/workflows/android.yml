@@ -8,8 +8,10 @@ permissions:
   contents: read
 
 jobs:
-  debug-build:
+  release-build:
     runs-on: ubuntu-latest
+    env:
+      RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -21,7 +23,17 @@ jobs:
       - uses: android-actions/setup-android@v3
       - name: Install Android SDK packages
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;26.3.11579264" "cmake;3.22.1"
-      - name: Build debug APK
-        run: ./gradlew --no-daemon :app:assembleDebug
-      - name: Run debug lint
-        run: ./gradlew --no-daemon :app:lintDebug
+      - name: Restore release keystore
+        if: env.RELEASE_KEYSTORE_BASE64 != ''
+        run: echo "$RELEASE_KEYSTORE_BASE64" | base64 --decode > release.keystore
+      - name: Build signed release APK
+        run: ./gradlew --no-daemon :app:assembleRelease --stacktrace
+        env:
+          ORG_GRADLE_PROJECT_GSGIT_RELEASE_STORE_PASSWORD: ${{ secrets.GSGIT_RELEASE_STORE_PASSWORD }}
+          ORG_GRADLE_PROJECT_GSGIT_RELEASE_KEY_ALIAS: ${{ secrets.GSGIT_RELEASE_KEY_ALIAS }}
+          ORG_GRADLE_PROJECT_GSGIT_RELEASE_KEY_PASSWORD: ${{ secrets.GSGIT_RELEASE_KEY_PASSWORD }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gsgit-release-apk
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error

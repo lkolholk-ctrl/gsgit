@@ -153,6 +153,8 @@ import org.json.JSONObject
 
 internal const val README_RENDER_TAG = "ReadmeRender"
 internal const val README_MAX_RENDER_BYTES = 500 * 1024
+internal const val README_FETCH_TIMEOUT_MS = 10_000L
+internal const val README_TOTAL_TIMEOUT_MS = 15_000L
 internal const val README_IMAGE_TIMEOUT_MS = 5_000L
 internal const val README_MAX_CODE_LINES = 1_000
 internal const val README_MAX_TABLE_ROWS = 50
