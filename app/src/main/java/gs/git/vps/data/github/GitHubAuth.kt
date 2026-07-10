@@ -55,7 +55,14 @@ object GitHubAuth {
 
     fun logout(context: Context) {
         TokenRepository(context).clearToken()
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
+        // `github_prefs` also contains app configuration, the local PIN and PGP settings.
+        // Logging out must only remove account-scoped data, never wipe the whole app state.
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .remove(KEY_TOKEN_ENC)
+            .remove(GitHubManager.KEY_USER)
+            .remove(KEY_API_ERRORS)
+            .apply()
     }
 
     fun getApiErrorLog(context: Context): List<GHApiErrorLogEntry> {

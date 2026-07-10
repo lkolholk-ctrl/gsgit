@@ -1,6 +1,9 @@
 package gs.git.vps.security
 
 import android.content.Context
+import android.content.SharedPreferences
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 import org.bouncycastle.bcpg.ArmoredInputStream
 import org.bouncycastle.bcpg.ArmoredOutputStream
 import org.bouncycastle.bcpg.HashAlgorithmTags
@@ -16,6 +19,7 @@ import java.util.Date
 
 object PgpKeyManager {
     private const val PREFS = "github_prefs"
+    private const val SECURE_PREFS = "gsgit_pgp_secrets"
     private const val KEY_PGP_PRIVATE = "pgp_private_key"
     private const val KEY_PGP_PUBLIC = "pgp_public_key"
     private const val KEY_PGP_USER_ID = "pgp_user_id"
@@ -44,8 +48,8 @@ object PgpKeyManager {
     }
 
     fun getPrivateKey(context: Context): String? {
-        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(KEY_PGP_PRIVATE, null)
+        migrateSecrets(context)
+        return securePrefs(context).getString(KEY_PGP_PRIVATE, null)
     }
 
     fun getUserId(context: Context): String? {
@@ -54,18 +58,56 @@ object PgpKeyManager {
     }
 
     fun getPassphrase(context: Context): String? {
-        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(KEY_PGP_PASSPHRASE, "")
+        migrateSecrets(context)
+        return securePrefs(context).getString(KEY_PGP_PASSPHRASE, "")
     }
 
     fun deleteKeys(context: Context) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
-            .remove(KEY_PGP_PRIVATE)
             .remove(KEY_PGP_PUBLIC)
             .remove(KEY_PGP_USER_ID)
+            .apply()
+        securePrefs(context).edit().clear().apply()
+    }
+
+    /**
+     * One-time migration for keys created by older versions, where the private
+     * key and its passphrase were kept in plaintext `github_prefs`.
+     */
+    fun migrateSecrets(context: Context) {
+        val legacy = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val privateKey = legacy.getString(KEY_PGP_PRIVATE, null)
+        val passphrase = legacy.getString(KEY_PGP_PASSPHRASE, null)
+        if (privateKey.isNullOrBlank() && passphrase == null) return
+
+        val secure = securePrefs(context)
+        val editor = secure.edit()
+        if (!privateKey.isNullOrBlank() && secure.getString(KEY_PGP_PRIVATE, null).isNullOrBlank()) {
+            editor.putString(KEY_PGP_PRIVATE, privateKey)
+        }
+        if (passphrase != null && secure.getString(KEY_PGP_PASSPHRASE, null) == null) {
+            editor.putString(KEY_PGP_PASSPHRASE, passphrase)
+        }
+        editor.apply()
+        legacy.edit()
+            .remove(KEY_PGP_PRIVATE)
             .remove(KEY_PGP_PASSPHRASE)
             .apply()
+    }
+
+    private fun securePrefs(context: Context): SharedPreferences {
+        val appContext = context.applicationContext
+        val masterKey = MasterKey.Builder(appContext)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
+        return EncryptedSharedPreferences.create(
+            appContext,
+            SECURE_PREFS,
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
     }
 
     fun generateKeyPair(context: Context, userId: String, passphraseStr: String): Boolean {
@@ -111,9 +153,11 @@ object PgpKeyManager {
 
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                 .edit()
-                .putString(KEY_PGP_PRIVATE, privateKeyArmored)
                 .putString(KEY_PGP_PUBLIC, publicKeyArmored)
                 .putString(KEY_PGP_USER_ID, userId)
+                .apply()
+            securePrefs(context).edit()
+                .putString(KEY_PGP_PRIVATE, privateKeyArmored)
                 .putString(KEY_PGP_PASSPHRASE, passphraseStr)
                 .apply()
             true

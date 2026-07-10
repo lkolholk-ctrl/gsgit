@@ -26,6 +26,9 @@ object BackupManager {
     }
 
     fun createBackup(context: Context, password: CharArray): File {
+        // Remove legacy plaintext PGP secrets before serialising github_prefs.
+        PgpKeyManager.migrateSecrets(context)
+
         // 1. Gather preferences to JSON
         val backupObj = JSONObject()
         val prefNames = listOf("github_prefs", "gsgit_theme_prefs", "gsgit_repo_tags", "github_actions_dispatch_inputs")
@@ -138,4 +141,3 @@ object BackupManager {
         }
     }
 }
-

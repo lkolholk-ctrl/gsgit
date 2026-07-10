@@ -1866,11 +1866,23 @@ internal fun GitHubSettingsScreen(
             content = { CompactField("Personal access token", newToken, password = true) { newToken = it } },
             confirmButton = {
                 AiModuleTextAction(label = Strings.done.lowercase(), onClick = {
-                    GitHubManager.saveToken(context, newToken.trim())
-                    addLog("Token updated")
-                    newToken = ""
-                    showChangeToken = false
-                    scope.launch { refreshSection(SettingsSection.DEVELOPER) }
+                    val candidate = newToken.trim()
+                    if (candidate.isBlank()) return@AiModuleTextAction
+                    scope.launch {
+                        val previousToken = GitHubManager.getToken(context)
+                        GitHubManager.saveToken(context, candidate)
+                        val updatedUser = GitHubManager.getUser(context)
+                        if (updatedUser != null) {
+                            user = updatedUser
+                            addLog("Token updated")
+                            newToken = ""
+                            showChangeToken = false
+                            refreshSection(SettingsSection.DEVELOPER)
+                        } else {
+                            GitHubManager.saveToken(context, previousToken)
+                            Toast.makeText(context, "Token validation failed; the previous token was kept", Toast.LENGTH_LONG).show()
+                        }
+                    }
                 })
             },
             dismissButton = {
@@ -1924,11 +1936,18 @@ internal fun GitHubSettingsScreen(
                             val result = GitHubManager.pollDeviceToken(deviceClientId.trim(), deviceCode!!.deviceCode)
                             devicePolling = false
                             if (result.token != null) {
+                                val previousToken = GitHubManager.getToken(context)
                                 GitHubManager.saveToken(context, result.token)
-                                showDeviceLogin = false
-                                deviceCode = null
-                                addLog("Logged in via device flow")
-                                onLogout(); // triggers re-login
+                                val updatedUser = GitHubManager.getUser(context)
+                                if (updatedUser != null) {
+                                    user = updatedUser
+                                    showDeviceLogin = false
+                                    deviceCode = null
+                                    addLog("Logged in via device flow")
+                                } else {
+                                    GitHubManager.saveToken(context, previousToken)
+                                    deviceError = "Device token validation failed; the previous token was kept"
+                                }
                             } else {
                                 deviceError = result.error ?: "pending"
                             }
@@ -2563,4 +2582,3 @@ private fun TerminalToggleIndicator(
             .padding(horizontal = 8.dp, vertical = 4.dp),
     )
 }
-

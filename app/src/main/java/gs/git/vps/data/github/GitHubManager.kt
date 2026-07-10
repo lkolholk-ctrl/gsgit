@@ -109,7 +109,12 @@ object GitHubManager {
     fun saveToken(context: Context, token: String) = GitHubAuth.saveToken(context, token)
     fun getToken(context: Context): String = GitHubAuth.getToken(context)
     fun isLoggedIn(context: Context): Boolean = GitHubAuth.isLoggedIn(context)
-    fun logout(context: Context) = GitHubAuth.logout(context)
+    fun logout(context: Context) {
+        GitHubAuth.logout(context)
+        clearEtagCache()
+        lastRateRemaining = Int.MAX_VALUE
+        lastRateReset = 0L
+    }
     fun getApiErrorLog(context: Context): List<GHApiErrorLogEntry> = GitHubAuth.getApiErrorLog(context)
     fun clearApiErrorLog(context: Context) = GitHubAuth.clearApiErrorLog(context)
 
@@ -418,4 +423,3 @@ data class GHRepoCreateParams(
     val templateOwner: String = "", val templateRepo: String = "",
     val includeAllBranches: Boolean = false
 )
-
