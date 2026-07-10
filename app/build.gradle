@@ -29,7 +29,13 @@ def resolveGitCommitCount = {
     return 1
 }
 
-def gsGitVersionCode = resolveGitCommitCount()
+def resolveVersionCode = {
+    def runNumber = System.getenv("GITHUB_RUN_NUMBER")?.trim()?.toInteger()
+    if (runNumber != null && runNumber > 0) return runNumber
+    return resolveGitCommitCount()
+}
+
+def gsGitVersionCode = resolveVersionCode()
 def gsGitVersionName = "1.0.${gsGitVersionCode}"
 
 
@@ -41,12 +47,6 @@ android {
     ndkVersion "26.3.11579264"
 
     signingConfigs {
-        debug {
-            storeFile file('../debug.keystore')
-            storePassword 'android'
-            keyAlias 'androiddebugkey'
-            keyPassword 'android'
-        }
         release {
             storeFile file('../release.keystore')
             storePassword providers.gradleProperty("GSGIT_RELEASE_STORE_PASSWORD").getOrElse("")
@@ -70,9 +70,6 @@ android {
     }
 
     buildTypes {
-        debug {
-            signingConfig signingConfigs.debug
-        }
         release {
             signingConfig signingConfigs.release
             minifyEnabled true
