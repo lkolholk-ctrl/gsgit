@@ -176,7 +176,14 @@ object GitHubManager {
                 if (!url.startsWith("https://", ignoreCase = true)) {
                     return@withContext ApiResult(false, "Only HTTPS API endpoints are allowed", -1)
                 }
-                val cacheKey = "$method:${token.hashCode()}:$url"
+                // GitHub returns different representations of the same URL
+                // depending on Accept (for example README JSON vs rendered HTML).
+                // ETags are representation-specific, so the header variant is
+                // part of the cache key as well.
+                val cacheVariant = extraHeaders.entries
+                    .sortedBy { it.key.lowercase(Locale.US) }
+                    .joinToString("&") { "${it.key.lowercase(Locale.US)}=${it.value}" }
+                val cacheKey = "$method:${token.hashCode()}:$url:$cacheVariant"
                 val cachedEtag = if (method == "GET") etagCache[cacheKey]?.let { (_, h) -> h["etag"] } else null
                 
                 val proxyEnabled = prefs.getBoolean("network_proxy_enabled", false)
