@@ -282,10 +282,23 @@ internal suspend fun askCopilot(
         throw java.io.IOException("GitHub Copilot token not found. Please log in to GitHub first.")
     }
 
+    val boundedMessages = buildList {
+        messages.firstOrNull { it.first == "system" }?.let { (role, content) ->
+            add(role to content.take(12_000))
+        }
+        messages.asReversed()
+            .asSequence()
+            .filter { it.first != "system" }
+            .take(24)
+            .toList()
+            .asReversed()
+            .forEach { (role, content) -> add(role to content.take(12_000)) }
+    }
+
     val requestBody = JSONObject().apply {
         put("model", copilotModel)
         put("messages", JSONArray().apply {
-            messages.forEach { (role, content) ->
+            boundedMessages.forEach { (role, content) ->
                 put(JSONObject().apply {
                     put("role", role)
                     put("content", content)
@@ -681,4 +694,3 @@ private fun extractCodeBlocks(text: String): List<String> {
     }
     return blocks
 }
-

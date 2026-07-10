@@ -1560,23 +1560,32 @@ internal fun GitHubSettingsScreen(
                                                     val success = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                                                         val url = URL("https://$routeHost/chat/completions")
                                                         val conn = url.openConnection() as HttpURLConnection
-                                                        conn.requestMethod = "POST"
-                                                        conn.setRequestProperty("Authorization", "Bearer $token")
-                                                        conn.setRequestProperty("Content-Type", "application/json")
-                                                        conn.setRequestProperty("User-Agent", "GitHubCopilotChat/0.11.0")
-                                                        conn.doOutput = true
-                                                        val requestBody = JSONObject().apply {
-                                                            put("model", copilotModel)
-                                                            put("messages", JSONArray().apply {
-                                                                put(JSONObject().apply {
-                                                                    put("role", "user")
-                                                                    put("content", "ping")
+                                                        try {
+                                                            conn.requestMethod = "POST"
+                                                            conn.connectTimeout = 15_000
+                                                            conn.readTimeout = 15_000
+                                                            conn.setRequestProperty("Authorization", "Bearer $token")
+                                                            conn.setRequestProperty("Content-Type", "application/json")
+                                                            conn.setRequestProperty("User-Agent", "GitHubCopilotChat/0.11.0")
+                                                            conn.doOutput = true
+                                                            val requestBody = JSONObject().apply {
+                                                                put("model", copilotModel)
+                                                                put("messages", JSONArray().apply {
+                                                                    put(JSONObject().apply {
+                                                                        put("role", "user")
+                                                                        put("content", "ping")
+                                                                    })
                                                                 })
-                                                            })
-                                                            put("max_tokens", 5)
-                                                        }.toString()
-                                                        conn.outputStream.use { it.write(requestBody.toByteArray()) }
-                                                        conn.responseCode in 200..299
+                                                                put("max_tokens", 5)
+                                                            }.toString()
+                                                            conn.outputStream.use { it.write(requestBody.toByteArray()) }
+                                                            val responseCode = conn.responseCode
+                                                            (if (responseCode in 200..299) conn.inputStream else conn.errorStream)
+                                                                ?.close()
+                                                            responseCode in 200..299
+                                                        } finally {
+                                                            conn.disconnect()
+                                                        }
                                                     }
                                                     testingState = if (success) "Connection successful! Copilot is active." else "Chat API request failed."
                                                 } else {
