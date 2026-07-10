@@ -41,7 +41,7 @@ internal suspend fun GitHubManager.deleteOAuthAppGrant(clientId: String, clientS
 internal suspend fun GitHubManager.initiateDeviceFlow(clientId: String): GHDeviceCode? {
     val body = JSONObject().apply {
         put("client_id", clientId)
-        put("scope", "read:user,repo,write:repo_hook,admin:repo_hook,copilot")
+        put("scope", "read:user repo write:repo_hook admin:repo_hook copilot")
     }.toString()
     val webUrl = getWebUrl()
     val r = requestBasic("$webUrl/login/device/code", "POST", body, clientId, "")

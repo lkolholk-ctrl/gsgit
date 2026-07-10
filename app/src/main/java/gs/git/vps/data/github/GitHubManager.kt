@@ -18,8 +18,10 @@ import java.io.IOException
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
+import java.net.URI
 import java.net.URL
 import java.net.URLEncoder
+import java.util.concurrent.ConcurrentHashMap
 import java.util.Locale
 
 object GitHubManager {
@@ -29,31 +31,52 @@ object GitHubManager {
     fun getApiUrl(): String = cachedApiUrl
     fun getWebUrl(): String {
         val api = getApiUrl()
-        return if (api == "https://api.github.com") {
+        if (api == "https://api.github.com") {
             "https://github.com"
-        } else {
-            api.replace("/api/v3", "").replace("/api", "")
+        }
+        return try {
+            val uri = URI(api)
+            URI(uri.scheme, null, uri.host, uri.port, null, null, null).toString()
+        } catch (_: Exception) {
+            "https://github.com"
         }
     }
-    fun setApiUrl(context: Context, url: String) {
-        val clean = url.trim().trimEnd('/')
-        val resolved = clean.ifBlank { "https://api.github.com" }
+    fun setApiUrl(context: Context, url: String): Boolean {
+        val resolved = normaliseApiUrl(url) ?: return false
         cachedApiUrl = resolved
+        clearEtagCache()
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
             .putString("custom_api_url", resolved)
             .apply()
+        return true
     }
     internal fun updateApiUrl(context: Context) {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val custom = prefs.getString("custom_api_url", "") ?: ""
-        cachedApiUrl = custom.ifBlank { "https://api.github.com" }
+        val resolved = normaliseApiUrl(custom) ?: "https://api.github.com"
+        if (cachedApiUrl != resolved) clearEtagCache()
+        cachedApiUrl = resolved
+    }
+
+    private fun normaliseApiUrl(url: String): String? {
+        val candidate = url.trim().trimEnd('/').ifBlank { "https://api.github.com" }
+        return try {
+            val uri = URI(candidate)
+            if (!uri.scheme.equals("https", ignoreCase = true) || uri.host.isNullOrBlank() ||
+                !uri.userInfo.isNullOrBlank() || uri.rawQuery != null || uri.rawFragment != null
+            ) return null
+            URI("https", null, uri.host, uri.port, uri.path?.trimEnd('/'), null, null).toString()
+                .trimEnd('/')
+        } catch (_: Exception) {
+            null
+        }
     }
     internal const val PREFS = "github_prefs"
     internal const val KEY_USER = "user_json"
     private const val CODE_NOT_MODIFIED = 304
 
-    private val etagCache = mutableMapOf<String, Pair<String, Map<String, String>>>()
+    private val etagCache = ConcurrentHashMap<String, Pair<String, Map<String, String>>>()
     @Volatile private var lastRateRemaining: Int = Int.MAX_VALUE
     @Volatile private var lastRateReset: Long = 0L
 
@@ -106,7 +129,10 @@ object GitHubManager {
         }
     }
 
-    fun saveToken(context: Context, token: String) = GitHubAuth.saveToken(context, token)
+    fun saveToken(context: Context, token: String) {
+        GitHubAuth.saveToken(context, token)
+        clearEtagCache()
+    }
     fun getToken(context: Context): String = GitHubAuth.getToken(context)
     fun isLoggedIn(context: Context): Boolean = GitHubAuth.isLoggedIn(context)
     fun logout(context: Context) {
@@ -147,7 +173,10 @@ object GitHubManager {
                 }
                 
                 val url = if (finalEndpoint.startsWith("http")) finalEndpoint else "${getApiUrl()}$finalEndpoint"
-                val cacheKey = "$method:$url"
+                if (!url.startsWith("https://", ignoreCase = true)) {
+                    return@withContext ApiResult(false, "Only HTTPS API endpoints are allowed", -1)
+                }
+                val cacheKey = "$method:${token.hashCode()}:$url"
                 val cachedEtag = if (method == "GET") etagCache[cacheKey]?.let { (_, h) -> h["etag"] } else null
                 
                 val proxyEnabled = prefs.getBoolean("network_proxy_enabled", false)
@@ -260,6 +289,7 @@ object GitHubManager {
         withContext(Dispatchers.IO) {
             var conn: HttpURLConnection? = null
             try {
+                updateApiUrl(App.instance)
                 val prefs = App.instance.getSharedPreferences("github_prefs", Context.MODE_PRIVATE)
                 val proxyEnabled = prefs.getBoolean("network_proxy_enabled", false)
                 val proxyHost = prefs.getString("network_proxy_host", "") ?: ""

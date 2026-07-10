@@ -138,7 +138,7 @@ private enum class SettingsSection(val title: String, val subtitle: String) {
     SECURITY("Security & Backups", "Biometric lock and secure backup configuration"),
     EDITOR("Editor & Diff", "Font size, word wrap, tab size, whitespaces"),
     AI_HELPER("AI Settings", "Provider, model, API key, system prompt"),
-    NETWORK("Network & Proxy", "HTTP/SOCKS5 proxy, SSL trust configuration"),
+    NETWORK("Network & Proxy", "HTTP proxy and API endpoint configuration"),
     SYNC("Background Sync", "Notification polling interval and limits")
 }
 
@@ -1921,10 +1921,13 @@ internal fun GitHubSettingsScreen(
             },
             confirmButton = {
                 AiModuleTextAction(label = Strings.done.lowercase(), onClick = {
-                    GitHubManager.setApiUrl(context, newApiUrl.trim())
-                    addLog("API base URL updated")
-                    showChangeApiUrl = false
-                    scope.launch { refreshSection(SettingsSection.DEVELOPER) }
+                    if (GitHubManager.setApiUrl(context, newApiUrl.trim())) {
+                        addLog("API base URL updated")
+                        showChangeApiUrl = false
+                        scope.launch { refreshSection(SettingsSection.DEVELOPER) }
+                    } else {
+                        Toast.makeText(context, "Enter an HTTPS API URL without query parameters", Toast.LENGTH_LONG).show()
+                    }
                 })
             },
             dismissButton = {
@@ -1934,7 +1937,7 @@ internal fun GitHubSettingsScreen(
     }
 
     if (showDeviceLogin) {
-        var deviceClientId by remember { mutableStateOf("Iv1.b507a08c87ecfe98") }
+        var deviceClientId by remember { mutableStateOf("") }
         var deviceCode by remember { mutableStateOf<GHDeviceCode?>(null) }
         var devicePolling by remember { mutableStateOf(false) }
         var deviceError by remember { mutableStateOf<String?>(null) }
@@ -1983,7 +1986,7 @@ internal fun GitHubSettingsScreen(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (deviceCode == null) {
                     Text(
-                        text = "To authorize GitHub Copilot (including Free plan), use the pre-filled official Copilot Client ID. Or enter a custom Client ID.",
+                        text = "Use a Client ID from your own GitHub OAuth App with Device Flow enabled. The app never impersonates another GitHub client.",
                         fontSize = 11.sp,
                         color = AiModuleTheme.colors.textMuted,
                         lineHeight = 14.sp

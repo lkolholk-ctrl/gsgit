@@ -2,18 +2,12 @@ package gs.git.vps.data.github
 
 import android.content.Context
 import android.util.Log
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.OutputStreamWriter
-import java.net.HttpURLConnection
-import java.net.URL
 import java.net.URLEncoder
 
 object GitHubRepoSettingsManager {
     private const val TAG = "GHRepoSettings"
-    private const val API = "https://api.github.com"
     private const val API_VERSION = "2026-03-10"
 
     data class ApiResult(val success: Boolean, val body: String, val code: Int)
@@ -87,35 +81,16 @@ object GitHubRepoSettingsManager {
         val privateVulnerabilityReporting: Boolean
     )
 
-    private suspend fun request(context: Context, endpoint: String, method: String = "GET", body: String? = null): ApiResult =
-        withContext(Dispatchers.IO) {
-            try {
-                val token = GitHubManager.getToken(context)
-                val url = if (endpoint.startsWith("http")) endpoint else "$API$endpoint"
-                val conn = (URL(url).openConnection() as HttpURLConnection).apply {
-                    requestMethod = method
-                    setRequestProperty("Accept", "application/vnd.github+json")
-                    setRequestProperty("X-GitHub-Api-Version", API_VERSION)
-                    setRequestProperty("User-Agent", "GlassFiles")
-                    if (token.isNotBlank()) setRequestProperty("Authorization", "Bearer $token")
-                    if (body != null) {
-                        doOutput = true
-                        setRequestProperty("Content-Type", "application/json")
-                        OutputStreamWriter(outputStream).use { it.write(body) }
-                    }
-                    connectTimeout = 15000
-                    readTimeout = 20000
-                }
-                val code = conn.responseCode
-                val stream = if (code in 200..299) conn.inputStream else conn.errorStream
-                val text = stream?.bufferedReader()?.use { it.readText() } ?: ""
-                conn.disconnect()
-                ApiResult(code in 200..299, text, code)
-            } catch (e: Exception) {
-                Log.e(TAG, "Request error: ${e.message}")
-                ApiResult(false, e.message ?: "Network error", -1)
-            }
-        }
+    private suspend fun request(context: Context, endpoint: String, method: String = "GET", body: String? = null): ApiResult {
+        val result = GitHubManager.request(
+            context = context,
+            endpoint = endpoint,
+            method = method,
+            body = body,
+            extraHeaders = mapOf("X-GitHub-Api-Version" to API_VERSION)
+        )
+        return ApiResult(result.success, result.body, result.code)
+    }
 
     suspend fun getGeneral(context: Context, owner: String, repo: String): RepoGeneralSettings? {
         val r = request(context, "/repos/$owner/$repo")
