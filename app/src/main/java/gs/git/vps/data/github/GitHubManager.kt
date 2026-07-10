@@ -32,7 +32,7 @@ object GitHubManager {
     fun getWebUrl(): String {
         val api = getApiUrl()
         if (api == "https://api.github.com") {
-            "https://github.com"
+            return "https://github.com"
         }
         return try {
             val uri = URI(api)
