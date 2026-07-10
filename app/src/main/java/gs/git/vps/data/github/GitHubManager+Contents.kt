@@ -92,20 +92,24 @@ internal suspend fun GitHubManager.cloneRepo(context: Context, owner: String, re
             onProgress("Extracting...")
             val outDir = java.io.File(destDir, repo)
             outDir.mkdirs()
-            val zip = java.util.zip.ZipInputStream(java.io.BufferedInputStream(java.io.FileInputStream(zipFile)))
-            var entry = zip.nextEntry
-            val rootPrefix = entry?.name?.substringBefore("/", "") ?: ""
-            while (entry != null) {
-                val name = entry.name.removePrefix("$rootPrefix/")
-                if (name.isNotBlank()) {
-                    val f = java.io.File(outDir, name)
-                    if (entry.isDirectory) f.mkdirs()
-                    else { f.parentFile?.mkdirs(); f.outputStream().use { zip.copyTo(it) } }
+            val safeOutDir = outDir.canonicalFile
+            java.util.zip.ZipInputStream(java.io.BufferedInputStream(java.io.FileInputStream(zipFile))).use { zip ->
+                var entry = zip.nextEntry
+                val rootPrefix = entry?.name?.substringBefore("/", "") ?: ""
+                while (entry != null) {
+                    val name = entry.name.removePrefix("$rootPrefix/")
+                    if (name.isNotBlank()) {
+                        val target = java.io.File(safeOutDir, name).canonicalFile
+                        if (!target.path.startsWith(safeOutDir.path + java.io.File.separator)) {
+                            throw java.io.IOException("Unsafe archive entry: ${entry.name}")
+                        }
+                        if (entry.isDirectory) target.mkdirs()
+                        else { target.parentFile?.mkdirs(); target.outputStream().use { zip.copyTo(it) } }
+                    }
+                    zip.closeEntry()
+                    entry = zip.nextEntry
                 }
-                zip.closeEntry()
-                entry = zip.nextEntry
             }
-            zip.close()
             zipFile.delete()
             onProgress("Done")
             true
