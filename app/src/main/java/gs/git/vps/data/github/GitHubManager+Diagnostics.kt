@@ -63,7 +63,7 @@ internal suspend fun GitHubManager.getGitHubStatus(context: Context): GHStatusSu
             val conn = (URL("https://www.githubstatus.com/api/v2/summary.json").openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
                 setRequestProperty("Accept", "application/json")
-                setRequestProperty("User-Agent", "GlassFiles")
+                setRequestProperty("User-Agent", "GsGit")
                 connectTimeout = 10000
                 readTimeout = 10000
             }

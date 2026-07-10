@@ -488,7 +488,7 @@ internal fun failureEvidenceText(
     diagnostics: List<String>,
     evidence: FailureEvidence,
 ): String = buildString {
-    appendLine("GlassFiles GitHub Actions failure evidence")
+    appendLine("GsGit GitHub Actions failure evidence")
     appendLine("repo: ${repo.fullName}")
     run?.let {
         appendLine("run: #${it.runNumber} (${it.id})")
@@ -594,7 +594,7 @@ internal fun saveActionsRunsExport(
     if (runs.isEmpty()) return null
     val file = File(actionsExportDir(), "actions-runs-${safeActionsFilePart(repo.fullName)}-${actionsExportTimestamp()}.txt")
     val text = buildString {
-        appendLine("GlassFiles GitHub Actions runs export")
+        appendLine("GsGit GitHub Actions runs export")
         appendLine("repo: ${repo.fullName}")
         appendLine("filters: $filterSummary")
         appendLine("exported: ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(java.util.Date())}")
@@ -624,7 +624,7 @@ internal fun saveActionsArtifactsExport(repo: GHRepo, artifacts: List<GHArtifact
     if (artifacts.isEmpty()) return null
     val file = File(actionsExportDir(), "actions-${safeActionsFilePart(label)}-${safeActionsFilePart(repo.fullName)}-${actionsExportTimestamp()}.txt")
     val text = buildString {
-        appendLine("GlassFiles GitHub Actions artifacts export")
+        appendLine("GsGit GitHub Actions artifacts export")
         appendLine("repo: ${repo.fullName}")
         appendLine("scope: $label")
         appendLine("count: ${artifacts.size}")
@@ -658,7 +658,7 @@ internal fun saveActionsCachesExport(
     if (caches.isEmpty()) return null
     val file = File(actionsExportDir(), "actions-caches-${safeActionsFilePart(repo.fullName)}-${actionsExportTimestamp()}.txt")
     val text = buildString {
-        appendLine("GlassFiles GitHub Actions caches export")
+        appendLine("GsGit GitHub Actions caches export")
         appendLine("repo: ${repo.fullName}")
         usage?.let {
             appendLine("active caches: ${it.activeCachesCount}")
@@ -698,7 +698,7 @@ internal fun saveWorkflowRunReport(
     val currentRun = run ?: return null
     val file = File(actionsExportDir(), "actions-run-${currentRun.runNumber}-${safeActionsFilePart(repo.fullName)}-${actionsExportTimestamp()}.txt")
     val text = buildString {
-        appendLine("GlassFiles GitHub Actions run report")
+        appendLine("GsGit GitHub Actions run report")
         appendLine("repo: ${repo.fullName}")
         appendLine("run: #${currentRun.runNumber} (${currentRun.id})")
         appendLine("workflow: ${currentRun.name.ifBlank { "workflow" }}")
@@ -783,7 +783,7 @@ internal fun saveWorkflowRunLoadedLogsExport(
         val file = File(actionsExportDir(), "actions-run-${currentRun.runNumber}-loaded-logs-${safeActionsFilePart(repo.fullName)}-${actionsExportTimestamp()}.txt")
         file.parentFile?.mkdirs()
         file.bufferedWriter().use { writer ->
-            writer.appendLine("GlassFiles GitHub Actions loaded logs export")
+            writer.appendLine("GsGit GitHub Actions loaded logs export")
             writer.appendLine("repo: ${repo.fullName}")
             writer.appendLine("run: #${currentRun.runNumber} (${currentRun.id})")
             writer.appendLine("workflow: ${currentRun.name.ifBlank { "workflow" }}")

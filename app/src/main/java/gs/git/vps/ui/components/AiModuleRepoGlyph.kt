@@ -9,7 +9,7 @@ import gs.git.vps.ui.theme.AiModuleColors
  * repo detail screens to render dense rows in terminal style:
  *
  * ```
- * ▣  GlassFiles-1   kotlin   ★3   2025-04
+ * ▣  GsGit   kotlin   ★3   2025-04
  * ●  secret-repo    python   ★0   2025-03   (private)
  * ⑂  forked-thing   js       ★1   2025-03   (fork)
  * ⊘  archived-x     java     ★8   2024-09   (archived)

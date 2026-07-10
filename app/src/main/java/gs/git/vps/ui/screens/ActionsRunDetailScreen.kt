@@ -703,7 +703,7 @@ internal fun WorkflowRunDetailScreen(
                                         runId = runId,
                                         environmentIds = listOf(deployment.environmentId),
                                         approve = approve,
-                                        comment = if (approve) "Approved from GlassFiles" else "Rejected from GlassFiles"
+                                        comment = if (approve) "Approved from GsGit" else "Rejected from GsGit"
                                     )
                                     Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
                                     refreshAll()

@@ -471,7 +471,7 @@ private fun saveGitHubDiagnosticsExport(
 
 private fun githubDiagnosticsText(report: GHApiDiagnostics, errors: List<GHApiErrorLogEntry>): String =
     buildString {
-        appendLine("GlassFiles GitHub API Diagnostics")
+        appendLine("GsGit GitHub API Diagnostics")
         appendLine("generated: ${githubDiagnosticsTime(report.generatedAt)}")
         appendLine()
         appendLine("[rate]")

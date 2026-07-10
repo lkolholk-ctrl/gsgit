@@ -158,7 +158,7 @@ internal const val README_MAX_CODE_LINES = 1_000
 internal const val README_MAX_TABLE_ROWS = 50
 internal const val README_MAX_LINE_CHARS = 4_000
 internal const val README_DEFAULT_IMAGE_ASPECT_RATIO = 16f / 9f
-internal const val README_IMAGE_USER_AGENT = "GlassFiles-Android/1.0"
+internal const val README_IMAGE_USER_AGENT = "GsGit-Android/1.0"
 internal val README_PLAIN_URL_REGEX = Regex("""https?://[^\s<>)"]+""")
 
 // Regression test repos (must not freeze):

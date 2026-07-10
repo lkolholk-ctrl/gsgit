@@ -628,7 +628,7 @@ internal fun RepoSettingsScreen(
                         onReadOnlyChange = { deployKeyReadOnly = it },
                         onCreate = {
                             if (!deployKeyBusy) {
-                                val title = deployKeyTitle.trim().ifBlank { "GlassFiles deploy key" }
+                                val title = deployKeyTitle.trim().ifBlank { "GsGit deploy key" }
                                 val key = deployKeyValue.trim()
                                 deployKeyBusy = true
                                 scope.launch {
@@ -1670,4 +1670,3 @@ private fun verifyBiometricsAndRun(
         onVerified()
     }
 }
-

@@ -194,7 +194,7 @@ object GitHubManager {
                 conn = (connRaw as HttpURLConnection).apply {
                     requestMethod = method
                     setRequestProperty("Accept", "application/vnd.github.v3+json")
-                    setRequestProperty("User-Agent", "GlassFiles")
+                    setRequestProperty("User-Agent", "GsGit")
                     extraHeaders.forEach { (k, v) -> setRequestProperty(k, v) }
                     if (token.isNotBlank()) setRequestProperty("Authorization", "Bearer $token")
                     if (cachedEtag != null) setRequestProperty("If-None-Match", cachedEtag)
@@ -313,7 +313,7 @@ object GitHubManager {
                     } else {
                         setRequestProperty("Accept", "application/vnd.github+json")
                     }
-                    setRequestProperty("User-Agent", "GlassFiles")
+                    setRequestProperty("User-Agent", "GsGit")
                     setRequestProperty("Authorization", "Basic $auth")
                     if (body != null) {
                         doOutput = true
