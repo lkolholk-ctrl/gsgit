@@ -927,19 +927,7 @@ private fun NetworkPingPanel() {
         if (!isPinging) return@LaunchedEffect
         while (true) {
             val start = System.currentTimeMillis()
-            var success = false
-            try {
-                val url = URL("https://api.github.com/zen")
-                val conn = (url.openConnection() as HttpURLConnection).apply {
-                    requestMethod = "GET"
-                    connectTimeout = 2500
-                    readTimeout = 2500
-                    setRequestProperty("User-Agent", "GlassFiles")
-                }
-                val code = conn.responseCode
-                conn.disconnect()
-                success = code == 200
-            } catch (_: Exception) {}
+            val success = GitHubManager.pingApi(context)
             val duration = System.currentTimeMillis() - start
             if (success) {
                 pings.add(duration)

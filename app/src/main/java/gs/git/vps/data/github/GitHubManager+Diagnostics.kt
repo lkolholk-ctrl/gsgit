@@ -27,6 +27,9 @@ import java.net.URLEncoder
 
 private const val DIAG_TAG = "GH"
 
+internal suspend fun GitHubManager.pingApi(context: Context): Boolean =
+    request(context, "/zen", trackErrors = false, backoffRetries = 0).success
+
 internal suspend fun GitHubManager.getRateLimitSummaryNative(context: Context): String {
     val r = request(context, "/rate_limit")
     if (!r.success || r.body.isBlank()) return "Unavailable"

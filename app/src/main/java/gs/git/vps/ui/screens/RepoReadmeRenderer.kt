@@ -138,8 +138,6 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.yield
 import java.io.File
-import java.net.HttpURLConnection
-import java.net.URL
 import java.net.URLEncoder
 import okhttp3.OkHttpClient
 import org.json.JSONObject
@@ -155,8 +153,6 @@ import org.json.JSONObject
 
 internal const val README_RENDER_TAG = "ReadmeRender"
 internal const val README_MAX_RENDER_BYTES = 500 * 1024
-internal const val README_FETCH_TIMEOUT_MS = 10_000L
-internal const val README_TOTAL_TIMEOUT_MS = 15_000L
 internal const val README_IMAGE_TIMEOUT_MS = 5_000L
 internal const val README_MAX_CODE_LINES = 1_000
 internal const val README_MAX_TABLE_ROWS = 50
@@ -172,63 +168,47 @@ internal val README_PLAIN_URL_REGEX = Regex("""https?://[^\s<>)"]+""")
 
 internal data class ReadmeFetchResult(val markdown: String, val renderedHtml: String, val path: String)
 
-internal suspend fun fetchReadmeForRender(context: Context, owner: String, repo: String, ref: String?): ReadmeFetchResult = withContext(Dispatchers.IO) {
+internal suspend fun fetchReadmeForRender(context: Context, owner: String, repo: String, ref: String?): ReadmeFetchResult {
     val encodedOwner = owner.encodeGithubPathPart()
     val encodedRepo = repo.encodeGithubPathPart()
     val refQuery = ref?.takeIf { it.isNotBlank() }?.let { "?ref=${it.encodeGithubPathPart()}" }.orEmpty()
-    val url = "https://api.github.com/repos/$encodedOwner/$encodedRepo/readme$refQuery"
-    val token = GitHubManager.getToken(context)
+    val endpoint = "/repos/$encodedOwner/$encodedRepo/readme$refQuery"
 
-    fun openReadmeConnection(accept: String): HttpURLConnection =
-        (URL(url).openConnection() as HttpURLConnection).apply {
-            requestMethod = "GET"
-            setRequestProperty("Accept", accept)
-            setRequestProperty("User-Agent", "GlassFiles")
-            setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
-            if (token.isNotBlank()) setRequestProperty("Authorization", "Bearer $token")
-            connectTimeout = README_FETCH_TIMEOUT_MS.toInt()
-            readTimeout = README_FETCH_TIMEOUT_MS.toInt()
-        }
-
-    val rawConnection = openReadmeConnection("application/vnd.github+json")
-    val markdownResult = try {
-        val code = rawConnection.responseCode
-        val stream = if (code in 200..299) rawConnection.inputStream else rawConnection.errorStream
-        val body = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-        if (code !in 200..299) {
-            Log.w(README_RENDER_TAG, "raw fetch HTTP $code $owner/$repo body=${body.take(160)}")
-            "" to ""
-        } else {
-            val json = JSONObject(body)
-            val content = json.optString("content", "")
-            val path = json.optString("path", "")
-            val markdown = if (content.isBlank()) {
-                ""
-            } else {
-                String(android.util.Base64.decode(content.replace("\n", ""), android.util.Base64.DEFAULT))
-            }
-            markdown to path
-        }
-    } finally {
-        rawConnection.disconnect()
-    }
-
-    val htmlConnection = openReadmeConnection("application/vnd.github.html+json")
-    val renderedHtml = try {
-        val code = htmlConnection.responseCode
-        val stream = if (code in 200..299) htmlConnection.inputStream else htmlConnection.errorStream
-        val body = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-        if (code !in 200..299) {
-            Log.w(README_RENDER_TAG, "html fetch HTTP $code $owner/$repo body=${body.take(160)}")
+    val rawResult = GitHubManager.request(
+        context,
+        endpoint,
+        extraHeaders = mapOf("Accept" to "application/vnd.github+json"),
+        trackErrors = false,
+    )
+    val markdownResult = if (!rawResult.success) {
+        Log.w(README_RENDER_TAG, "raw fetch HTTP ${rawResult.code} $owner/$repo body=${rawResult.body.take(160)}")
+        "" to ""
+    } else {
+        val json = JSONObject(rawResult.body)
+        val content = json.optString("content", "")
+        val path = json.optString("path", "")
+        val markdown = if (content.isBlank()) {
             ""
         } else {
-            body
+            String(android.util.Base64.decode(content.replace("\n", ""), android.util.Base64.DEFAULT))
         }
-    } finally {
-        htmlConnection.disconnect()
+        markdown to path
     }
 
-    ReadmeFetchResult(
+    val htmlResult = GitHubManager.request(
+        context,
+        endpoint,
+        extraHeaders = mapOf("Accept" to "application/vnd.github.html+json"),
+        trackErrors = false,
+    )
+    val renderedHtml = if (!htmlResult.success) {
+        Log.w(README_RENDER_TAG, "html fetch HTTP ${htmlResult.code} $owner/$repo body=${htmlResult.body.take(160)}")
+        ""
+    } else {
+        htmlResult.body
+    }
+
+    return ReadmeFetchResult(
         markdown = markdownResult.first,
         renderedHtml = renderedHtml,
         path = markdownResult.second,
