@@ -37,7 +37,7 @@ internal suspend fun GitHubManager.getUser(context: Context): GHUser? {
         val user = parseGHUser(JSONObject(r.body))
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_USER, r.body).apply()
         user
-    } catch (e: Exception) { Log.e(USERS_TAG, "Parse user: ${e.message}"); null }
+    } catch (e: Exception) { Log.e(USERS_TAG, "Parse user failed"); null }
 }
 
 internal fun GitHubManager.getCachedUser(context: Context): GHUser? {
@@ -94,7 +94,7 @@ internal suspend fun GitHubManager.getCurrentUserProfile(context: Context): GHUs
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_USER, r.body).apply()
         parseGHUserProfile(j)
     } catch (e: Exception) {
-        Log.e(USERS_TAG, "Parse current profile: ${e.message}")
+        Log.e(USERS_TAG, "Parse current profile failed")
         null
     }
 }

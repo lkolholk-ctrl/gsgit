@@ -57,8 +57,9 @@ object GitHubAuth {
                     .apply()
             }
             legacy
-        } catch (e: Throwable) {
-            Log.w(TAG, "Legacy token migration failed: ${e.message}")
+        } catch (_: Throwable) {
+            // Native error text can include implementation details; never write it to logs.
+            Log.w(TAG, "Legacy token migration failed")
             ""
         }
     }

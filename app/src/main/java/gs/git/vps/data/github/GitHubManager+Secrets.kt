@@ -54,7 +54,7 @@ internal suspend fun GitHubManager.createOrUpdateRepoActionsSecret(context: Cont
             it.code == 201 || it.code == 204 || it.success
         }
     } catch (e: Exception) {
-        Log.e(SECRETS_TAG, "Save actions secret: ${e.message}")
+        Log.e(SECRETS_TAG, "Save actions secret failed")
         false
     }
 }
@@ -92,7 +92,7 @@ internal suspend fun GitHubManager.createOrUpdateEnvironmentSecret(context: Cont
             it.code == 201 || it.code == 204 || it.success
         }
     } catch (e: Exception) {
-        Log.e(SECRETS_TAG, "Save env secret: ${e.message}")
+        Log.e(SECRETS_TAG, "Save environment secret failed")
         false
     }
 }

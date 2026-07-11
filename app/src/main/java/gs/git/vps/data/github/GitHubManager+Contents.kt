@@ -66,7 +66,7 @@ internal suspend fun GitHubManager.getFileBlame(context: Context, owner: String,
                 avatarUrl = commit?.optJSONObject("author")?.optString("avatarUrl") ?: ""
             )
         }
-    } catch (e: Exception) { Log.e(CONTENTS_TAG, "Parse blame: ${e.message}"); emptyList() }
+    } catch (e: Exception) { Log.e(CONTENTS_TAG, "Parse blame failed"); emptyList() }
 }
 
 internal suspend fun GitHubManager.cloneRepo(context: Context, owner: String, repo: String, destDir: java.io.File, onProgress: (String) -> Unit): Boolean =
@@ -114,7 +114,7 @@ internal suspend fun GitHubManager.cloneRepo(context: Context, owner: String, re
             onProgress("Done")
             true
         } catch (e: Exception) {
-            Log.e(CONTENTS_TAG, "Clone error: ${e.message}")
+            Log.e(CONTENTS_TAG, "Clone failed")
             onProgress("Error: ${e.message}")
             false
         }
@@ -163,7 +163,7 @@ internal suspend fun GitHubManager.uploadFileFromPath(
         val bytes = file.readBytes()
         uploadFile(context, owner, repo, repoPath, bytes, message, branch)
     } catch (e: Exception) {
-        Log.e(CONTENTS_TAG, "Upload from path: ${e.message}")
+        Log.e(CONTENTS_TAG, "Upload from path failed")
         false
     }
 }
@@ -211,7 +211,7 @@ internal suspend fun GitHubManager.uploadMultipleFiles(
         val refBody = JSONObject().apply { put("sha", newCommitSha) }.toString()
         request(context, "/repos/$owner/$repo/git/refs/heads/$branch", "PATCH", refBody).success
     } catch (e: Exception) {
-        Log.e(CONTENTS_TAG, "Multi upload: ${e.message}")
+        Log.e(CONTENTS_TAG, "Multi upload failed")
         false
     }
 }
@@ -319,7 +319,7 @@ internal suspend fun GitHubManager.commitWorkspaceChanges(
             newCommitSha
         } else ""
     } catch (e: Exception) {
-        Log.e(CONTENTS_TAG, "Workspace commit: ${e.message}")
+        Log.e(CONTENTS_TAG, "Workspace commit failed")
         ""
     }
 }
@@ -353,7 +353,7 @@ internal suspend fun GitHubManager.downloadFile(context: Context, owner: String,
             conn.inputStream.use { input -> destFile.outputStream().use { out -> input.copyTo(out) } }
             conn.disconnect()
             true
-        } catch (e: Exception) { Log.e(CONTENTS_TAG, "Download: ${e.message}"); false }
+        } catch (e: Exception) { Log.e(CONTENTS_TAG, "Download failed"); false }
     }
 
 internal suspend fun GitHubManager.uploadDirectory(

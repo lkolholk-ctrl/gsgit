@@ -157,7 +157,7 @@ internal suspend fun GitHubManager.downloadReleaseAsset(context: Context, asset:
             conn.disconnect()
             true
         } catch (e: Exception) {
-            Log.e(RELEASES_TAG, "Download release asset: ${e.message}")
+            Log.e(RELEASES_TAG, "Download release asset failed")
             false
         }
     }
@@ -200,7 +200,7 @@ internal suspend fun GitHubManager.downloadReleaseAssetWithProgress(
             conn.disconnect()
             true
         } catch (e: Exception) {
-            Log.e(RELEASES_TAG, "Download release asset with progress: ${e.message}")
+            Log.e(RELEASES_TAG, "Download release asset with progress failed")
             false
         }
     }
@@ -225,7 +225,7 @@ internal suspend fun GitHubManager.uploadReleaseAsset(context: Context, owner: S
             conn.disconnect()
             code in 200..299
         } catch (e: Exception) {
-            Log.e(RELEASES_TAG, "Upload asset: ${e.message}")
+            Log.e(RELEASES_TAG, "Upload asset failed")
             false
         }
     }
@@ -253,7 +253,7 @@ internal suspend fun GitHubManager.uploadReleaseAssetDetailed(context: Context, 
             conn.disconnect()
             if (code in 200..299) parseGHAsset(JSONObject(text)) else null
         } catch (e: Exception) {
-            Log.e(RELEASES_TAG, "Upload asset: ${e.message}")
+            Log.e(RELEASES_TAG, "Upload asset failed")
             null
         }
     }

@@ -113,7 +113,7 @@ object GitHubRepoSettingsManager {
                 webCommitSignoffRequired = j.optBoolean("web_commit_signoff_required", false)
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Parse general: ${e.message}")
+            Log.e(TAG, "Parse general settings failed")
             null
         }
     }

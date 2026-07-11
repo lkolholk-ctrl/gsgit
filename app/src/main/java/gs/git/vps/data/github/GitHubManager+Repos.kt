@@ -41,7 +41,7 @@ internal suspend fun GitHubManager.getRepos(context: Context, page: Int = 1, per
     val repos = try {
         val arr = JSONArray(r.body)
         (0 until arr.length()).map { parseRepo(arr.getJSONObject(it)) }
-    } catch (e: Exception) { Log.e(REPOS_TAG, "Parse repos: ${e.message}"); return emptyList() }
+    } catch (e: Exception) { Log.e(REPOS_TAG, "Parse repositories failed"); return emptyList() }
     val nextPage = parseNextPage(r.headers) ?: return repos
     return repos + getRepos(context, nextPage, perPage)
 }
@@ -52,7 +52,7 @@ internal suspend fun GitHubManager.getRepo(context: Context, owner: String, repo
     return try {
         parseRepo(JSONObject(r.body))
     } catch (e: Exception) {
-        Log.e(REPOS_TAG, "Parse repo: ${e.message}")
+        Log.e(REPOS_TAG, "Parse repository failed")
         null
     }
 }

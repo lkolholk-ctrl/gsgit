@@ -183,7 +183,7 @@ internal suspend fun fetchReadmeForRender(context: Context, owner: String, repo:
         trackErrors = false,
     )
     val markdownResult = if (!rawResult.success) {
-        Log.w(README_RENDER_TAG, "raw fetch HTTP ${rawResult.code} $owner/$repo body=${rawResult.body.take(160)}")
+        Log.w(README_RENDER_TAG, "raw fetch HTTP ${rawResult.code} $owner/$repo")
         "" to ""
     } else {
         val json = JSONObject(rawResult.body)
@@ -204,7 +204,7 @@ internal suspend fun fetchReadmeForRender(context: Context, owner: String, repo:
         trackErrors = false,
     )
     val renderedHtml = if (!htmlResult.success) {
-        Log.w(README_RENDER_TAG, "html fetch HTTP ${htmlResult.code} $owner/$repo body=${htmlResult.body.take(160)}")
+        Log.w(README_RENDER_TAG, "html fetch HTTP ${htmlResult.code} $owner/$repo")
         ""
     } else {
         htmlResult.body
@@ -1131,7 +1131,7 @@ private fun ReadmeImage(block: ReadmeRenderBlock.Image, imageLoader: ImageLoader
         loaded = false
         delay(README_IMAGE_TIMEOUT_MS)
         if (!loaded && !animatedGif) {
-            Log.w(README_RENDER_TAG, "image timeout ${block.url}")
+            Log.w(README_RENDER_TAG, "image timeout")
         }
     }
     Column(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {

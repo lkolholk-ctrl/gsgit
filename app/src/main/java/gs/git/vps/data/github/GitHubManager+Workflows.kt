@@ -367,7 +367,7 @@ internal suspend fun GitHubManager.downloadArtifact(context: Context, owner: Str
             conn.inputStream.use { input -> destFile.outputStream().use { out -> input.copyTo(out) } }
             conn.disconnect()
             true
-        } catch (e: Exception) { Log.e(ACTIONS_TAG, "Download artifact: ${e.message}"); false }
+        } catch (e: Exception) { Log.e(ACTIONS_TAG, "Download artifact failed"); false }
     }
 
 internal suspend fun GitHubManager.deleteArtifact(context: Context, owner: String, repo: String, artifactId: Long): Boolean =

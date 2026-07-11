@@ -93,7 +93,7 @@ internal suspend fun GitHubManager.getGitHubStatus(context: Context): GHStatusSu
 
             GHStatusSummary(desc, indicator, componentsList)
         } catch (e: Exception) {
-            Log.e(DIAG_TAG, "Get GitHub status: ${e.message}")
+            Log.e(DIAG_TAG, "Get GitHub status failed")
             null
         }
     }

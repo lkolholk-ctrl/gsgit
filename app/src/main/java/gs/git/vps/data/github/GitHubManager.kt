@@ -254,11 +254,11 @@ object GitHubManager {
             } catch (e: Exception) {
                 if (backoffRetries > 0) {
                     val delayMs = (1000L * (4 - backoffRetries)).coerceIn(1000, 3000)
-                    Log.w(TAG, "Network error: ${e.message}, retrying in ${delayMs}ms ($backoffRetries left)")
+                    Log.w(TAG, "Network error; retrying in ${delayMs}ms ($backoffRetries left)")
                     kotlinx.coroutines.delay(delayMs)
                     return@withContext request(context, endpoint, method, body, extraHeaders, trackErrors, rateLimitRetries, backoffRetries - 1)
                 }
-                Log.e(TAG, "Request error: ${e.message}")
+                Log.e(TAG, "Request failed")
                 val result = ApiResult(false, e.message ?: "Network error", -1)
                 if (trackErrors) recordApiError(context, endpoint, method, result)
                 result
@@ -337,7 +337,7 @@ object GitHubManager {
                 val text = stream?.bufferedReader()?.use { it.readText() } ?: ""
                 if (code in 200..299) ApiResult(true, text, code) else ApiResult(false, text, code)
             } catch (e: Exception) {
-                Log.e(TAG, "Basic request error: ${e.message}")
+                Log.e(TAG, "Basic request failed")
                 ApiResult(false, e.message ?: "Network error", -1)
             } finally {
                 conn?.disconnect()
@@ -354,13 +354,11 @@ object GitHubManager {
         return try {
             val root = JSONObject(r.body)
             if (root.has("errors")) {
-                val errs = root.optJSONArray("errors")
-                val msg = (0 until (errs?.length() ?: 0)).mapNotNull { errs?.optJSONObject(it)?.optString("message") }.joinToString("; ")
-                Log.e(TAG, "GraphQL errors: $msg")
+                Log.e(TAG, "GraphQL response has errors")
                 null
             } else root.optJSONObject("data")
-        } catch (e: Exception) {
-            Log.e(TAG, "GraphQL parse error: ${e.message}")
+        } catch (_: Exception) {
+            Log.e(TAG, "GraphQL response parsing failed")
             null
         }
     }
