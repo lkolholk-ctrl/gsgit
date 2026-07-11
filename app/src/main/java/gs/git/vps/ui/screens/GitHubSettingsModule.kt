@@ -85,6 +85,7 @@ import gs.git.vps.workers.NotificationSyncWorker
 import gs.git.vps.security.BackupManager
 import gs.git.vps.security.BiometricHelper
 import gs.git.vps.security.PinSecurity
+import gs.git.vps.security.SecurityGate
 import java.io.File
 import java.net.URL
 import java.net.HttpURLConnection
@@ -194,6 +195,7 @@ internal fun GitHubSettingsScreen(
     var securityAutolockTimeout by remember { mutableStateOf(prefs.getInt("security_autolock_timeout", 0)) }
     var securityPinInput by remember { mutableStateOf("") }
     var securityPgpKeyAlgorithm by remember { mutableStateOf(prefs.getString("security_pgp_key_algorithm", "RSA-4096").orEmpty()) }
+    var securityEnvironmentPolicy by remember { mutableStateOf(SecurityGate.policy(context)) }
 
     // Category 3: GitHub Copilot
     var copilotModel by remember { mutableStateOf(prefs.getString("copilot_model", "gpt-5.5").orEmpty()) }
@@ -1236,6 +1238,51 @@ internal fun GitHubSettingsScreen(
                                     biometricEnabled = it
                                     prefs.edit().putBoolean("biometric_lock_enabled", it).apply()
                                     addLog("Biometric lock ${if (it) "enabled" else "disabled"}")
+                                }
+                            }
+
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                text = "// compromised environment",
+                                color = AiModuleTheme.colors.textMuted,
+                                fontSize = 11.sp,
+                                fontFamily = JetBrainsMono,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(bottom = 6.dp)
+                            )
+                            Text(
+                                text = "Controls access to the GitHub token if root, instrumentation, a debugger, or an emulator is detected.",
+                                color = AiModuleTheme.colors.textMuted,
+                                fontSize = 11.sp,
+                                fontFamily = JetBrainsMono,
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                listOf(
+                                    SecurityGate.Policy.BLOCK_SENSITIVE to "Block",
+                                    SecurityGate.Policy.WARN_ONLY to "Warn",
+                                    SecurityGate.Policy.WIPE to "Wipe",
+                                ).forEach { (policy, label) ->
+                                    val selected = securityEnvironmentPolicy == policy
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(GitHubControlRadius))
+                                            .background(if (selected) AiModuleTheme.colors.accent.copy(alpha = 0.14f) else AiModuleTheme.colors.border)
+                                            .border(1.dp, if (selected) AiModuleTheme.colors.accent else Color.Transparent, RoundedCornerShape(GitHubControlRadius))
+                                            .clickable {
+                                                securityEnvironmentPolicy = policy
+                                                SecurityGate.setPolicy(context, policy)
+                                                addLog("Compromised environment policy: $label")
+                                            }
+                                            .padding(horizontal = 6.dp, vertical = 6.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        Text(label, fontSize = 11.sp, color = if (selected) AiModuleTheme.colors.accent else AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono)
+                                    }
                                 }
                             }
                             

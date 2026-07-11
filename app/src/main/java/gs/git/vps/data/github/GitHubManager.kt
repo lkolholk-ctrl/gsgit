@@ -129,9 +129,10 @@ object GitHubManager {
         }
     }
 
-    fun saveToken(context: Context, token: String) {
-        GitHubAuth.saveToken(context, token)
-        clearEtagCache()
+    fun saveToken(context: Context, token: String): Boolean {
+        return GitHubAuth.saveToken(context, token).also { saved ->
+            if (saved) clearEtagCache()
+        }
     }
     fun getToken(context: Context): String = GitHubAuth.getToken(context)
     fun isLoggedIn(context: Context): Boolean = GitHubAuth.isLoggedIn(context)

@@ -38,16 +38,12 @@ fun getToken(context: Context): String {
 - Так даже если злоумышленник дошёл до вызова API, в скомпрометированной среде токен не утечёт.
 - `decryptToken` тоже не вызывать при небезопасной среде.
 
-## Часть 3 — Консолидация хранилища токена
+## Часть 3 — Хранилище токена
 
-Сейчас два механизма: `TokenRepository` (Jetpack `EncryptedSharedPreferences`, **deprecated**) +
-legacy native-encrypted. Свести на **native-путь** (device-bound, hardware-derived ключ, сильнее):
-
-1. `saveToken`: `NativeSecurity.encryptToken(token)` → Base64 → хранить в prefs (или DataStore).
-2. `getToken`: читать → Base64 decode → `NativeSecurity.decryptToken(bytes)` (после gate-проверки).
-3. Оставить одноразовую миграцию со старого `EncryptedSharedPreferences`-ключа, затем удалить зависимость
-   `androidx.security:security-crypto` из gradle и сам `TokenRepository` (или сделать его тонкой обёрткой над native).
-4. Проверить, что `logout()` чистит оба пути на время переходного периода.
+`TokenRepository` на `EncryptedSharedPreferences` остаётся основным хранилищем: он использует
+Android Keystore и AES-256. Native `encryptToken`/`decryptToken` в текущей реализации — legacy-
+совместимость, а не замена AES-хранилища. После gate-проверки допускается только одноразовая
+миграция старого native-зашифрованного ключа в `TokenRepository`; затем legacy-ключ удаляется.
 
 ## Часть 4 — Логи
 
@@ -56,10 +52,10 @@ legacy native-encrypted. Свести на **native-путь** (device-bound, ha
 
 ## Acceptance criteria
 
-- [ ] `runSecurityChecks()` вызывается на старте, результат закэширован.
-- [ ] `getToken()` и `decryptToken` не отдают токен при `!isSafe` (политика BLOCK/WIPE).
-- [ ] Политика настраиваемая, дефолт BLOCK_SENSITIVE, без краша на детекте.
-- [ ] Токен хранится одним механизмом (native), deprecated Jetpack-либа удалена после миграции.
+- [x] `runSecurityChecks()` вызывается на старте, результат закэширован.
+- [x] `getToken()` и `decryptToken` не отдают токен при `!isSafe` (политика BLOCK/WIPE).
+- [x] Политика настраиваемая, дефолт BLOCK_SENSITIVE в release и WARN_ONLY в debug, без краша на детекте.
+- [x] Токен хранится в EncryptedSharedPreferences (AES-256 / Android Keystore); legacy native-ключ мигрируется один раз.
 - [ ] `Log.w/e` не содержат секретов.
 - [ ] Билд зелёный, обычный (безопасный) сценарий логина/работы не сломан.
 

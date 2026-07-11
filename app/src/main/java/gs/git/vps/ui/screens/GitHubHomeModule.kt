@@ -42,12 +42,15 @@ import gs.git.vps.data.github.model.GHUser
 import gs.git.vps.data.github.model.GHRepo
 import gs.git.vps.data.github.model.GHRepoCreateResult
 import gs.git.vps.data.github.model.GHRepoEvent
+import gs.git.vps.security.SecurityGate
 import gs.git.vps.ui.components.AiModulePageBar
 import gs.git.vps.ui.components.AiModuleSecondaryButton
 import gs.git.vps.ui.components.AiModuleSpinner
 import gs.git.vps.ui.components.AiModuleText as Text
 import gs.git.vps.ui.theme.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
 
 // Compact mode — propagates through all sub-screens automatically
@@ -60,6 +63,13 @@ internal fun LoginScreen(onBack: () -> Unit, onMinimize: () -> Unit, onClose: ((
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val palette = AiModuleTheme.colors
+    var securityWarning by remember { mutableStateOf("") }
+
+    LaunchedEffect(Unit) {
+        securityWarning = withContext(Dispatchers.Default) {
+            SecurityGate.environmentMessage(context)
+        }
+    }
 
     AiModuleSurface {
         Column(Modifier.fillMaxSize()) {
@@ -154,6 +164,16 @@ internal fun LoginScreen(onBack: () -> Unit, onMinimize: () -> Unit, onClose: ((
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
+                if (securityWarning.isNotBlank()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        securityWarning,
+                        color = palette.error,
+                        fontFamily = JetBrainsMono,
+                        fontSize = 11.sp,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
                 Spacer(Modifier.height(6.dp))
                 Text(
                     Strings.ghTokenHint,
@@ -177,7 +197,11 @@ internal fun LoginScreen(onBack: () -> Unit, onMinimize: () -> Unit, onClose: ((
                             testing = true
                             error = ""
                             scope.launch {
-                                GitHubManager.saveToken(context, token)
+                                if (!GitHubManager.saveToken(context, token)) {
+                                    error = SecurityGate.blockedMessage(context)
+                                    testing = false
+                                    return@launch
+                                }
                                 val u = GitHubManager.getUser(context)
                                 if (u != null) onLogin(token)
                                 else {

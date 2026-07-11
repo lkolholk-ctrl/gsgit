@@ -3,6 +3,7 @@ package gs.git.vps
 import android.app.Application
 import gs.git.vps.logging.CrashHandler
 import gs.git.vps.security.BackupManager
+import gs.git.vps.security.SecurityGate
 
 class App : Application() {
 
@@ -15,6 +16,9 @@ class App : Application() {
         super.onCreate()
         instance = this
         CrashHandler.install(this)
-        Thread { BackupManager.runMaintenance(this) }.start()
+        Thread {
+            SecurityGate.initialize(this)
+            BackupManager.runMaintenance(this)
+        }.start()
     }
 }

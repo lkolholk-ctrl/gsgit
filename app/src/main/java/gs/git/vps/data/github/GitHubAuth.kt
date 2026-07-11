@@ -5,6 +5,7 @@ import android.util.Base64
 import android.util.Log
 import gs.git.vps.data.security.TokenRepository
 import gs.git.vps.security.NativeSecurity
+import gs.git.vps.security.SecurityGate
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -15,16 +16,27 @@ object GitHubAuth {
     private const val KEY_API_ERRORS = "api_error_log"
     private const val MAX_API_ERROR_LOG = 30
 
-    fun saveToken(context: Context, token: String) {
+    fun saveToken(context: Context, token: String): Boolean {
+        val security = SecurityGate.decision(context)
+        if (!security.allowsSensitiveData) {
+            if (security.shouldWipe) logout(context)
+            return false
+        }
         TokenRepository(context).saveToken(token)
         // Clear any legacy encrypted token once the new secure storage is populated.
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
             .remove(KEY_TOKEN_ENC)
             .apply()
+        return true
     }
 
     fun getToken(context: Context): String {
+        val security = SecurityGate.decision(context)
+        if (!security.allowsSensitiveData) {
+            if (security.shouldWipe) logout(context)
+            return ""
+        }
         val repo = TokenRepository(context)
         val token = repo.getToken()
         if (token.isNotBlank()) return token
@@ -45,7 +57,7 @@ object GitHubAuth {
                     .apply()
             }
             legacy
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.w(TAG, "Legacy token migration failed: ${e.message}")
             ""
         }
