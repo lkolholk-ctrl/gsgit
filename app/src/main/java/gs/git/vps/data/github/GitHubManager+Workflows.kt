@@ -108,12 +108,16 @@ internal suspend fun GitHubManager.getWorkflowRun(context: Context, owner: Strin
     }
 }
 
-internal suspend fun GitHubManager.getWorkflowRunJobs(context: Context, owner: String, repo: String, runId: Long): List<GHJob> {
+internal suspend fun GitHubManager.getWorkflowRunJobs(context: Context, owner: String, repo: String, runId: Long, page: Int = 1): List<GHJob> {
     // `all` mixes jobs from previous rerun attempts into the current run UI.
     // Attempt history is loaded through getWorkflowRunAttemptJobs instead.
-    val r = request(context, "/repos/$owner/$repo/actions/runs/$runId/jobs?filter=latest&per_page=100")
+    // Пагинация обязательна: matrix-раны легко дают >100 джоб — без страниц
+    // хвост терялся, и в UI показывалась лишь часть матрицы.
+    val r = request(context, "/repos/$owner/$repo/actions/runs/$runId/jobs?filter=latest&per_page=100&page=$page")
     if (!r.success) return emptyList()
-    return parseJobs(r.body)
+    val jobs = parseJobs(r.body)
+    val nextPage = parseNextPage(r.headers) ?: return jobs
+    return jobs + getWorkflowRunJobs(context, owner, repo, runId, nextPage)
 }
 
 internal suspend fun GitHubManager.getWorkflowRunLogs(context: Context, owner: String, repo: String, runId: Long): String =
@@ -416,10 +420,12 @@ internal suspend fun GitHubManager.getWorkflowRunAttempt(context: Context, owner
     return try { parseWorkflowRun(JSONObject(r.body)) } catch (e: Exception) { null }
 }
 
-internal suspend fun GitHubManager.getWorkflowRunAttemptJobs(context: Context, owner: String, repo: String, runId: Long, attempt: Int): List<GHJob> {
-    val r = request(context, "/repos/$owner/$repo/actions/runs/$runId/attempts/$attempt/jobs?per_page=100")
+internal suspend fun GitHubManager.getWorkflowRunAttemptJobs(context: Context, owner: String, repo: String, runId: Long, attempt: Int, page: Int = 1): List<GHJob> {
+    val r = request(context, "/repos/$owner/$repo/actions/runs/$runId/attempts/$attempt/jobs?per_page=100&page=$page")
     if (!r.success) return emptyList()
-    return parseJobs(r.body)
+    val jobs = parseJobs(r.body)
+    val nextPage = parseNextPage(r.headers) ?: return jobs
+    return jobs + getWorkflowRunAttemptJobs(context, owner, repo, runId, attempt, nextPage)
 }
 
 internal suspend fun GitHubManager.getWorkflowRunAttemptLogs(context: Context, owner: String, repo: String, runId: Long, attempt: Int): String {
