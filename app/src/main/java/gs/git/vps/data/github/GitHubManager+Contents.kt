@@ -76,11 +76,13 @@ internal suspend fun GitHubManager.cloneRepo(context: Context, owner: String, re
             onProgress("Downloading...")
             val zipUrl = "${getApiUrl()}/repos/$owner/$repo/zipball"
             val token = getToken(context)
-            val conn = (URL(zipUrl).openConnection() as HttpURLConnection).apply {
-                setRequestProperty("Authorization", "Bearer $token")
-                setRequestProperty("Accept", "application/vnd.github.v3+json")
-                instanceFollowRedirects = true
-            }
+            val conn = openDownloadConnection(
+                url = zipUrl,
+                token = token,
+                accept = "application/vnd.github.v3+json",
+                connectTimeoutMs = 15_000,
+                readTimeoutMs = 60_000,
+            ) ?: return@withContext false
             val code = conn.responseCode
             if (code != 200) { conn.disconnect(); return@withContext false }
 
@@ -345,10 +347,12 @@ internal suspend fun GitHubManager.downloadFile(context: Context, owner: String,
             if (downloadUrl.isBlank()) return@withContext false
 
             val token = getToken(context)
-            val conn = (URL(downloadUrl).openConnection() as HttpURLConnection).apply {
-                if (token.isNotBlank()) setRequestProperty("Authorization", "Bearer $token")
-                connectTimeout = 15000; readTimeout = 30000
-            }
+            val conn = openDownloadConnection(
+                url = downloadUrl,
+                token = token,
+                connectTimeoutMs = 15_000,
+                readTimeoutMs = 30_000,
+            ) ?: return@withContext false
             destFile.parentFile?.mkdirs()
             conn.inputStream.use { input -> destFile.outputStream().use { out -> input.copyTo(out) } }
             conn.disconnect()

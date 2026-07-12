@@ -143,11 +143,13 @@ internal suspend fun GitHubManager.getJobLogs(context: Context, owner: String, r
             updateApiUrl(context)
             val token = getToken(context)
             val url = "${getApiUrl()}/repos/$owner/$repo/actions/jobs/$jobId/logs"
-            val conn = (URL(url).openConnection() as HttpURLConnection).apply {
-                setRequestProperty("Authorization", "Bearer $token")
-                setRequestProperty("Accept", "application/vnd.github.v3+json")
-                instanceFollowRedirects = true; connectTimeout = 15000; readTimeout = 30000
-            }
+            val conn = openDownloadConnection(
+                url = url,
+                token = token,
+                accept = "application/vnd.github.v3+json",
+                connectTimeoutMs = 15_000,
+                readTimeoutMs = 30_000,
+            ) ?: return@withContext "Error: unable to open logs"
             val code = conn.responseCode
             if (code == 200) {
                 val text = conn.inputStream.bufferedReader().use { it.readText() }
@@ -355,12 +357,13 @@ internal suspend fun GitHubManager.downloadArtifact(context: Context, owner: Str
             updateApiUrl(context)
             val token = getToken(context)
             val url = "${getApiUrl()}/repos/$owner/$repo/actions/artifacts/$artifactId/zip"
-            val conn = (URL(url).openConnection() as HttpURLConnection).apply {
-                setRequestProperty("Authorization", "Bearer $token")
-                setRequestProperty("Accept", "application/vnd.github.v3+json")
-                instanceFollowRedirects = true
-                connectTimeout = 15000; readTimeout = 60000
-            }
+            val conn = openDownloadConnection(
+                url = url,
+                token = token,
+                accept = "application/vnd.github.v3+json",
+                connectTimeoutMs = 15_000,
+                readTimeoutMs = 60_000,
+            ) ?: return@withContext false
             val code = conn.responseCode
             if (code != 200) { conn.disconnect(); return@withContext false }
             destFile.parentFile?.mkdirs()

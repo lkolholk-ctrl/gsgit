@@ -201,6 +201,7 @@ object GitHubManager {
                 
                 conn = (connRaw as HttpURLConnection).apply {
                     requestMethod = method
+                    instanceFollowRedirects = false
                     setRequestProperty("Accept", "application/vnd.github.v3+json")
                     setRequestProperty("User-Agent", "GsGit")
                     extraHeaders.forEach { (k, v) -> setRequestProperty(k, v) }
@@ -316,6 +317,7 @@ object GitHubManager {
                 
                 conn = (connRaw as HttpURLConnection).apply {
                     requestMethod = method
+                    instanceFollowRedirects = false
                     if (url.contains("/login/")) {
                         setRequestProperty("Accept", "application/json")
                     } else {

@@ -141,12 +141,13 @@ internal suspend fun GitHubManager.downloadReleaseAsset(context: Context, asset:
         try {
             if (asset.downloadUrl.isBlank()) return@withContext false
             val token = getToken(context)
-            val conn = (URL(asset.downloadUrl).openConnection() as HttpURLConnection).apply {
-                if (token.isNotBlank()) setRequestProperty("Authorization", "Bearer $token")
-                setRequestProperty("Accept", "application/octet-stream")
-                connectTimeout = 15000
-                readTimeout = 60000
-            }
+            val conn = openDownloadConnection(
+                url = asset.downloadUrl,
+                token = token,
+                accept = "application/octet-stream",
+                connectTimeoutMs = 15_000,
+                readTimeoutMs = 60_000,
+            ) ?: return@withContext false
             val code = conn.responseCode
             if (code !in 200..299) {
                 conn.disconnect()
@@ -172,12 +173,13 @@ internal suspend fun GitHubManager.downloadReleaseAssetWithProgress(
         try {
             if (asset.downloadUrl.isBlank()) return@withContext false
             val token = getToken(context)
-            val conn = (URL(asset.downloadUrl).openConnection() as HttpURLConnection).apply {
-                if (token.isNotBlank()) setRequestProperty("Authorization", "Bearer $token")
-                setRequestProperty("Accept", "application/octet-stream")
-                connectTimeout = 15000
-                readTimeout = 60000
-            }
+            val conn = openDownloadConnection(
+                url = asset.downloadUrl,
+                token = token,
+                accept = "application/octet-stream",
+                connectTimeoutMs = 15_000,
+                readTimeoutMs = 60_000,
+            ) ?: return@withContext false
             val code = conn.responseCode
             if (code !in 200..299) {
                 conn.disconnect()
@@ -213,6 +215,7 @@ internal suspend fun GitHubManager.uploadReleaseAsset(context: Context, owner: S
             val uploadUrl = "${getApiUrl()}/repos/$owner/$repo/releases/$releaseId/assets?name=${URLEncoder.encode(file.name, "UTF-8")}"
             val conn = (URL(uploadUrl).openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
+                instanceFollowRedirects = false
                 setRequestProperty("Authorization", "Bearer $token")
                 setRequestProperty("Accept", "application/vnd.github.v3+json")
                 setRequestProperty("Content-Type", releaseContentType(file.name))
@@ -239,6 +242,7 @@ internal suspend fun GitHubManager.uploadReleaseAssetDetailed(context: Context, 
             val uploadUrl = "${getApiUrl()}/repos/$owner/$repo/releases/$releaseId/assets?name=${URLEncoder.encode(file.name, "UTF-8")}$labelQuery"
             val conn = (URL(uploadUrl).openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
+                instanceFollowRedirects = false
                 setRequestProperty("Authorization", "Bearer $token")
                 setRequestProperty("Accept", "application/vnd.github.v3+json")
                 setRequestProperty("Content-Type", releaseContentType(file.name))
