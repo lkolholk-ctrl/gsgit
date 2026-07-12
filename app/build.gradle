@@ -38,7 +38,7 @@ def resolveVersionCode = {
 def gsGitVersionCode = resolveVersionCode()
 // User-facing version is advanced once per completed fix batch.
 // Keep versionCode independent and monotonic for Android update ordering.
-def gsGitVersionName = "1.0.31"
+def gsGitVersionName = "1.0.32"
 
 
 android {

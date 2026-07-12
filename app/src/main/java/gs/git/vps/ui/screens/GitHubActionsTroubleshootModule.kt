@@ -39,6 +39,8 @@ import gs.git.vps.data.github.KernelErrorPatterns
 import gs.git.vps.data.github.canWrite
 import gs.git.vps.data.github.model.GHRepo
 import gs.git.vps.data.github.model.GHActionsPermissions
+import gs.git.vps.data.github.model.GHActionsCapability
+import gs.git.vps.data.github.model.GHActionsCapabilityState
 import gs.git.vps.data.github.model.GHJob
 import gs.git.vps.data.github.model.GHWorkflow
 import gs.git.vps.data.github.model.GHWorkflowPermissions
@@ -78,6 +80,7 @@ internal fun GitHubActionsTroubleshootScreen(
     var runs by remember { mutableStateOf<List<GHWorkflowRun>>(emptyList()) }
     var actionsPermissions by remember { mutableStateOf<GHActionsPermissions?>(null) }
     var workflowPermissions by remember { mutableStateOf<GHWorkflowPermissions?>(null) }
+    var capabilities by remember { mutableStateOf<List<GHActionsCapability>>(emptyList()) }
     var failedJobsByRun by remember { mutableStateOf<Map<Long, List<GHJob>>>(emptyMap()) }
     var apiErrors by remember { mutableStateOf<List<GHApiErrorLogEntry>>(emptyList()) }
     var rateSummary by remember { mutableStateOf("") }
@@ -88,21 +91,27 @@ internal fun GitHubActionsTroubleshootScreen(
         loading = true
         notice = ""
         scope.launch {
-            workflows = GitHubManager.getWorkflows(context, repo.owner, repo.name)
-            actionsPermissions = GitHubManager.getRepoActionsPermissions(context, repo.owner, repo.name)
-            workflowPermissions = GitHubManager.getRepoActionsWorkflowPermissions(context, repo.owner, repo.name)
-            runs = GitHubManager.getWorkflowRuns(context, repo.owner, repo.name, perPage = 30)
-            rateSummary = GitHubManager.getRateLimitSummaryNative(context)
-            val problemRuns = runs.filter { it.isProblemRun() }.take(5)
-            failedJobsByRun = problemRuns.associate { run ->
-                run.id to GitHubManager.getWorkflowRunJobs(context, repo.owner, repo.name, run.id)
+            try {
+                workflows = GitHubManager.getWorkflows(context, repo.owner, repo.name)
+                capabilities = GitHubManager.getActionsCapabilities(context, repo.owner, repo.name)
+                actionsPermissions = GitHubManager.getRepoActionsPermissions(context, repo.owner, repo.name)
+                workflowPermissions = GitHubManager.getRepoActionsWorkflowPermissions(context, repo.owner, repo.name)
+                runs = GitHubManager.getWorkflowRuns(context, repo.owner, repo.name, perPage = 30)
+                rateSummary = GitHubManager.getRateLimitSummaryNative(context)
+                val problemRuns = runs.filter { it.isProblemRun() }.take(5)
+                failedJobsByRun = problemRuns.associate { run ->
+                    run.id to GitHubManager.getWorkflowRunJobs(context, repo.owner, repo.name, run.id)
+                }
+                val actionEndpointPrefix = "/repos/${repo.owner}/${repo.name}/actions"
+                apiErrors = GitHubManager.getApiErrorLog(context)
+                    .filter { it.endpoint.contains(actionEndpointPrefix, ignoreCase = true) }
+                    .take(8)
+                notice = "runs=${runs.size} workflows=${workflows.size}"
+            } catch (error: Exception) {
+                notice = "load failed: ${error.message ?: "unknown error"}"
+            } finally {
+                loading = false
             }
-            val actionEndpointPrefix = "/repos/${repo.owner}/${repo.name}/actions"
-            apiErrors = GitHubManager.getApiErrorLog(context)
-                .filter { it.endpoint.contains(actionEndpointPrefix, ignoreCase = true) }
-                .take(8)
-            notice = "runs=${runs.size} workflows=${workflows.size}"
-            loading = false
         }
     }
 
@@ -113,6 +122,7 @@ internal fun GitHubActionsTroubleshootScreen(
     }
     val problemRuns = remember(runs) { runs.filter { it.isProblemRun() }.take(8) }
     val activeRuns = remember(runs) { runs.count { it.status in setOf("queued", "waiting", "requested", "pending", "in_progress") } }
+    val deniedCapabilities = remember(capabilities) { capabilities.count { it.state == GHActionsCapabilityState.DENIED } }
 
     GitHubScreenFrame(
         title = "> actions troubleshoot",
@@ -154,6 +164,7 @@ internal fun GitHubActionsTroubleshootScreen(
                         GitHubTroubleMetric("runs", runs.size.toString(), palette.textSecondary)
                         GitHubTroubleMetric("active", activeRuns.toString(), if (activeRuns > 0) palette.accent else palette.textMuted)
                         GitHubTroubleMetric("problem", problemRuns.size.toString(), if (problemRuns.isEmpty()) GitHubSuccessGreen else GitHubErrorRed)
+                        GitHubTroubleMetric("denied", deniedCapabilities.toString(), if (deniedCapabilities == 0) GitHubSuccessGreen else GitHubErrorRed)
                         GitHubTroubleMetric("api errors", apiErrors.size.toString(), if (apiErrors.isEmpty()) GitHubSuccessGreen else GitHubWarningAmber())
                     }
                 }
@@ -161,6 +172,10 @@ internal fun GitHubActionsTroubleshootScreen(
 
             item {
                 GitHubActionsPermissionPanel(repo, actionsPermissions, workflowPermissions, rateSummary)
+            }
+
+            item {
+                GitHubActionsCapabilityPanel(capabilities, loading)
             }
 
             item {
@@ -204,6 +219,52 @@ internal fun GitHubActionsTroubleshootScreen(
                         Spacer(Modifier.height(8.dp))
                         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             apiErrors.forEach { GitHubTroubleApiErrorRow(it) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GitHubActionsCapabilityPanel(capabilities: List<GHActionsCapability>, loading: Boolean) {
+    val palette = AiModuleTheme.colors
+    GitHubTroublePanel {
+        Text("token capabilities", color = palette.accent, fontFamily = JetBrainsMono, fontWeight = FontWeight.Medium, fontSize = 13.sp)
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "Read-only endpoint probes. Write access is checked only when you run the requested command.",
+            color = palette.textMuted,
+            fontFamily = JetBrainsMono,
+            fontSize = 10.sp,
+            lineHeight = 14.sp,
+        )
+        Spacer(Modifier.height(8.dp))
+        when {
+            loading && capabilities.isEmpty() -> AiModuleSpinner(label = "checking token capabilities")
+            capabilities.isEmpty() -> Text("Capability check unavailable.", color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 11.sp)
+            else -> Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                capabilities.forEach { capability ->
+                    val (badge, color) = when (capability.state) {
+                        GHActionsCapabilityState.AVAILABLE -> "ok" to GitHubSuccessGreen
+                        GHActionsCapabilityState.DENIED -> "denied" to GitHubErrorRed
+                        GHActionsCapabilityState.ERROR -> "error" to GitHubWarningAmber()
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
+                        GitHubTroubleBadge(badge, color)
+                        Column(Modifier.weight(1f)) {
+                            Text(capability.label, color = palette.textPrimary, fontFamily = JetBrainsMono, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                            Text(
+                                "${capability.requiredPermission} · ${if (capability.statusCode > 0) "HTTP ${capability.statusCode}" else "network"}",
+                                color = palette.textSecondary,
+                                fontFamily = JetBrainsMono,
+                                fontSize = 10.sp,
+                            )
+                            Text(capability.detail, color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 10.sp)
+                            if (capability.state != GHActionsCapabilityState.AVAILABLE && capability.requestId.isNotBlank()) {
+                                Text("request ${capability.requestId}", color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 9.sp)
+                            }
                         }
                     }
                 }

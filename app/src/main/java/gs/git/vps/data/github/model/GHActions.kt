@@ -44,6 +44,18 @@ data class GHWorkflowPermissions(val defaultWorkflowPermissions: String,
 
 data class GHActionsRetention(val days: Int)
 
+enum class GHActionsCapabilityState { AVAILABLE, DENIED, ERROR }
+
+data class GHActionsCapability(
+    val key: String,
+    val label: String,
+    val requiredPermission: String,
+    val state: GHActionsCapabilityState,
+    val statusCode: Int,
+    val detail: String,
+    val requestId: String = "",
+)
+
 data class GHEnvironment(
     val id: Long,
     val name: String,
