@@ -164,14 +164,32 @@ internal suspend fun GitHubManager.getJobLogs(context: Context, owner: String, r
         } catch (e: Exception) { "Error: ${e.message}" }
     }
 
+internal suspend fun GitHubManager.rerunWorkflowDetailed(context: Context, owner: String, repo: String, runId: Long): GHActionResult =
+    actionsCommandResult(
+        request(context, "/repos/$owner/$repo/actions/runs/$runId/rerun", "POST", "{}"),
+        successMessage = "Workflow rerun queued",
+    )
+
 internal suspend fun GitHubManager.rerunWorkflow(context: Context, owner: String, repo: String, runId: Long): Boolean =
-    request(context, "/repos/$owner/$repo/actions/runs/$runId/rerun", "POST", "{}").success
+    rerunWorkflowDetailed(context, owner, repo, runId).success
+
+internal suspend fun GitHubManager.rerunFailedJobsDetailed(context: Context, owner: String, repo: String, runId: Long): GHActionResult =
+    actionsCommandResult(
+        request(context, "/repos/$owner/$repo/actions/runs/$runId/rerun-failed-jobs", "POST", "{}"),
+        successMessage = "Failed jobs rerun queued",
+    )
 
 internal suspend fun GitHubManager.rerunFailedJobs(context: Context, owner: String, repo: String, runId: Long): Boolean =
-    request(context, "/repos/$owner/$repo/actions/runs/$runId/rerun-failed-jobs", "POST", "{}").success
+    rerunFailedJobsDetailed(context, owner, repo, runId).success
+
+internal suspend fun GitHubManager.cancelWorkflowRunDetailed(context: Context, owner: String, repo: String, runId: Long): GHActionResult =
+    actionsCommandResult(
+        request(context, "/repos/$owner/$repo/actions/runs/$runId/cancel", "POST", "{}"),
+        successMessage = "Cancellation requested",
+    )
 
 internal suspend fun GitHubManager.cancelWorkflowRun(context: Context, owner: String, repo: String, runId: Long): Boolean =
-    request(context, "/repos/$owner/$repo/actions/runs/$runId/cancel", "POST", "{}").success
+    cancelWorkflowRunDetailed(context, owner, repo, runId).success
 
 internal suspend fun GitHubManager.enableWorkflow(context: Context, owner: String, repo: String, workflowId: Long): Boolean =
     request(context, "/repos/$owner/$repo/actions/workflows/$workflowId/enable", "PUT", "{}").let { it.code == 204 || it.success }
@@ -409,8 +427,14 @@ internal suspend fun GitHubManager.getWorkflowRunAttemptLogs(context: Context, o
     return getRedirectLocationOrText(context, "${getApiUrl()}/repos/$owner/$repo/actions/runs/$runId/attempts/$attempt/logs")
 }
 
+internal suspend fun GitHubManager.rerunJobDetailed(context: Context, owner: String, repo: String, jobId: Long): GHActionResult =
+    actionsCommandResult(
+        request(context, "/repos/$owner/$repo/actions/jobs/$jobId/rerun", "POST", "{}"),
+        successMessage = "Job rerun queued",
+    )
+
 internal suspend fun GitHubManager.rerunJob(context: Context, owner: String, repo: String, jobId: Long): Boolean =
-    request(context, "/repos/$owner/$repo/actions/jobs/$jobId/rerun", "POST", "{}").success
+    rerunJobDetailed(context, owner, repo, jobId).success
 
 internal suspend fun GitHubManager.deleteWorkflowRun(context: Context, owner: String, repo: String, runId: Long): Boolean =
     request(context, "/repos/$owner/$repo/actions/runs/$runId", "DELETE").let { it.code == 204 || it.success }
@@ -418,8 +442,14 @@ internal suspend fun GitHubManager.deleteWorkflowRun(context: Context, owner: St
 internal suspend fun GitHubManager.deleteWorkflowRunLogs(context: Context, owner: String, repo: String, runId: Long): Boolean =
     request(context, "/repos/$owner/$repo/actions/runs/$runId/logs", "DELETE").let { it.code == 204 || it.success }
 
+internal suspend fun GitHubManager.forceCancelWorkflowRunDetailed(context: Context, owner: String, repo: String, runId: Long): GHActionResult =
+    actionsCommandResult(
+        request(context, "/repos/$owner/$repo/actions/runs/$runId/force-cancel", "POST", "{}"),
+        successMessage = "Force cancellation requested",
+    )
+
 internal suspend fun GitHubManager.forceCancelWorkflowRun(context: Context, owner: String, repo: String, runId: Long): Boolean =
-    request(context, "/repos/$owner/$repo/actions/runs/$runId/force-cancel", "POST", "{}").success
+    forceCancelWorkflowRunDetailed(context, owner, repo, runId).success
 
 internal suspend fun GitHubManager.getWorkflowUsage(context: Context, owner: String, repo: String, workflowId: Long): GHActionsUsage? {
     val r = request(context, "/repos/$owner/$repo/actions/workflows/$workflowId/timing")
@@ -552,6 +582,37 @@ private fun parseActionsUsage(body: String): GHActionsUsage? = try {
     }
     GHActionsUsage(runDurationMs = j.optLong("run_duration_ms", 0), billableMs = ms, billableMinutes = minutes)
 } catch (e: Exception) { null }
+
+private fun GitHubManager.actionsCommandResult(result: GitHubManager.ApiResult, successMessage: String): GHActionResult {
+    val success = result.success || result.code == 201 || result.code == 202 || result.code == 204
+    val requestId = result.headers["x-github-request-id"].orEmpty()
+    val rateRemaining = result.headers["x-ratelimit-remaining"]?.toIntOrNull()
+    val rateReset = result.headers["x-ratelimit-reset"]?.toLongOrNull()
+    val message = if (success) {
+        successMessage
+    } else {
+        val base = apiErrorMessage(result)
+        val hint = when {
+            result.code == 403 && rateRemaining == 0 -> "GitHub API rate limit is exhausted; reset epoch: ${rateReset ?: "unknown"}."
+            result.code == 401 -> "Sign in again: the token is missing, expired, or revoked."
+            result.code == 403 -> "Fine-grained PAT requires Actions: write for this repository."
+            result.code == 404 -> "The workflow run or job was not found, or the token cannot access it."
+            result.code == 409 -> "GitHub cannot perform this command in the current run state."
+            result.code == 422 -> "GitHub rejected the command parameters or run state."
+            else -> ""
+        }
+        val supportId = requestId.takeIf { it.isNotBlank() }?.let { "Request ID: $it" }.orEmpty()
+        listOf(base, hint, supportId).filter { it.isNotBlank() }.joinToString(" · ")
+    }
+    return GHActionResult(
+        success = success,
+        code = result.code,
+        message = message,
+        requestId = requestId,
+        rateRemaining = rateRemaining,
+        rateResetEpochSeconds = rateReset,
+    )
+}
 
 private suspend fun GitHubManager.getRedirectLocationOrText(context: Context, url: String): String =
     withContext(Dispatchers.IO) {

@@ -2,7 +2,14 @@ package gs.git.vps.data.github.model
 
 /** Модели домена Workflows (GitHub Actions): workflows/runs/jobs/artifacts/checks/usage. */
 
-data class GHActionResult(val success: Boolean, val code: Int, val message: String)
+data class GHActionResult(
+    val success: Boolean,
+    val code: Int,
+    val message: String,
+    val requestId: String = "",
+    val rateRemaining: Int? = null,
+    val rateResetEpochSeconds: Long? = null,
+)
 
 data class GHWorkflow(
     val id: Long,

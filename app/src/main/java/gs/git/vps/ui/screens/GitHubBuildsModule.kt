@@ -42,9 +42,9 @@ import gs.git.vps.data.github.GitHubManager
 import gs.git.vps.data.github.model.GHRepo
 import gs.git.vps.data.github.model.GHWorkflow
 import gs.git.vps.data.github.model.GHWorkflowRun
-import gs.git.vps.data.github.cancelWorkflowRun
+import gs.git.vps.data.github.cancelWorkflowRunDetailed
 import gs.git.vps.data.github.getWorkflowRuns
-import gs.git.vps.data.github.rerunWorkflow
+import gs.git.vps.data.github.rerunWorkflowDetailed
 import gs.git.vps.ui.components.AiModuleHairline
 import gs.git.vps.ui.components.AiModuleSpinner
 import gs.git.vps.ui.components.AiModuleText as Text
@@ -162,16 +162,16 @@ fun BuildsScreen(
                             run = run,
                             onRerun = {
                                 scope.launch {
-                                    val ok = GitHubManager.rerunWorkflow(context, owner, name, run.id)
-                                    Toast.makeText(context, if (ok) "rerun triggered" else "rerun failed", Toast.LENGTH_SHORT).show()
-                                    if (ok) loadRuns()
+                                    val result = GitHubManager.rerunWorkflowDetailed(context, owner, name, run.id)
+                                    Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
+                                    if (result.success) loadRuns()
                                 }
                             },
                             onCancel = {
                                 scope.launch {
-                                    val ok = GitHubManager.cancelWorkflowRun(context, owner, name, run.id)
-                                    Toast.makeText(context, if (ok) "cancelled" else "cancel failed", Toast.LENGTH_SHORT).show()
-                                    if (ok) loadRuns()
+                                    val result = GitHubManager.cancelWorkflowRunDetailed(context, owner, name, run.id)
+                                    Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
+                                    if (result.success) loadRuns()
                                 }
                             }
                         )

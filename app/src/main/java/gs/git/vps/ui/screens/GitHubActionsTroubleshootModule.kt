@@ -271,8 +271,8 @@ private fun GitHubProblemRunCard(
                     onClick = {
                         rerunBusy = true
                         scope.launch {
-                            val ok = GitHubManager.rerunFailedJobs(context, repoOwner, repoName, run.id)
-                            Toast.makeText(context, if (ok) "Rerun queued" else "Rerun failed", Toast.LENGTH_SHORT).show()
+                            val result = GitHubManager.rerunFailedJobsDetailed(context, repoOwner, repoName, run.id)
+                            Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
                             rerunBusy = false
                         }
                     },

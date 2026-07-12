@@ -40,7 +40,7 @@ import gs.git.vps.data.github.model.GHCheckAnnotation
 import gs.git.vps.data.github.model.GHCheckRun
 import gs.git.vps.data.github.model.GHCheckSuite
 import gs.git.vps.data.github.getCheckRunAnnotations
-import gs.git.vps.data.github.rerunFailedJobs
+import gs.git.vps.data.github.rerunFailedJobsDetailed
 import gs.git.vps.data.github.getPullRequestCheckRuns
 import gs.git.vps.data.github.getPullRequestCheckSuites
 import gs.git.vps.ui.components.AiModuleHairline
@@ -195,8 +195,8 @@ internal fun CheckRunsScreen(
                                 },
                                 onRerun = {
                                     scope.launch {
-                                        val ok = GitHubManager.rerunFailedJobs(context, repoOwner, repoName, run.id)
-                                        Toast.makeText(context, if (ok) "rerun triggered" else "rerun failed", Toast.LENGTH_SHORT).show()
+                                        val result = GitHubManager.rerunFailedJobsDetailed(context, repoOwner, repoName, run.id)
+                                        Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
                                     }
                                 }
                             )

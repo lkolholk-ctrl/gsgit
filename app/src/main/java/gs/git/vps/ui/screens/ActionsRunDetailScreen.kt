@@ -404,9 +404,9 @@ internal fun WorkflowRunDetailScreen(
                     glyph = GhGlyphs.PLAY,
                     onClick = {
                         scope.launch {
-                            val ok = GitHubManager.rerunWorkflow(context, repo.owner, repo.name, runId)
-                            Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
-                            refreshAll()
+                            val result = GitHubManager.rerunWorkflowDetailed(context, repo.owner, repo.name, runId)
+                            Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
+                            if (result.success) refreshAll()
                         }
                     },
                     tint = palette.accent,
@@ -416,9 +416,9 @@ internal fun WorkflowRunDetailScreen(
                     glyph = GhGlyphs.WARN,
                     onClick = {
                         scope.launch {
-                            val ok = GitHubManager.rerunFailedJobs(context, repo.owner, repo.name, runId)
-                            Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
-                            refreshAll()
+                            val result = GitHubManager.rerunFailedJobsDetailed(context, repo.owner, repo.name, runId)
+                            Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
+                            if (result.success) refreshAll()
                         }
                     },
                     tint = palette.warning,
@@ -456,9 +456,9 @@ internal fun WorkflowRunDetailScreen(
                         glyph = GhGlyphs.CLOSE,
                         onClick = {
                             scope.launch {
-                                val ok = GitHubManager.cancelWorkflowRun(context, repo.owner, repo.name, runId)
-                                Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
-                                refreshAll()
+                                val result = GitHubManager.cancelWorkflowRunDetailed(context, repo.owner, repo.name, runId)
+                                Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
+                                if (result.success) refreshAll()
                             }
                         },
                         tint = palette.error,
@@ -468,9 +468,9 @@ internal fun WorkflowRunDetailScreen(
                         glyph = GhGlyphs.STOP,
                         onClick = {
                             scope.launch {
-                                val ok = GitHubManager.forceCancelWorkflowRun(context, repo.owner, repo.name, runId)
-                                Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
-                                refreshAll()
+                                val result = GitHubManager.forceCancelWorkflowRunDetailed(context, repo.owner, repo.name, runId)
+                                Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
+                                if (result.success) refreshAll()
                             }
                         },
                         tint = palette.error,
@@ -1766,9 +1766,9 @@ private fun WorkflowJobCard(
                 if (job.status == "completed") {
                     Chip(Icons.Rounded.Refresh, "Rerun job") {
                         scope.launch {
-                            val ok = GitHubManager.rerunJob(context, repo.owner, repo.name, job.id)
-                            Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
-                            if (ok) onRefreshRun()
+                            val result = GitHubManager.rerunJobDetailed(context, repo.owner, repo.name, job.id)
+                            Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
+                            if (result.success) onRefreshRun()
                         }
                     }
                 }
