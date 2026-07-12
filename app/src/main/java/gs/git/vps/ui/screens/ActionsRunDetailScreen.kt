@@ -1763,11 +1763,13 @@ private fun WorkflowJobCard(
                         Chip(Icons.Rounded.Article, "Open in browser") { openExternalUrl(context, runHtmlUrl) }
                     }
                 }
-                Chip(Icons.Rounded.Refresh, "Rerun job") {
-                    scope.launch {
-                        val ok = GitHubManager.rerunJob(context, repo.owner, repo.name, job.id)
-                        Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
-                        onRefreshRun()
+                if (job.status == "completed") {
+                    Chip(Icons.Rounded.Refresh, "Rerun job") {
+                        scope.launch {
+                            val ok = GitHubManager.rerunJob(context, repo.owner, repo.name, job.id)
+                            Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
+                            if (ok) onRefreshRun()
+                        }
                     }
                 }
             }

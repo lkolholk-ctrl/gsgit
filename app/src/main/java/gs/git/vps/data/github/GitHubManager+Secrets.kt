@@ -11,6 +11,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
+import java.util.Locale
 
 /**
  * Домен Secrets слоя GitHub API — секреты и переменные Actions (repo + environment).
@@ -39,13 +40,26 @@ internal suspend fun GitHubManager.getRepoActionsPublicKey(context: Context, own
     return try { parseGHActionPublicKey(JSONObject(r.body)) } catch (e: Exception) { null }
 }
 
+internal suspend fun GitHubManager.getEnvironmentActionsPublicKey(
+    context: Context,
+    owner: String,
+    repo: String,
+    envName: String,
+): GHActionPublicKey? {
+    val encodedEnv = encodeSecretPathSegment(envName)
+    val r = request(context, "/repos/$owner/$repo/environments/$encodedEnv/secrets/public-key")
+    if (!r.success) return null
+    return try { parseGHActionPublicKey(JSONObject(r.body)) } catch (_: Exception) { null }
+}
+
 internal suspend fun GitHubManager.createOrUpdateRepoActionsSecret(context: Context, owner: String, repo: String, name: String, value: String): Boolean {
     return try {
+        val normalizedName = normalizeActionsSecretName(name) ?: return false
         val publicKey = getRepoActionsPublicKey(context, owner, repo) ?: return false
         val encrypted = withContext(Dispatchers.Default) {
             GitHubSecretCrypto.encryptSecret(publicKey.key, value)
         }
-        val encodedName = URLEncoder.encode(name, "UTF-8")
+        val encodedName = encodeSecretPathSegment(normalizedName)
         val body = JSONObject().apply {
             put("encrypted_value", encrypted)
             put("key_id", publicKey.keyId)
@@ -60,14 +74,14 @@ internal suspend fun GitHubManager.createOrUpdateRepoActionsSecret(context: Cont
 }
 
 internal suspend fun GitHubManager.deleteRepoActionsSecret(context: Context, owner: String, repo: String, name: String): Boolean {
-    val encodedName = URLEncoder.encode(name, "UTF-8")
+    val encodedName = encodeSecretPathSegment(normalizeActionsSecretName(name) ?: return false)
     return request(context, "/repos/$owner/$repo/actions/secrets/$encodedName", "DELETE").let { it.code == 204 || it.success }
 }
 
 // --- Environment secrets ---
 
 internal suspend fun GitHubManager.getEnvironmentSecrets(context: Context, owner: String, repo: String, envName: String): List<GHEnvironmentSecret> {
-    val encoded = URLEncoder.encode(envName, "UTF-8")
+    val encoded = encodeSecretPathSegment(envName)
     val r = request(context, "/repos/$owner/$repo/environments/$encoded/secrets?per_page=100")
     if (!r.success) return emptyList()
     return try {
@@ -78,9 +92,12 @@ internal suspend fun GitHubManager.getEnvironmentSecrets(context: Context, owner
 
 internal suspend fun GitHubManager.createOrUpdateEnvironmentSecret(context: Context, owner: String, repo: String, envName: String, secretName: String, value: String): Boolean {
     return try {
-        val encodedEnv = URLEncoder.encode(envName, "UTF-8")
-        val encodedSecret = URLEncoder.encode(secretName, "UTF-8")
-        val pubKey = getRepoActionsPublicKey(context, owner, repo) ?: return false
+        val normalizedName = normalizeActionsSecretName(secretName) ?: return false
+        val encodedEnv = encodeSecretPathSegment(envName)
+        val encodedSecret = encodeSecretPathSegment(normalizedName)
+        // Environment secrets have their own public key. A repository key
+        // produces ciphertext that this endpoint cannot decrypt (HTTP 422).
+        val pubKey = getEnvironmentActionsPublicKey(context, owner, repo, envName) ?: return false
         val encrypted = withContext(Dispatchers.Default) {
             GitHubSecretCrypto.encryptSecret(pubKey.key, value)
         }
@@ -98,8 +115,8 @@ internal suspend fun GitHubManager.createOrUpdateEnvironmentSecret(context: Cont
 }
 
 internal suspend fun GitHubManager.deleteEnvironmentSecret(context: Context, owner: String, repo: String, envName: String, secretName: String): Boolean {
-    val encodedEnv = URLEncoder.encode(envName, "UTF-8")
-    val encodedSecret = URLEncoder.encode(secretName, "UTF-8")
+    val encodedEnv = encodeSecretPathSegment(envName)
+    val encodedSecret = encodeSecretPathSegment(normalizeActionsSecretName(secretName) ?: return false)
     return request(context, "/repos/$owner/$repo/environments/$encodedEnv/secrets/$encodedSecret", "DELETE").let { it.code == 204 || it.success }
 }
 
@@ -143,3 +160,13 @@ internal fun parseGHActionVariable(j: JSONObject): GHActionVariable =
 
 internal fun parseGHEnvironmentSecret(j: JSONObject): GHEnvironmentSecret =
     GHEnvironmentSecret(j.optString("name"), j.optString("created_at", ""), j.optString("updated_at", ""))
+
+internal fun normalizeActionsSecretName(name: String): String? {
+    val normalized = name.trim().uppercase(Locale.US)
+    if (!normalized.matches(Regex("[A-Z_][A-Z0-9_]*"))) return null
+    if (normalized.startsWith("GITHUB_")) return null
+    return normalized
+}
+
+private fun encodeSecretPathSegment(value: String): String =
+    URLEncoder.encode(value, "UTF-8").replace("+", "%20")

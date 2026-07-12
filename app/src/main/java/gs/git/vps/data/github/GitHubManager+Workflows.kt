@@ -109,7 +109,9 @@ internal suspend fun GitHubManager.getWorkflowRun(context: Context, owner: Strin
 }
 
 internal suspend fun GitHubManager.getWorkflowRunJobs(context: Context, owner: String, repo: String, runId: Long): List<GHJob> {
-    val r = request(context, "/repos/$owner/$repo/actions/runs/$runId/jobs?filter=all&per_page=100")
+    // `all` mixes jobs from previous rerun attempts into the current run UI.
+    // Attempt history is loaded through getWorkflowRunAttemptJobs instead.
+    val r = request(context, "/repos/$owner/$repo/actions/runs/$runId/jobs?filter=latest&per_page=100")
     if (!r.success) return emptyList()
     return parseJobs(r.body)
 }

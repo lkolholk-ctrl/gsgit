@@ -497,6 +497,7 @@ private fun ActionsSecretsPanel(repo: GHRepo) {
     var name by remember { mutableStateOf("") }
     var value by remember { mutableStateOf("") }
     var saving by remember { mutableStateOf(false) }
+    val validName = remember(name) { normalizeActionsSecretName(name) }
 
     suspend fun load() {
         loading = true
@@ -512,11 +513,20 @@ private fun ActionsSecretsPanel(repo: GHRepo) {
             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(SurfaceWhite).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 AiModuleTextField(
                     value = name,
-                    onValueChange = { name = it.trim() },
+                    onValueChange = { input ->
+                        name = input.uppercase(Locale.US).filter { it == '_' || it in 'A'..'Z' || it in '0'..'9' }
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     label = "Secret name",
                     singleLine = true
                 )
+                if (name.isNotBlank() && validName == null) {
+                    Text(
+                        "Name must start with a letter or _, and cannot start with GITHUB_.",
+                        fontSize = 10.sp,
+                        color = Red,
+                    )
+                }
                 AiModuleTextField(
                     value = value,
                     onValueChange = { value = it },
@@ -526,15 +536,15 @@ private fun ActionsSecretsPanel(repo: GHRepo) {
                 )
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        "GitHub never returns stored secret values. Saving an existing name updates it.",
+                        "Encrypted on device with GitHub's public key. Fine-grained PAT: Secrets read/write.",
                         fontSize = 11.sp,
                         color = TextTertiary,
                         modifier = Modifier.weight(1f)
                     )
-                    GitHubTerminalButton("save secret", enabled = !saving && name.isNotBlank() && value.isNotBlank(), onClick = {
+                    GitHubTerminalButton("save secret", enabled = !saving && validName != null && value.isNotBlank(), onClick = {
                         scope.launch {
                             saving = true
-                            val ok = GitHubManager.createOrUpdateRepoActionsSecret(context, repo.owner, repo.name, name, value)
+                            val ok = GitHubManager.createOrUpdateRepoActionsSecret(context, repo.owner, repo.name, validName.orEmpty(), value)
                             saving = false
                             Toast.makeText(context, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
                             if (ok) { name = ""; value = ""; load() }

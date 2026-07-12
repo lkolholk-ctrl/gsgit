@@ -324,6 +324,11 @@ private fun BuildDurationTrendGraph(runs: List<GHWorkflowRun>) {
 private fun TestSummaryWidget(runs: List<GHWorkflowRun>) {
     val palette = AiModuleTheme.colors
     var showDetails by remember { mutableStateOf(false) }
+    val completed = remember(runs) { runs.filter { it.status == "completed" } }
+    val succeeded = remember(completed) { completed.count { it.conclusion == "success" } }
+    val failed = remember(completed) { completed.count { it.conclusion == "failure" } }
+    val other = remember(completed) { completed.size - succeeded - failed }
+    val failedRuns = remember(completed) { completed.filter { it.conclusion == "failure" }.take(5) }
 
     Column(
         Modifier
@@ -337,7 +342,7 @@ private fun TestSummaryWidget(runs: List<GHWorkflowRun>) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("test suites summary", fontFamily = JetBrainsMono, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = palette.textPrimary)
+            Text("workflow result summary", fontFamily = JetBrainsMono, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = palette.textPrimary)
             Text(
                 if (showDetails) "collapse" else "details",
                 fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.accent,
@@ -345,40 +350,34 @@ private fun TestSummaryWidget(runs: List<GHWorkflowRun>) {
             )
         }
         Spacer(Modifier.height(6.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            TestMetricBox("Jest Suites", "4 / 4 pass", Color(0xFF2EA043))
-            TestMetricBox("Detox e2e", "12 / 12 pass", Color(0xFF2EA043))
-            val hasFail = runs.any { it.conclusion == "failure" }
-            TestMetricBox("Gradle JUnit", if (hasFail) "42 pass, 2 fail" else "44 / 44 pass", if (hasFail) Color(0xFFF85149) else Color(0xFF2EA043))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            RunMetricBox("success", succeeded.toString(), Color(0xFF2EA043))
+            RunMetricBox("failure", failed.toString(), Color(0xFFF85149))
+            RunMetricBox("other", other.toString(), palette.textSecondary)
         }
 
         if (showDetails) {
-            Spacer(Modifier.height(10.dp))
-            Text("recent failures:", fontFamily = JetBrainsMono, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFF85149))
-            Spacer(Modifier.height(4.dp))
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .background(Color.Black.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
-                    .padding(8.dp)
-            ) {
-                Text(
-                    text = "org.gradle.api.tasks.TaskExecutionException: Execution failed for task ':app:testDebugUnitTest'.\n" +
-                           "at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.execute\n" +
-                           "Caused by: java.lang.AssertionError: Expected true but was false\n" +
-                           "at gs.git.vps.security.EncryptionTest.testAppIntegrityCheck(EncryptionTest.kt:42)",
-                    fontFamily = JetBrainsMono,
-                    fontSize = 9.sp,
-                    color = Color.LightGray,
-                    lineHeight = 13.sp
-                )
+            Spacer(Modifier.height(8.dp))
+            if (failedRuns.isEmpty()) {
+                Text("no failed runs in this filter", fontFamily = JetBrainsMono, fontSize = 10.sp, color = palette.textMuted)
+            } else {
+                failedRuns.forEach { run ->
+                    Text(
+                        "#${run.runNumber} ${run.name.ifBlank { "workflow" }} · ${run.branch}",
+                        fontFamily = JetBrainsMono,
+                        fontSize = 10.sp,
+                        color = palette.error,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun RowScope.TestMetricBox(title: String, status: String, color: Color) {
+private fun RowScope.RunMetricBox(title: String, value: String, color: Color) {
     val palette = AiModuleTheme.colors
     Column(
         Modifier
@@ -389,19 +388,19 @@ private fun RowScope.TestMetricBox(title: String, status: String, color: Color) 
     ) {
         Text(title, fontFamily = JetBrainsMono, fontSize = 9.sp, color = palette.textMuted)
         Spacer(Modifier.height(2.dp))
-        Text(status, fontFamily = JetBrainsMono, fontSize = 10.sp, color = color, fontWeight = FontWeight.Medium)
+        Text(value, fontFamily = JetBrainsMono, fontSize = 11.sp, color = color, fontWeight = FontWeight.Medium)
     }
 }
 
 private fun calcRunDurationSeconds(run: GHWorkflowRun): Long {
-    try {
+    return try {
         val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US)
         sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
         val created = sdf.parse(run.createdAt)?.time ?: return 0L
         val updated = sdf.parse(run.updatedAt)?.time ?: return 0L
-        return (updated - created) / 1000L
-    } catch (e: Exception) {
-        return 0L
+        ((updated - created) / 1000L).coerceAtLeast(0L)
+    } catch (_: Exception) {
+        0L
     }
 }
 
@@ -420,9 +419,12 @@ private fun WorkflowRunRow(run: GHWorkflowRun, onRerun: () -> Unit, onCancel: ()
             Spacer(Modifier.width(6.dp))
             Text(
                 run.name.ifBlank { "run #${run.runNumber}" },
-                color = palette.textPrimary, fontFamily = JetBrainsMono,
-                fontWeight = FontWeight.Medium, fontSize = 13.sp,
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                color = palette.textPrimary,
+                fontFamily = JetBrainsMono,
+                fontWeight = FontWeight.Medium,
+                fontSize = 13.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
             Text(label, color = badge.color, fontFamily = JetBrainsMono, fontSize = 11.sp, fontWeight = FontWeight.Medium)
@@ -439,20 +441,19 @@ private fun WorkflowRunRow(run: GHWorkflowRun, onRerun: () -> Unit, onCancel: ()
         if (run.headSha.isNotBlank()) {
             Text("SHA: ${run.headSha.take(7)}", color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 10.sp)
         }
-        // Action buttons
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            if (run.conclusion == "failure" || run.status == "completed") {
-                SmallChip("rerun", palette.accent) { onRerun() }
+            if (run.status == "completed") {
+                SmallChip("rerun", palette.accent, onRerun)
             }
             if (run.status == "in_progress" || run.status == "queued") {
-                SmallChip("cancel", palette.error) { onCancel() }
+                SmallChip("cancel", palette.error, onCancel)
             }
         }
     }
 }
 
 @Composable
-private fun SmallChip(label: String, color: androidx.compose.ui.graphics.Color, onClick: () -> Unit) {
+private fun SmallChip(label: String, color: Color, onClick: () -> Unit) {
     Box(
         Modifier
             .clip(RoundedCornerShape(4.dp))

@@ -403,13 +403,14 @@ internal fun EnvironmentsPanel(repo: GHRepo) {
     if (showAddSecret && selectedEnv != null) {
         var secretName by remember { mutableStateOf("") }
         var secretValue by remember { mutableStateOf("") }
+        val validSecretName = remember(secretName) { normalizeActionsSecretName(secretName) }
         AiModuleAlertDialog(
             onDismissRequest = { showAddSecret = false },
             title = "add secret · ${selectedEnv!!.name}",
             confirmButton = {
-                AiModuleTextAction(label = "save", enabled = secretName.isNotBlank() && secretValue.isNotBlank(), onClick = {
+                AiModuleTextAction(label = "save", enabled = validSecretName != null && secretValue.isNotBlank(), onClick = {
                     scope.launch {
-                        val ok = GitHubManager.createOrUpdateEnvironmentSecret(context, repo.owner, repo.name, selectedEnv!!.name, secretName, secretValue)
+                        val ok = GitHubManager.createOrUpdateEnvironmentSecret(context, repo.owner, repo.name, selectedEnv!!.name, validSecretName.orEmpty(), secretValue)
                         Toast.makeText(context, if (ok) "Saved" else "Failed", Toast.LENGTH_SHORT).show()
                         if (ok) envSecrets = GitHubManager.getEnvironmentSecrets(context, repo.owner, repo.name, selectedEnv!!.name)
                         showAddSecret = false
@@ -419,7 +420,17 @@ internal fun EnvironmentsPanel(repo: GHRepo) {
             dismissButton = { AiModuleTextAction(label = "cancel", onClick = { showAddSecret = false }) },
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                GitHubTerminalTextField(value = secretName, onValueChange = { secretName = it }, placeholder = "Secret name *", singleLine = true)
+                GitHubTerminalTextField(
+                    value = secretName,
+                    onValueChange = { input ->
+                        secretName = input.uppercase(Locale.US).filter { it == '_' || it in 'A'..'Z' || it in '0'..'9' }
+                    },
+                    placeholder = "Secret name *",
+                    singleLine = true,
+                )
+                if (secretName.isNotBlank() && validSecretName == null) {
+                    Text("Name must start with a letter or _ and cannot start with GITHUB_.", fontSize = 10.sp, color = Red)
+                }
                 GitHubTerminalTextField(value = secretValue, onValueChange = { secretValue = it }, placeholder = "Secret value *", singleLine = true)
             }
         }
