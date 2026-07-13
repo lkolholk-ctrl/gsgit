@@ -1196,6 +1196,7 @@ internal fun RepoDetailScreen(
         ) {
             Row(
                 Modifier
+                    .weight(1f)
                     .clip(RoundedCornerShape(GitHubControlRadius))
                     .background(palette.accent.copy(alpha = 0.10f))
                     .border(1.dp, palette.accent.copy(alpha = 0.55f), RoundedCornerShape(GitHubControlRadius))
@@ -1209,9 +1210,11 @@ internal fun RepoDetailScreen(
                     color = palette.accent,
                     fontFamily = JetBrainsMono,
                     fontSize = 12.sp,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
-            Spacer(Modifier.weight(1f))
             when (shownSection) {
                 RepoTab.FILES -> if (canWrite) {
                     AiModulePillButton(label = "+ file", onClick = { showCreateFile = true })

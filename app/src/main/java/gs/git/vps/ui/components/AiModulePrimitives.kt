@@ -351,6 +351,9 @@ fun AiModulePillButton(
             fontFamily = JetBrainsMono,
             fontSize = 13.sp,
             lineHeight = 1.25.em,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -654,6 +657,9 @@ private fun AiModuleButtonImpl(
             fontFamily = JetBrainsMono,
             fontSize = AiModuleTheme.type.label,
             fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }

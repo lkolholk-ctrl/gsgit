@@ -278,6 +278,9 @@ internal fun GitHubTopBarTextAction(
             fontFamily = JetBrainsMono,
             fontWeight = FontWeight.Medium,
             fontSize = 12.sp,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }

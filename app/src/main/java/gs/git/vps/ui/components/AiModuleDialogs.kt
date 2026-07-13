@@ -252,6 +252,9 @@ fun AiModuleTextAction(
             fontWeight = FontWeight.Medium,
             fontSize = 13.sp,
             lineHeight = 1.em,
+            maxLines = 1,
+            softWrap = false,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
         )
     }
 }
