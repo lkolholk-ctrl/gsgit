@@ -181,7 +181,24 @@ class MainActivity : FragmentActivity() {
         // парсится одинаково (pathSegments от host не зависит).
         if (uri.host != "github.com" && uri.host != "www.github.com") return
         val segments = uri.pathSegments
-        if (segments.size < 2) return
+
+        // Фильтр ловит ВЕСЬ github.com. Всё, что приложение показать не умеет —
+        // корень/профиль, системные страницы, /actions, артефакты, /commit,
+        // скачивание релизов и т.п. — отдаём браузеру, а не проглатываем (иначе
+        // ссылка валится на корень репо/домашний экран, а скачивание не стартует).
+        val first = segments.getOrNull(0)?.lowercase()
+        if (segments.size < 2 || first == null || first in RESERVED_ROOT_SEGMENTS) {
+            openInBrowser(uri)
+            return
+        }
+        val section = segments.getOrNull(2)?.lowercase()
+        // Скачивание ассета релиза (releases/download/...) — это файл, не страница
+        // релизов: в приложении не откроется, отдаём браузеру.
+        val isReleaseDownload = section == "releases" && segments.getOrNull(3)?.lowercase() == "download"
+        if (isReleaseDownload || (section != null && section in UNSUPPORTED_REPO_SECTIONS)) {
+            openInBrowser(uri)
+            return
+        }
 
         val owner = segments[0]
         val repo = segments[1]
@@ -236,7 +253,45 @@ class MainActivity : FragmentActivity() {
         }
         deepLinkTarget = target
     }
+
+    /**
+     * Открывает ссылку во ВНЕШНЕМ браузере, явно исключая себя (иначе Android по
+     * тому же intent-filter вернёт интент нам же и получится цикл/пустой экран).
+     */
+    private fun openInBrowser(uri: android.net.Uri) {
+        val view = Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val browserPkg = try {
+            packageManager
+                .queryIntentActivities(
+                    Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://www.example.com")),
+                    0
+                )
+                .map { it.activityInfo.packageName }
+                .firstOrNull { it != packageName }
+        } catch (e: Exception) {
+            null
+        }
+        if (browserPkg != null) view.setPackage(browserPkg)
+        runCatching { startActivity(view) }
+    }
 }
+
+private val RESERVED_ROOT_SEGMENTS = setOf(
+    "settings", "login", "logout", "join", "signup", "sessions", "notifications",
+    "marketplace", "sponsors", "about", "pricing", "features", "explore", "topics",
+    "trending", "collections", "events", "new", "organizations", "orgs", "apps",
+    "codespaces", "account", "dashboard", "search", "stars", "watching", "site",
+    "contact", "security", "customer-stories", "enterprise", "readme", "pulls",
+    "issues", "gist", "assets", "favicons"
+)
+
+private val UNSUPPORTED_REPO_SECTIONS = setOf(
+    "actions", "commit", "commits", "compare", "wiki", "security", "pulse",
+    "graphs", "network", "branches", "tags", "archive", "raw", "blame", "find",
+    "deployments", "packages", "projects", "settings", "hooks", "milestones",
+    "labels", "watchers", "stargazers", "forks", "community", "runs", "activity",
+    "contributors"
+)
 
 @Composable
 private fun AppLockedScreen(onUnlock: () -> Unit, onPinCorrect: () -> Unit) {
