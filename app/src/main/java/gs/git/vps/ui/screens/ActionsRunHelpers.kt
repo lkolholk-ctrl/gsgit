@@ -836,55 +836,50 @@ private fun safeLogPreview(text: String, maxChars: Int): String {
 
 private fun splitLogsBySteps(job: GHJob, raw: String): Map<Int, String> {
     if (raw.isBlank()) return emptyMap()
-    val lines = raw.lines()
-    val stepStarts = lines.mapIndexedNotNull { index, line ->
-        val n = normalizeLogLine(line)
-        if (looksLikeStepBoundary(n)) index else null
-    }
-    val result = linkedMapOf<Int, String>()
     val steps = job.steps
     if (steps.isEmpty()) return emptyMap()
+    val lines = raw.lines()
 
-    if (stepStarts.isEmpty()) {
-        val target = steps.lastOrNull { displayStepStatus(it) !in setOf("queued", "pending") } ?: steps.first()
-        result[target.number] = raw.trim()
-        return result
-    }
-
-    val preamble = lines.subList(0, stepStarts.first()).joinToString("\n").trim()
-    var sectionOffset = 0
-    if (preamble.isNotBlank()) {
-        result[steps.first().number] = preamble
-        sectionOffset = 1
-    }
-
-    val sections = mutableListOf<String>()
-    for (i in stepStarts.indices) {
-        val s = stepStarts[i]
-        val e = if (i < stepStarts.lastIndex) stepStarts[i + 1] else lines.size
-        sections += lines.subList(s, e).joinToString("\n").trim()
-    }
-
-    var sectionIndex = 0
-    for (stepIndex in sectionOffset until steps.size) {
-        if (sectionIndex >= sections.size) break
-        val step = steps[stepIndex]
-        val currentSection = sections[sectionIndex]
-        val currentBoundary = normalizeLogLine(currentSection.lineSequence().firstOrNull().orEmpty())
-        val matchedByName = stepBoundaryMatchesStep(currentBoundary, step.name)
-        if (matchedByName || stepIndex == sectionOffset) {
-            result[step.number] = currentSection
-            sectionIndex++
-        } else {
-            result[step.number] = currentSection
-            sectionIndex++
+    // Границу шага ищем по ИМЕНИ шага, а не по каждому ##[group]: внутри одного
+    // шага GitHub эмитит десятки вложенных ##[group] (Gradle, под-действия).
+    // Раньше границей был любой ##[group] → секции мапились 1:1 на шаги по
+    // индексу, и каждому шагу доставался огрызок между двумя соседними ##[group]
+    // (те самые «1-7 строк»), а весь остаток сваливался в последний шаг.
+    // Теперь: для каждого шага по порядку находим ПЕРВЫЙ ##[group]-заголовок,
+    // совпавший с его именем (stepBoundaryMatchesStep), и берём весь диапазон до
+    // границы следующего шага — вложенные группы остаются внутри шага целиком.
+    val boundaries = mutableListOf<Pair<Int, Int>>() // stepNumber -> startLineIndex
+    var search = 0
+    for (step in steps) {
+        var found = -1
+        var i = search
+        while (i < lines.size) {
+            val n = normalizeLogLine(lines[i])
+            if (n.startsWith("##[group]") && stepBoundaryMatchesStep(n, step.name)) { found = i; break }
+            i++
         }
+        if (found >= 0) { boundaries += step.number to found; search = found + 1 }
     }
 
-    if (sectionIndex < sections.size) {
-        val lastStepNum = steps.lastOrNull { result.containsKey(it.number) }?.number ?: steps.last().number
-        val extra = sections.drop(sectionIndex).joinToString("\n\n")
-        result[lastStepNum] = listOfNotNull(result[lastStepNum], extra).joinToString("\n\n").trim()
+    // Ни одна граница не распозналась — отдаём весь лог наиболее релевантному
+    // шагу (последний не-queued), чтобы ничего не потерять.
+    if (boundaries.isEmpty()) {
+        val target = steps.lastOrNull { displayStepStatus(it) !in setOf("queued", "pending") } ?: steps.first()
+        return mapOf(target.number to raw.trim())
+    }
+
+    val result = linkedMapOf<Int, String>()
+    // Преамбула до первой распознанной границы → к первому распознанному шагу.
+    val firstStart = boundaries.first().second
+    if (firstStart > 0) {
+        val pre = lines.subList(0, firstStart).joinToString("\n").trim()
+        if (pre.isNotBlank()) result[boundaries.first().first] = pre
+    }
+    for (idx in boundaries.indices) {
+        val (num, start) = boundaries[idx]
+        val end = if (idx < boundaries.lastIndex) boundaries[idx + 1].second else lines.size
+        val body = lines.subList(start, end).joinToString("\n").trim()
+        result[num] = listOfNotNull(result[num], body).filter { it.isNotBlank() }.joinToString("\n")
     }
 
     return result.mapValues { (_, value) -> value.trim() }.filterValues { it.isNotBlank() }
@@ -894,14 +889,6 @@ private fun normalizeLogLine(line: String): String {
     var out = line.trim()
     out = out.replace(Regex("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z\\s*"), "")
     return out
-}
-
-private fun looksLikeStepBoundary(normalized: String): Boolean {
-    return normalized.startsWith("##[group]Step ") ||
-        normalized.startsWith("##[group]Run ") ||
-        normalized.startsWith("##[group]Post ") ||
-        normalized.startsWith("##[group]Complete job") ||
-        normalized.startsWith("##[group]")
 }
 
 private fun stepBoundaryMatchesStep(boundary: String, stepName: String): Boolean {
