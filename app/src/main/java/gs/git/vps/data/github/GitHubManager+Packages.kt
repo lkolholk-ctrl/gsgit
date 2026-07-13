@@ -49,8 +49,16 @@ internal suspend fun GitHubManager.deletePackage(context: Context, ownerType: St
     return r.code == 204 || r.success
 }
 
-internal suspend fun GitHubManager.getPackageVersions(context: Context, ownerType: String, owner: String, packageType: String, packageName: String): List<GHPackageVersion> {
-    val r = request(context, "${packageOwnerPath(ownerType, owner)}/packages/${URLEncoder.encode(packageType, "UTF-8")}/${URLEncoder.encode(packageName, "UTF-8")}/versions?per_page=100", extraHeaders = mapOf("Accept" to "application/vnd.github+json"))
+internal suspend fun GitHubManager.getPackageVersions(
+    context: Context,
+    ownerType: String,
+    owner: String,
+    packageType: String,
+    packageName: String,
+    state: String = "active",
+): List<GHPackageVersion> {
+    val safeState = state.takeIf { it == "active" || it == "deleted" } ?: "active"
+    val r = request(context, "${packageOwnerPath(ownerType, owner)}/packages/${URLEncoder.encode(packageType, "UTF-8")}/${URLEncoder.encode(packageName, "UTF-8")}/versions?per_page=100&state=$safeState", extraHeaders = mapOf("Accept" to "application/vnd.github+json"))
     if (!r.success) return emptyList()
     return try {
         val arr = JSONArray(r.body)

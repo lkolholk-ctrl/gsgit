@@ -29,6 +29,7 @@ import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -196,23 +197,33 @@ private fun PackageDetailScreen(owner: PackageOwner, pkg: GHPackage, onBack: () 
     var detail by remember(pkg.id) { mutableStateOf(pkg) }
     var versions by remember(pkg.id) { mutableStateOf<List<GHPackageVersion>>(emptyList()) }
     var loading by remember(pkg.id) { mutableStateOf(true) }
+    var versionState by remember(pkg.id) { mutableStateOf("active") }
     var deletePackageConfirm by remember { mutableStateOf(false) }
     var deleteVersionConfirm by remember { mutableStateOf<GHPackageVersion?>(null) }
+    var restoreVersionConfirm by remember { mutableStateOf<GHPackageVersion?>(null) }
     var actionInFlight by remember { mutableStateOf(false) }
 
     fun loadDetail() {
         loading = true
         scope.launch {
             detail = GitHubManager.getPackage(context, owner.type, owner.login, pkg.packageType, pkg.name) ?: pkg
-            versions = GitHubManager.getPackageVersions(context, owner.type, owner.login, pkg.packageType, pkg.name)
+            versions = GitHubManager.getPackageVersions(
+                context,
+                owner.type,
+                owner.login,
+                pkg.packageType,
+                pkg.name,
+                state = versionState,
+            )
             loading = false
         }
     }
 
-    LaunchedEffect(owner, pkg.id) { loadDetail() }
+    LaunchedEffect(owner, pkg.id, versionState) { loadDetail() }
 
     fun handlePackageDetailBack() {
         when {
+            restoreVersionConfirm != null -> restoreVersionConfirm = null
             deleteVersionConfirm != null -> deleteVersionConfirm = null
             deletePackageConfirm -> deletePackageConfirm = false
             else -> onBack()
@@ -268,12 +279,26 @@ private fun PackageDetailScreen(owner: PackageOwner, pkg: GHPackage, onBack: () 
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             item { PackageHeaderCard(detail, owner) }
-            if (versions.isNotEmpty()) {
+            if (versionState == "active" && versions.isNotEmpty()) {
                 val latestVer = versions.firstOrNull()?.displayName() ?: "latest"
                 item { ImportSnippetsPanel(detail, latestVer) }
             }
             item {
-                Text("Versions", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = AiModuleTheme.colors.textPrimary)
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text(
+                        "Versions",
+                        modifier = Modifier.weight(1f),
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = AiModuleTheme.colors.textPrimary,
+                    )
+                    PackageFilterChip("active", versionState == "active") { versionState = "active" }
+                    PackageFilterChip("deleted", versionState == "deleted") { versionState = "deleted" }
+                }
             }
             if (loading) {
                 item {
@@ -285,14 +310,22 @@ private fun PackageDetailScreen(owner: PackageOwner, pkg: GHPackage, onBack: () 
                 items(versions) { version ->
                     PackageVersionCard(
                         version = version,
+                        isDeleted = versionState == "deleted",
                         onOpen = {
                             val url = version.htmlUrl.ifBlank { detail.htmlUrl }
                             if (url.isNotBlank()) context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                         },
-                        onDelete = { deleteVersionConfirm = version }
+                        onDelete = { deleteVersionConfirm = version },
+                        onRestore = { restoreVersionConfirm = version },
                     )
                 }
-                if (versions.isEmpty()) item { EmptyPackagesCard("No package versions returned") }
+                if (versions.isEmpty()) {
+                    item {
+                        EmptyPackagesCard(
+                            if (versionState == "deleted") "No deleted package versions" else "No active package versions",
+                        )
+                    }
+                }
             }
         }
     }
@@ -349,6 +382,51 @@ private fun PackageDetailScreen(owner: PackageOwner, pkg: GHPackage, onBack: () 
             },
             dismissButton = {
                 AiModuleTextAction(label = "cancel", onClick = { deleteVersionConfirm = null }, tint = AiModuleTheme.colors.textSecondary)
+            },
+        )
+    }
+
+    restoreVersionConfirm?.let { version ->
+        AiModuleAlertDialog(
+            onDismissRequest = { if (!actionInFlight) restoreVersionConfirm = null },
+            title = "Restore version",
+            content = {
+                Text("Restore version ${version.displayName()}? Deleted versions can only be restored while their namespace is still available.")
+            },
+            confirmButton = {
+                AiModuleTextAction(
+                    label = if (actionInFlight) "restoring…" else "restore",
+                    enabled = !actionInFlight,
+                    onClick = {
+                        if (actionInFlight) return@AiModuleTextAction
+                        actionInFlight = true
+                        scope.launch {
+                            val ok = GitHubManager.restorePackageVersion(
+                                context,
+                                owner.type,
+                                owner.login,
+                                detail.packageType,
+                                detail.name,
+                                version.id,
+                            )
+                            Toast.makeText(context, if (ok) "Version restored" else "Restore failed", Toast.LENGTH_SHORT).show()
+                            if (ok) {
+                                versions = versions.filterNot { it.id == version.id }
+                                restoreVersionConfirm = null
+                            }
+                            actionInFlight = false
+                        }
+                    },
+                    tint = AiModuleTheme.colors.accent,
+                )
+            },
+            dismissButton = {
+                AiModuleTextAction(
+                    label = "cancel",
+                    enabled = !actionInFlight,
+                    onClick = { restoreVersionConfirm = null },
+                    tint = AiModuleTheme.colors.textSecondary,
+                )
             },
         )
     }
@@ -525,7 +603,13 @@ private fun PackageCard(pkg: GHPackage, onClick: () -> Unit) {
 }
 
 @Composable
-private fun PackageVersionCard(version: GHPackageVersion, onOpen: () -> Unit, onDelete: () -> Unit) {
+private fun PackageVersionCard(
+    version: GHPackageVersion,
+    isDeleted: Boolean,
+    onOpen: () -> Unit,
+    onDelete: () -> Unit,
+    onRestore: () -> Unit,
+) {
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(GitHubControlRadius)).background(AiModuleTheme.colors.surface).border(1.dp, AiModuleTheme.colors.border, RoundedCornerShape(GitHubControlRadius)).padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Icon(Icons.Rounded.Archive, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.textSecondary)
@@ -533,11 +617,17 @@ private fun PackageVersionCard(version: GHPackageVersion, onOpen: () -> Unit, on
                 Text(version.displayName(), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = AiModuleTheme.colors.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text("Updated ${version.updatedAt.shortDate()}", fontSize = 11.sp, color = AiModuleTheme.colors.textMuted)
             }
-            IconButton(onClick = onOpen, modifier = Modifier.size(34.dp)) {
-                Icon(Icons.Rounded.OpenInNew, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.accent)
-            }
-            IconButton(onClick = onDelete, modifier = Modifier.size(34.dp)) {
-                Icon(Icons.Rounded.Delete, null, Modifier.size(18.dp), tint = Color(0xFFFF3B30))
+            if (isDeleted) {
+                IconButton(onClick = onRestore, modifier = Modifier.size(34.dp)) {
+                    Icon(Icons.Rounded.Restore, "restore version", Modifier.size(18.dp), tint = AiModuleTheme.colors.accent)
+                }
+            } else {
+                IconButton(onClick = onOpen, modifier = Modifier.size(34.dp)) {
+                    Icon(Icons.Rounded.OpenInNew, null, Modifier.size(18.dp), tint = AiModuleTheme.colors.accent)
+                }
+                IconButton(onClick = onDelete, modifier = Modifier.size(34.dp)) {
+                    Icon(Icons.Rounded.Delete, null, Modifier.size(18.dp), tint = Color(0xFFFF3B30))
+                }
             }
         }
         if (version.tags.isNotEmpty()) {
