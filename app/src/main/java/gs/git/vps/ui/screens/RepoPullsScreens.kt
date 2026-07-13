@@ -492,7 +492,9 @@ internal fun PullRequestDetailScreen(
                         Text(c.body, fontSize = 12.sp, color = TextPrimary, lineHeight = 16.sp)
                         val rcContext = LocalContext.current
                         val rcScope = rememberCoroutineScope()
-                        var rcReactions by remember { mutableStateOf<List<GHReaction>>(emptyList()) }
+                        val rcCurrentLogin = remember { GitHubManager.getCachedUser(rcContext)?.login.orEmpty() }
+                        var rcReactions by remember(c.id) { mutableStateOf<List<GHReaction>>(emptyList()) }
+                        var rcMutatingEmoji by remember(c.id) { mutableStateOf<String?>(null) }
                         var showReactionPicker by remember(c.id) { mutableStateOf(false) }
                         var editingComment by remember(c.id) { mutableStateOf(false) }
                         var editedBody by remember(c.id) { mutableStateOf(c.body) }
@@ -501,14 +503,24 @@ internal fun PullRequestDetailScreen(
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             rcReactions.groupBy { it.content }.forEach { (emoji, reacts) ->
+                                val ownReaction = reacts.firstOrNull {
+                                    rcCurrentLogin.isNotBlank() && it.user.equals(rcCurrentLogin, ignoreCase = true)
+                                }
                                 AiModulePillButton(label = "$emoji ${reacts.size}", onClick = {
+                                    if (rcMutatingEmoji != null) return@AiModulePillButton
+                                    rcMutatingEmoji = emoji
                                     rcScope.launch {
-                                        GitHubManager.addPullRequestReviewCommentReaction(rcContext, repo.owner, repo.name, c.id, emoji)
+                                        if (ownReaction != null) {
+                                            GitHubManager.deletePullRequestReviewCommentReaction(rcContext, repo.owner, repo.name, ownReaction.id)
+                                        } else {
+                                            GitHubManager.addPullRequestReviewCommentReaction(rcContext, repo.owner, repo.name, c.id, emoji)
+                                        }
                                         rcReactions = GitHubManager.getPullRequestReviewCommentReactions(rcContext, repo.owner, repo.name, c.id)
+                                        rcMutatingEmoji = null
                                     }
-                                }, accent = false)
+                                }, enabled = rcMutatingEmoji == null, accent = ownReaction != null)
                             }
-                            AiModulePillButton(label = "+react", onClick = {
+                            AiModulePillButton(label = "+react", enabled = rcMutatingEmoji == null, onClick = {
                                 showReactionPicker = !showReactionPicker
                             }, accent = true)
                             if (c.author == GitHubManager.getCachedUser(rcContext)?.login) {
@@ -524,13 +536,23 @@ internal fun PullRequestDetailScreen(
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 listOf("+1", "-1", "laugh", "hooray", "rocket", "heart", "eyes").forEach { emoji ->
+                                    val ownReaction = rcReactions.firstOrNull {
+                                        it.content == emoji && rcCurrentLogin.isNotBlank() && it.user.equals(rcCurrentLogin, ignoreCase = true)
+                                    }
                                     AiModulePillButton(label = emoji, onClick = {
+                                        if (rcMutatingEmoji != null) return@AiModulePillButton
+                                        rcMutatingEmoji = emoji
                                         rcScope.launch {
-                                            GitHubManager.addPullRequestReviewCommentReaction(rcContext, repo.owner, repo.name, c.id, emoji)
+                                            val ok = if (ownReaction != null) {
+                                                GitHubManager.deletePullRequestReviewCommentReaction(rcContext, repo.owner, repo.name, ownReaction.id)
+                                            } else {
+                                                GitHubManager.addPullRequestReviewCommentReaction(rcContext, repo.owner, repo.name, c.id, emoji)
+                                            }
                                             rcReactions = GitHubManager.getPullRequestReviewCommentReactions(rcContext, repo.owner, repo.name, c.id)
-                                            showReactionPicker = false
+                                            if (ok) showReactionPicker = false
+                                            rcMutatingEmoji = null
                                         }
-                                    }, accent = false)
+                                    }, enabled = rcMutatingEmoji == null, accent = ownReaction != null)
                                 }
                             }
                         }

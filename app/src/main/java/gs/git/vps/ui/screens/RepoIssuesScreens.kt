@@ -1067,6 +1067,8 @@ private fun IssueReactionsDialog(repo: GHRepo, issueNumber: Int, onDismiss: () -
     val scope = rememberCoroutineScope()
     var reactions by remember { mutableStateOf<List<GHReaction>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
+    var mutatingKey by remember { mutableStateOf<String?>(null) }
+    val currentLogin = remember { GitHubManager.getCachedUser(context)?.login.orEmpty() }
 
     LaunchedEffect(issueNumber) {
         reactions = GitHubManager.getIssueReactions(context, repo.owner, repo.name, issueNumber)
@@ -1078,11 +1080,25 @@ private fun IssueReactionsDialog(repo: GHRepo, issueNumber: Int, onDismiss: () -
     GitHubTerminalModal(title = "$ reactions", onDismiss = onDismiss) {
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("+1", "-1", "laugh", "confused", "heart", "hooray").forEach { key ->
-                GitHubTerminalButton(labelMap[key] ?: key, color = AiModuleTheme.colors.accent, onClick = {
+                val ownReaction = reactions.firstOrNull {
+                    it.content == key && currentLogin.isNotBlank() && it.user.equals(currentLogin, ignoreCase = true)
+                }
+                GitHubTerminalButton(
+                    label = labelMap[key] ?: key,
+                    color = if (ownReaction != null) GitHubSuccessGreen else AiModuleTheme.colors.accent,
+                    enabled = mutatingKey == null,
+                    onClick = {
+                    if (mutatingKey != null) return@GitHubTerminalButton
+                    mutatingKey = key
                     scope.launch {
-                        val ok = GitHubManager.addIssueReaction(context, repo.owner, repo.name, issueNumber, key)
+                        val ok = if (ownReaction != null) {
+                            GitHubManager.deleteIssueReaction(context, repo.owner, repo.name, ownReaction.id)
+                        } else {
+                            GitHubManager.addIssueReaction(context, repo.owner, repo.name, issueNumber, key)
+                        }
                         reactions = GitHubManager.getIssueReactions(context, repo.owner, repo.name, issueNumber)
                         if (ok) onChanged()
+                        mutatingKey = null
                     }
                 })
             }
@@ -1111,6 +1127,8 @@ private fun IssueCommentReactionsDialog(repo: GHRepo, comment: GHComment, onDism
     val scope = rememberCoroutineScope()
     var reactions by remember { mutableStateOf<List<GHReaction>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
+    var mutatingKey by remember { mutableStateOf<String?>(null) }
+    val currentLogin = remember { GitHubManager.getCachedUser(context)?.login.orEmpty() }
     val labelMap = issueEmojiMap()
 
     LaunchedEffect(comment.id) {
@@ -1122,10 +1140,24 @@ private fun IssueCommentReactionsDialog(repo: GHRepo, comment: GHComment, onDism
         Text(comment.body.lineSequence().firstOrNull().orEmpty().take(120), fontSize = 12.sp, fontFamily = JetBrainsMono, color = AiModuleTheme.colors.textSecondary, maxLines = 2)
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("+1", "-1", "laugh", "confused", "heart", "hooray").forEach { key ->
-                GitHubTerminalButton(labelMap[key] ?: key, color = AiModuleTheme.colors.accent, onClick = {
+                val ownReaction = reactions.firstOrNull {
+                    it.content == key && currentLogin.isNotBlank() && it.user.equals(currentLogin, ignoreCase = true)
+                }
+                GitHubTerminalButton(
+                    label = labelMap[key] ?: key,
+                    color = if (ownReaction != null) GitHubSuccessGreen else AiModuleTheme.colors.accent,
+                    enabled = mutatingKey == null,
+                    onClick = {
+                    if (mutatingKey != null) return@GitHubTerminalButton
+                    mutatingKey = key
                     scope.launch {
-                        GitHubManager.addIssueCommentReaction(context, repo.owner, repo.name, comment.id, key)
+                        if (ownReaction != null) {
+                            GitHubManager.deleteIssueCommentReaction(context, repo.owner, repo.name, ownReaction.id)
+                        } else {
+                            GitHubManager.addIssueCommentReaction(context, repo.owner, repo.name, comment.id, key)
+                        }
                         reactions = GitHubManager.getIssueCommentReactions(context, repo.owner, repo.name, comment.id)
+                        mutatingKey = null
                     }
                 })
             }
