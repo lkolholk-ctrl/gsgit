@@ -56,7 +56,9 @@ data class GHReviewComment(
     val author: String,
     val avatarUrl: String,
     val createdAt: String,
-    val inReplyToId: Long?
+    val inReplyToId: Long?,
+    val side: String = "",
+    val originalSide: String = ""
 )
 
 /** Check-suite по коммиту (агрегат проверок одного приложения). */

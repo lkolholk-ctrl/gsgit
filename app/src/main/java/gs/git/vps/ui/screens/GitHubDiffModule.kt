@@ -200,6 +200,7 @@ private fun FileDiffScreen(
     val lines = remember(file.patch) { parseDiffLines(file.patch) }
     var showCommentDialog by remember { mutableStateOf(false) }
     var commentLine by remember { mutableStateOf<Int?>(null) }
+    var commentSide by remember { mutableStateOf("RIGHT") }
     var commentPath by remember { mutableStateOf("") }
     var editComment by remember { mutableStateOf<GHReviewComment?>(null) }
     var deleteComment by remember { mutableStateOf<GHReviewComment?>(null) }
@@ -239,21 +240,24 @@ private fun FileDiffScreen(
                 contentPadding = PaddingValues(vertical = 8.dp)
             ) {
                 items(lines) { line ->
-                    val lineNum = when (line) {
-                        is PatchDiffLine.Added -> line.lineNum
-                        is PatchDiffLine.Context -> line.newLineNum
-                        else -> 0
+                    val target = line.reviewCommentTarget()
+                    val lineComments = target?.let { (targetLine, targetSide) ->
+                        comments.filter { it.matchesDiffTarget(targetLine, targetSide) }
+                    }.orEmpty()
+                    val canAddComment = target != null && when (target.second) {
+                        "LEFT" -> pullNumber != null
+                        else -> pullNumber != null || commitSha != null
                     }
-                    val lineComments = if (lineNum > 0) comments.filter { it.line == lineNum } else emptyList()
 
                     Column {
                         DiffLineItem(
                             line = line,
                             ext = ext,
                             viewMode = viewMode,
-                            onAddComment = if ((pullNumber != null || commitSha != null) && lineNum > 0) {
+                            onAddComment = if (canAddComment) {
                                 {
-                                    commentLine = lineNum
+                                    commentLine = target!!.first
+                                    commentSide = target.second
                                     commentPath = file.filename
                                     showCommentDialog = true
                                 }
@@ -286,20 +290,36 @@ private fun FileDiffScreen(
                     contentPadding = PaddingValues(vertical = 8.dp)
                 ) {
                     items(splitLines) { pair ->
-                        val lineNum = when (val right = pair.right) {
+                        val leftLineNum = when (val left = pair.left) {
+                            is PatchDiffLine.Removed -> left.lineNum
+                            else -> 0
+                        }
+                        val rightLineNum = when (val right = pair.right) {
                             is PatchDiffLine.Added -> right.lineNum
                             is PatchDiffLine.Context -> right.newLineNum
                             else -> 0
                         }
-                        val lineComments = if (lineNum > 0) comments.filter { it.line == lineNum } else emptyList()
+                        val lineComments = comments.filter { comment ->
+                            (leftLineNum > 0 && comment.matchesDiffTarget(leftLineNum, "LEFT")) ||
+                                (rightLineNum > 0 && comment.matchesDiffTarget(rightLineNum, "RIGHT"))
+                        }
 
                         Column {
                             SplitDiffLineRow(
                                 pair = pair,
                                 ext = ext,
-                                onAddCommentRight = if ((pullNumber != null || commitSha != null) && lineNum > 0) {
+                                onAddCommentLeft = if (pullNumber != null && leftLineNum > 0) {
                                     {
-                                        commentLine = lineNum
+                                        commentLine = leftLineNum
+                                        commentSide = "LEFT"
+                                        commentPath = file.filename
+                                        showCommentDialog = true
+                                    }
+                                } else null,
+                                onAddCommentRight = if ((pullNumber != null || commitSha != null) && rightLineNum > 0) {
+                                    {
+                                        commentLine = rightLineNum
+                                        commentSide = "RIGHT"
                                         commentPath = file.filename
                                         showCommentDialog = true
                                     }
@@ -327,7 +347,7 @@ private fun FileDiffScreen(
         var commentBody by remember { mutableStateOf("") }
         AiModuleAlertDialog(
             onDismissRequest = { showCommentDialog = false },
-            title = "Add comment on line $commentLine",
+            title = "Add comment on ${commentSide.lowercase()} line $commentLine",
             content = {
                 AiModuleTextField(
                     value = commentBody,
@@ -346,7 +366,7 @@ private fun FileDiffScreen(
                             val ok = if (pullNumber != null) {
                                 GitHubManager.createPullRequestReviewComment(
                                     context, repoOwner!!, repoName!!, pullNumber,
-                                    commentBody, commentPath, commentLine!!
+                                    commentBody, commentPath, commentLine!!, side = commentSide
                                 )
                             } else {
                                 GitHubManager.createCommitComment(
@@ -425,6 +445,20 @@ sealed class PatchDiffLine {
     data class Removed(val text: String, val lineNum: Int) : PatchDiffLine()
     data class Context(val text: String, val oldLineNum: Int, val newLineNum: Int) : PatchDiffLine()
     data class NoNewline(val text: String) : PatchDiffLine()
+}
+
+private fun PatchDiffLine.reviewCommentTarget(): Pair<Int, String>? = when (this) {
+    is PatchDiffLine.Added -> lineNum to "RIGHT"
+    is PatchDiffLine.Removed -> lineNum to "LEFT"
+    is PatchDiffLine.Context -> newLineNum to "RIGHT"
+    is PatchDiffLine.Header, is PatchDiffLine.NoNewline -> null
+}
+
+private fun GHReviewComment.matchesDiffTarget(targetLine: Int, targetSide: String): Boolean {
+    val effectiveLine = line.takeIf { it > 0 } ?: originalLine
+    if (effectiveLine != targetLine) return false
+    val effectiveSide = side.ifBlank { originalSide }.uppercase()
+    return effectiveSide.isBlank() || effectiveSide == targetSide
 }
 
 private fun parseDiffLines(patch: String): List<PatchDiffLine> {
@@ -514,7 +548,7 @@ private fun DiffLineItem(line: PatchDiffLine, ext: String, viewMode: DiffViewMod
                 Text(
                     text = doHighlightLine(line.text, ext, palette),
                     modifier = Modifier.weight(1f).combinedClickable(
-                        onClick = {},
+                        onClick = { onAddComment?.invoke() },
                         onLongClick = {
                             val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                             clipboard.setPrimaryClip(android.content.ClipData.newPlainText("code", line.text))
@@ -524,6 +558,9 @@ private fun DiffLineItem(line: PatchDiffLine, ext: String, viewMode: DiffViewMod
                     fontFamily = FontFamily.Monospace,
                     fontSize = 12.sp
                 )
+                if (onAddComment != null) {
+                    Icon(Icons.Rounded.AddComment, null, Modifier.size(14.dp), tint = palette.accent.copy(0.5f))
+                }
             }
         }
         is PatchDiffLine.Context -> {
@@ -1097,6 +1134,9 @@ private fun SplitDiffLineRow(
                             maxLines = 1,
                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                         )
+                        if (onAddCommentLeft != null) {
+                            Icon(Icons.Rounded.AddComment, null, Modifier.size(11.dp), tint = palette.accent.copy(0.5f))
+                        }
                     }
                 }
                 is PatchDiffLine.Context -> {

@@ -271,7 +271,9 @@ private fun parseGHReviewComment(j: JSONObject): GHReviewComment =
         author = j.optJSONObject("user")?.optString("login") ?: "",
         avatarUrl = j.optJSONObject("user")?.optString("avatar_url") ?: "",
         createdAt = j.optString("created_at", ""),
-        inReplyToId = j.optLong("in_reply_to_id", 0L).takeIf { it > 0 }
+        inReplyToId = j.optLong("in_reply_to_id", 0L).takeIf { it > 0 },
+        side = j.optString("side", "").takeUnless { it.equals("null", ignoreCase = true) }.orEmpty(),
+        originalSide = j.optString("original_side", "").takeUnless { it.equals("null", ignoreCase = true) }.orEmpty()
     )
 
 private fun parseGHCheckRun(j: JSONObject): GHCheckRun =
