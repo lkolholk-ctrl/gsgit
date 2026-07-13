@@ -3,6 +3,7 @@ package gs.git.vps.data.github
 import android.content.Context
 import android.util.Log
 import gs.git.vps.data.github.model.GHBlameRange
+import gs.git.vps.data.github.model.GHFileDeleteResult
 import gs.git.vps.data.github.model.GHFileSaveResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -329,12 +330,21 @@ internal suspend fun GitHubManager.commitWorkspaceChanges(
 internal suspend fun GitHubManager.deleteFile(
     context: Context, owner: String, repo: String, path: String,
     sha: String, message: String, branch: String? = null
-): Boolean {
+): Boolean = deleteFileWithResult(context, owner, repo, path, sha, message, branch).success
+
+internal suspend fun GitHubManager.deleteFileWithResult(
+    context: Context, owner: String, repo: String, path: String,
+    sha: String, message: String, branch: String? = null
+): GHFileDeleteResult {
     val body = JSONObject().apply {
         put("message", message); put("sha", sha)
         if (branch != null) put("branch", branch)
     }.toString()
-    return request(context, "${repoPath(owner, repo, "/contents/${encPath(path)}")}", "DELETE", body).success
+    val result = request(context, "${repoPath(owner, repo, "/contents/${encPath(path)}")}", "DELETE", body)
+    return GHFileDeleteResult(
+        success = result.success,
+        error = if (result.success) "" else apiErrorMessage(result),
+    )
 }
 
 internal suspend fun GitHubManager.downloadFile(context: Context, owner: String, repo: String, path: String, destFile: java.io.File, branch: String? = null): Boolean =

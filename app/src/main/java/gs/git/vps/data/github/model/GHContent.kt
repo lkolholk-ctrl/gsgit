@@ -23,3 +23,6 @@ data class GHBlameRange(
 
 /** Результат сохранения файла через Contents API. Домен Contents. */
 data class GHFileSaveResult(val success: Boolean, val sha: String, val error: String)
+
+/** Результат удаления файла через Contents API с сообщением GitHub при ошибке. */
+data class GHFileDeleteResult(val success: Boolean, val error: String)

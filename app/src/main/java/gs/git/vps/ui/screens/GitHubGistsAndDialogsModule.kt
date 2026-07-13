@@ -568,32 +568,49 @@ internal fun CreateFileDialog(repo: GHRepo, curPath: String, branch: String, onD
 @Composable
 internal fun DeleteFileDialog(repo: GHRepo, file: GHContent, branch: String, onDismiss: () -> Unit, onDone: () -> Unit) {
     var msg by remember { mutableStateOf("Delete ${file.name}") }
+    var deleting by remember { mutableStateOf(false) }
     val ctx = LocalContext.current
     val s = rememberCoroutineScope()
     val palette = AiModuleTheme.colors
     AiModuleAlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!deleting) onDismiss() },
         title = Strings.ghDeleteFile.lowercase(),
         confirmButton = {
             AiModuleTextAction(
                 label = Strings.ghDeleteFile,
+                enabled = !deleting && msg.isNotBlank(),
                 onClick = {
+                    if (deleting || msg.isBlank()) return@AiModuleTextAction
+                    deleting = true
                     s.launch {
-                        val ok = GitHubManager.deleteFile(ctx, repo.owner, repo.name, file.path, msg, file.sha, branch)
-                        Toast.makeText(ctx, if (ok) Strings.done else Strings.error, Toast.LENGTH_SHORT).show()
-                        if (ok) onDone()
+                        val result = GitHubManager.deleteFileWithResult(
+                            context = ctx,
+                            owner = repo.owner,
+                            repo = repo.name,
+                            path = file.path,
+                            sha = file.sha,
+                            message = msg,
+                            branch = branch,
+                        )
+                        Toast.makeText(
+                            ctx,
+                            if (result.success) Strings.done else result.error.ifBlank { Strings.error },
+                            Toast.LENGTH_LONG,
+                        ).show()
+                        if (result.success) onDone() else deleting = false
                     }
                 },
                 tint = palette.error,
             )
         },
         dismissButton = {
-            AiModuleTextAction(label = Strings.cancel, onClick = onDismiss, tint = palette.textSecondary)
+            AiModuleTextAction(label = Strings.cancel, enabled = !deleting, onClick = onDismiss, tint = palette.textSecondary)
         },
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("${file.name}?", fontSize = 13.sp, color = palette.textPrimary, fontFamily = JetBrainsMono)
             AiModuleTextField(msg, { msg = it }, label = Strings.ghCommitMsg)
+            if (deleting) AiModuleSpinner(label = "deleting")
         }
     }
 }
