@@ -235,6 +235,7 @@ internal fun RepoDetailScreen(
     var showCreatePR by remember { mutableStateOf(false) }; var selectedIssue by remember { mutableStateOf<GHIssue?>(null) }
     var selectedCommitSha by remember { mutableStateOf<String?>(null) }; var deleteTarget by remember { mutableStateOf<GHContent?>(null) }
     var showBranchPicker by remember { mutableStateOf(false) }
+    var branchToDelete by remember { mutableStateOf<String?>(null) }
     var selectedPRNumber by remember { mutableStateOf<Int?>(null) }
     var selectedPullNumber by remember { mutableStateOf<Int?>(null) }
     var showRepoSettings by remember { mutableStateOf(false) }
@@ -430,6 +431,7 @@ internal fun RepoDetailScreen(
             showUpload -> showUpload = false
             showCreateFile -> showCreateFile = false
             showCreateBranch -> showCreateBranch = false
+            branchToDelete != null -> branchToDelete = null
             showCreateIssue -> showCreateIssue = false
             showIssueEvents -> showIssueEvents = false
             showCreatePR -> showCreatePR = false
@@ -1495,7 +1497,28 @@ internal fun RepoDetailScreen(
     if (showCreateIssue) CreateIssueDialog(repo, { showCreateIssue = false }) { showCreateIssue = false; scope.launch { issues = GitHubManager.getIssues(context, repo.owner, repo.name) } }
     if (showCreatePR) CreatePRDialog(repo, branches, { showCreatePR = false }) { showCreatePR = false; scope.launch { pulls = GitHubManager.getPullRequests(context, repo.owner, repo.name) } }
     if (deleteTarget != null) DeleteFileDialog(repo, deleteTarget!!, selectedBranch, { deleteTarget = null }) { deleteTarget = null; scope.launch { contents = GitHubManager.getRepoContents(context, repo.owner, repo.name, currentPath, selectedBranch) } }
-    if (showBranchPicker) BranchPickerDialog(branches, selectedBranch, canWrite, { selectedBranch = it; showBranchPicker = false }, { showBranchPicker = false }) { showBranchPicker = false; showCreateBranch = true }
+    if (showBranchPicker) BranchPickerDialog(
+        branches = branches,
+        current = selectedBranch,
+        defaultBranch = repo.defaultBranch,
+        canWrite = canWrite,
+        onSelect = { selectedBranch = it; showBranchPicker = false },
+        onDelete = { branchToDelete = it; showBranchPicker = false },
+        onDismiss = { showBranchPicker = false },
+        onCreateBranch = { showBranchPicker = false; showCreateBranch = true },
+    )
+    branchToDelete?.let { branch ->
+        DeleteBranchDialog(
+            repo = repo,
+            branch = branch,
+            onDismiss = { branchToDelete = null },
+            onDone = {
+                branchToDelete = null
+                if (selectedBranch == branch) selectedBranch = repo.defaultBranch
+                scope.launch { branches = GitHubManager.getBranches(context, repo.owner, repo.name) }
+            },
+        )
+    }
     if (showDispatch && workflows.isNotEmpty()) DispatchWorkflowDialog(repo, workflows, branches, { showDispatch = false }) { showDispatch = false; scope.launch { workflowRuns = GitHubManager.getWorkflowRuns(context, repo.owner, repo.name) } }
     if (showCodeCommitSheet) {
         CodeCommitSheet(

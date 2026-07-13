@@ -926,6 +926,57 @@ internal fun CreateBranchDialog(repo: GHRepo, branches: List<String>, onDismiss:
 }
 
 @Composable
+internal fun DeleteBranchDialog(
+    repo: GHRepo,
+    branch: String,
+    onDismiss: () -> Unit,
+    onDone: () -> Unit,
+) {
+    var deleting by remember(branch) { mutableStateOf(false) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val palette = AiModuleTheme.colors
+    AiModuleAlertDialog(
+        onDismissRequest = { if (!deleting) onDismiss() },
+        title = "delete branch?",
+        confirmButton = {
+            AiModuleTextAction(
+                label = if (deleting) "deleting…" else "delete",
+                enabled = !deleting,
+                tint = palette.error,
+                onClick = {
+                    if (deleting) return@AiModuleTextAction
+                    deleting = true
+                    scope.launch {
+                        val ok = GitHubManager.deleteBranch(context, repo.owner, repo.name, branch)
+                        Toast.makeText(context, if (ok) "Branch deleted" else "Delete failed", Toast.LENGTH_SHORT).show()
+                        if (ok) onDone() else deleting = false
+                    }
+                },
+            )
+        },
+        dismissButton = {
+            AiModuleTextAction(
+                label = Strings.cancel,
+                enabled = !deleting,
+                onClick = onDismiss,
+                tint = palette.textSecondary,
+            )
+        },
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(branch, fontSize = 12.sp, color = palette.textPrimary, fontFamily = JetBrainsMono)
+            Text(
+                "This permanently deletes refs/heads/$branch.",
+                fontSize = 10.sp,
+                color = palette.textMuted,
+                fontFamily = JetBrainsMono,
+            )
+        }
+    }
+}
+
+@Composable
 internal fun CreateIssueDialog(repo: GHRepo, onDismiss: () -> Unit, onDone: () -> Unit) {
     var t by remember { mutableStateOf("") }
     var b by remember { mutableStateOf("") }
@@ -1029,8 +1080,10 @@ private fun BC(name: String, sel: Boolean, onClick: () -> Unit) {
 internal fun BranchPickerDialog(
     branches: List<String>,
     current: String,
+    defaultBranch: String,
     canWrite: Boolean = true,
     onSelect: (String) -> Unit,
+    onDelete: (String) -> Unit,
     onDismiss: () -> Unit,
     onCreateBranch: () -> Unit,
 ) {
@@ -1091,6 +1144,17 @@ internal fun BranchPickerDialog(
                                     color = palette.accent,
                                     fontFamily = JetBrainsMono,
                                     fontSize = 12.sp,
+                                )
+                            }
+                            if (canWrite && b != defaultBranch) {
+                                Icon(
+                                    Icons.Rounded.Delete,
+                                    contentDescription = "delete $b",
+                                    modifier = Modifier
+                                        .size(20.dp)
+                                        .clickable { onDelete(b) }
+                                        .padding(2.dp),
+                                    tint = palette.error,
                                 )
                             }
                         }
