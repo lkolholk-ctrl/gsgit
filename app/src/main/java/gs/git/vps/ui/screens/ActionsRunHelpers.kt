@@ -823,18 +823,25 @@ private fun splitByStepTimestamps(steps: List<GHStep>, lines: List<String>): Map
     val buckets = linkedMapOf<Int, StringBuilder>()
     timed.forEach { buckets[it.first] = StringBuilder() }
 
-    var current = timed.first().first
+    // Тайминги шага от GitHub — с точностью до СЕКУНДЫ, а строки лога — до 100 нс.
+    // Быстрый шаг (напр. keystore: echo|base64 -d) укладывается в ту же секунду, что
+    // и старт следующего шага, поэтому по одному времени границу не провести — строки
+    // утекают в соседний шаг. Поэтому: время — грубый драйвер, а точная граница шага
+    // это его ##[group]-заголовок (каждый шаг GitHub начинает с группы). Продвигаем
+    // указатель строго на ОДИН шаг за заголовок, вложенные группы (их время < старта
+    // следующего шага) остаются внутри текущего шага.
+    var idx = 0
+    var lastT = timed.first().second
     for (line in lines) {
-        val t = lineTimestampMillis(line)
-        if (t != null) {
-            // Последний шаг, чьё начало <= времени строки (шаги идут по возрастанию).
-            var chosen = timed.first().first
-            for ((num, start) in timed) {
-                if (start <= t) chosen = num else break
-            }
-            current = chosen
-        }
-        buckets[current]?.append(line)?.append('\n')
+        val t = lineTimestampMillis(line) ?: lastT
+        lastT = t
+        // Строку, ушедшую на секунду+ дальше старта следующего шага, отдаём ему даже
+        // без заголовка (страховка для шагов без своей ##[group]).
+        while (idx + 1 < timed.size && t >= timed[idx + 1].second + 1000L) idx++
+        // На спорной секунде граница = ##[group]-заголовок следующего шага.
+        val isGroup = normalizeLogLine(line).startsWith("##[group]")
+        if (idx + 1 < timed.size && isGroup && t >= timed[idx + 1].second) idx++
+        buckets[timed[idx].first]!!.append(line).append('\n')
     }
 
     val result = buckets.mapValues { it.value.toString().trim() }.filterValues { it.isNotBlank() }
