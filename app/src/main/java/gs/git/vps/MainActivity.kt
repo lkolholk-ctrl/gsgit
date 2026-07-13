@@ -177,7 +177,9 @@ class MainActivity : FragmentActivity() {
 
     private fun handleDeepLink(intent: Intent?) {
         val uri = intent?.data ?: return
-        if (uri.host != "github.com") return
+        // github.com и www.github.com — оба host заявлены в intent-filter; путь дальше
+        // парсится одинаково (pathSegments от host не зависит).
+        if (uri.host != "github.com" && uri.host != "www.github.com") return
         val segments = uri.pathSegments
         if (segments.size < 2) return
 

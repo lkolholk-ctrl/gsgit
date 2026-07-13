@@ -40,6 +40,8 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="github.com" />
+                <!-- Google часто отдаёт www-вариант; без этого host он уходил в браузер. -->
+                <data android:scheme="https" android:host="www.github.com" />
             </intent-filter>
         </activity>
 
