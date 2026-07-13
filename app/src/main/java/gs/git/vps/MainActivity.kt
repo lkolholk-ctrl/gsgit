@@ -46,11 +46,20 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 
 class MainActivity : FragmentActivity() {
     var deepLinkTarget by mutableStateOf<GitHubNotificationTarget?>(null)
     var isAppLocked by mutableStateOf(false)
+    private var hasUnlockedSession by mutableStateOf(false)
+    private var isBiometricPromptActive = false
     private var lastPauseTime = 0L
+
+    private fun completeUnlock() {
+        hasUnlockedSession = true
+        isAppLocked = false
+    }
 
     private fun isLockEnabled(): Boolean {
         val prefs = getSharedPreferences("github_prefs", MODE_PRIVATE)
@@ -65,19 +74,23 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun triggerBiometricUnlock() {
+        if (isBiometricPromptActive) return
         if (BiometricHelper.isBiometricAvailable(this)) {
+            isBiometricPromptActive = true
             BiometricHelper.showBiometricPrompt(
                 activity = this,
                 onSuccess = {
-                    isAppLocked = false
+                    isBiometricPromptActive = false
+                    completeUnlock()
                 },
                 onError = { err ->
+                    isBiometricPromptActive = false
                     Toast.makeText(this, "Authentication failed: $err", Toast.LENGTH_SHORT).show()
                 }
             )
         } else {
             if (!PinSecurity.isPinSet(this)) {
-                isAppLocked = false
+                completeUnlock()
             }
         }
     }
@@ -101,7 +114,9 @@ class MainActivity : FragmentActivity() {
             NotificationSyncWorker.schedule(this, interval)
         }
 
-        if (isLockEnabled()) {
+        val lockEnabled = isLockEnabled()
+        hasUnlockedSession = !lockEnabled
+        if (lockEnabled) {
             isAppLocked = true
             triggerBiometricUnlock()
         }
@@ -128,17 +143,24 @@ class MainActivity : FragmentActivity() {
             AiModuleSurface(
                 modifier = Modifier.fillMaxSize().crtEffect(crtEnabled)
             ) {
-                if (isAppLocked) {
-                    AppLockedScreen(
-                        onUnlock = { triggerBiometricUnlock() },
-                        onPinCorrect = { isAppLocked = false }
-                    )
-                } else {
-                    GitHubScreen(
-                        onBack = {},
-                        initialTarget = deepLinkTarget,
-                        onInitialTargetConsumed = { deepLinkTarget = null },
-                    )
+                Box(Modifier.fillMaxSize()) {
+                    // Compose the application once after the first successful unlock and
+                    // keep that composition alive under subsequent lock overlays. The old
+                    // conditional removed GitHubScreen from the tree on every onStop(),
+                    // which discarded the open repository, tab and nested navigation state.
+                    if (hasUnlockedSession) {
+                        GitHubScreen(
+                            onBack = {},
+                            initialTarget = deepLinkTarget,
+                            onInitialTargetConsumed = { deepLinkTarget = null },
+                        )
+                    }
+                    if (isAppLocked || !hasUnlockedSession) {
+                        AppLockedScreen(
+                            onUnlock = { triggerBiometricUnlock() },
+                            onPinCorrect = { completeUnlock() }
+                        )
+                    }
                 }
             }
         }
@@ -308,6 +330,15 @@ private fun AppLockedScreen(onUnlock: () -> Unit, onPinCorrect: () -> Unit) {
         modifier = Modifier
             .fillMaxSize()
             .background(palette.background)
+            // Consume touches over the entire lock overlay so controls in the retained
+            // application composition cannot be activated through empty lock-screen space.
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        awaitPointerEvent(PointerEventPass.Final).changes.forEach { it.consume() }
+                    }
+                }
+            }
             .padding(24.dp),
         contentAlignment = Alignment.Center
     ) {
