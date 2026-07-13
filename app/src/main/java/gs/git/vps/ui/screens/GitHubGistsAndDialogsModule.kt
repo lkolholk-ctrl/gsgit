@@ -70,16 +70,26 @@ internal fun GistsScreen(
     var gists by remember { mutableStateOf<List<GHGist>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var showCreate by remember { mutableStateOf(false) }
+    var showEdit by remember { mutableStateOf(false) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+    var deletingGist by remember { mutableStateOf(false) }
+    var commentToDelete by remember { mutableStateOf<GHGistComment?>(null) }
+    var deletingComment by remember { mutableStateOf(false) }
     var viewingGist by remember { mutableStateOf<GHGist?>(null) }
     var gistContent by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var isStarred by remember { mutableStateOf(false) }
     var gistComments by remember { mutableStateOf<List<GHGistComment>>(emptyList()) }
     var newComment by remember { mutableStateOf("") }
     var commentSending by remember { mutableStateOf(false) }
+    var gistActionRunning by remember { mutableStateOf(false) }
+    val currentLogin = remember { GitHubManager.getCachedUser(context)?.login.orEmpty() }
     val palette = AiModuleTheme.colors
 
     fun handleGistsBack() {
         when {
+            commentToDelete != null -> commentToDelete = null
+            showDeleteConfirm -> showDeleteConfirm = false
+            showEdit -> showEdit = false
             showCreate -> showCreate = false
             viewingGist != null -> {
                 viewingGist = null
@@ -97,6 +107,7 @@ internal fun GistsScreen(
     AiModuleSurface {
         if (viewingGist != null) {
             val current = viewingGist!!
+            val canManage = current.owner.isBlank() || current.owner.equals(currentLogin, ignoreCase = true)
             LaunchedEffect(current.id) {
                 isStarred = GitHubManager.isGistStarred(context, current.id)
                 gistComments = GitHubManager.getGistComments(context, current.id)
@@ -125,10 +136,15 @@ internal fun GistsScreen(
                         GitHubTopBarAction(
                             glyph = if (isStarred) GhGlyphs.STAR_ON else GhGlyphs.STAR_OFF,
                             onClick = {
+                                if (gistActionRunning) return@GitHubTopBarAction
+                                gistActionRunning = true
                                 scope.launch {
-                                    if (isStarred) GitHubManager.unstarGist(context, current.id)
+                                    val wasStarred = isStarred
+                                    val ok = if (wasStarred) GitHubManager.unstarGist(context, current.id)
                                     else GitHubManager.starGist(context, current.id)
-                                    isStarred = !isStarred
+                                    if (ok) isStarred = !wasStarred
+                                    else Toast.makeText(context, "Failed to update star", Toast.LENGTH_SHORT).show()
+                                    gistActionRunning = false
                                 }
                             },
                             tint = if (isStarred) Color(0xFFFF9500) else palette.textSecondary,
@@ -137,27 +153,31 @@ internal fun GistsScreen(
                         GitHubTopBarAction(
                             glyph = GhGlyphs.FORK,
                             onClick = {
+                                if (gistActionRunning) return@GitHubTopBarAction
+                                gistActionRunning = true
                                 scope.launch {
                                     val ok = GitHubManager.forkGist(context, current.id)
                                     Toast.makeText(context, if (ok) "Forked" else "Fork failed", Toast.LENGTH_SHORT).show()
+                                    gistActionRunning = false
                                 }
                             },
                             tint = palette.textSecondary,
                             contentDescription = "fork gist",
                         )
-                        GitHubTopBarAction(
-                            glyph = GhGlyphs.DELETE,
-                            onClick = {
-                                scope.launch {
-                                    GitHubManager.deleteGist(context, current.id)
-                                    gists = GitHubManager.getGists(context)
-                                    viewingGist = null
-                                    gistContent = emptyMap()
-                                }
-                            },
-                            tint = palette.error,
-                            contentDescription = "delete gist",
-                        )
+                        if (canManage) {
+                            GitHubTopBarAction(
+                                glyph = GhGlyphs.EDIT,
+                                onClick = { showEdit = true },
+                                tint = palette.textSecondary,
+                                contentDescription = "edit gist",
+                            )
+                            GitHubTopBarAction(
+                                glyph = GhGlyphs.DELETE,
+                                onClick = { showDeleteConfirm = true },
+                                tint = palette.error,
+                                contentDescription = "delete gist",
+                            )
+                        }
                         if (onClose != null) {
                             GitHubTopBarAction(GhGlyphs.CLOSE, onClose, palette.error, contentDescription = "close")
                         }
@@ -210,6 +230,18 @@ internal fun GistsScreen(
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                     Text(comment.user, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = palette.accent, fontFamily = JetBrainsMono)
                                     Text(comment.createdAt.take(10), fontSize = 10.sp, color = palette.textMuted, fontFamily = JetBrainsMono)
+                                    Spacer(Modifier.weight(1f))
+                                    if (currentLogin.isNotBlank() && comment.user.equals(currentLogin, ignoreCase = true)) {
+                                        Icon(
+                                            Icons.Rounded.Delete,
+                                            contentDescription = "delete comment",
+                                            modifier = Modifier
+                                                .size(17.dp)
+                                                .clickable(enabled = !deletingComment) { commentToDelete = comment }
+                                                .padding(2.dp),
+                                            tint = palette.error,
+                                        )
+                                    }
                                 }
                                 Text(comment.body, fontSize = 11.sp, color = palette.textPrimary, fontFamily = JetBrainsMono, lineHeight = 16.sp)
                             }
@@ -328,6 +360,114 @@ internal fun GistsScreen(
         CreateGistDialog({ showCreate = false }) {
             showCreate = false
             scope.launch { gists = GitHubManager.getGists(context) }
+        }
+    }
+
+    val currentGist = viewingGist
+    if (showEdit && currentGist != null) {
+        EditGistDialog(
+            gist = currentGist,
+            content = gistContent,
+            onDismiss = { showEdit = false },
+            onUpdated = {
+                showEdit = false
+                scope.launch {
+                    val refreshed = GitHubManager.getGists(context)
+                    gists = refreshed
+                    viewingGist = refreshed.firstOrNull { it.id == currentGist.id }
+                        ?: currentGist.copy(description = it.first, files = it.second.keys.toList())
+                    gistContent = GitHubManager.getGistContent(context, currentGist.id)
+                }
+            },
+        )
+    }
+
+    if (showDeleteConfirm && currentGist != null) {
+        AiModuleAlertDialog(
+            onDismissRequest = { if (!deletingGist) showDeleteConfirm = false },
+            title = "delete gist?",
+            confirmButton = {
+                AiModuleTextAction(
+                    label = if (deletingGist) "deleting…" else "delete",
+                    enabled = !deletingGist,
+                    tint = palette.error,
+                    onClick = {
+                        if (deletingGist) return@AiModuleTextAction
+                        deletingGist = true
+                        scope.launch {
+                            val ok = GitHubManager.deleteGist(context, currentGist.id)
+                            Toast.makeText(context, if (ok) "Gist deleted" else "Delete failed", Toast.LENGTH_SHORT).show()
+                            if (ok) {
+                                gists = GitHubManager.getGists(context)
+                                viewingGist = null
+                                gistContent = emptyMap()
+                                showDeleteConfirm = false
+                            }
+                            deletingGist = false
+                        }
+                    },
+                )
+            },
+            dismissButton = {
+                AiModuleTextAction(
+                    label = Strings.cancel,
+                    enabled = !deletingGist,
+                    onClick = { showDeleteConfirm = false },
+                    tint = palette.textSecondary,
+                )
+            },
+        ) {
+            Text(
+                currentGist.description.ifBlank { currentGist.files.firstOrNull() ?: "gist" },
+                fontSize = 12.sp,
+                color = palette.textPrimary,
+                fontFamily = JetBrainsMono,
+            )
+        }
+    }
+
+    val deleteComment = commentToDelete
+    if (deleteComment != null && currentGist != null) {
+        AiModuleAlertDialog(
+            onDismissRequest = { if (!deletingComment) commentToDelete = null },
+            title = "delete comment?",
+            confirmButton = {
+                AiModuleTextAction(
+                    label = if (deletingComment) "deleting…" else "delete",
+                    enabled = !deletingComment,
+                    tint = palette.error,
+                    onClick = {
+                        if (deletingComment) return@AiModuleTextAction
+                        deletingComment = true
+                        scope.launch {
+                            val ok = GitHubManager.deleteGistComment(context, currentGist.id, deleteComment.id)
+                            Toast.makeText(context, if (ok) "Comment deleted" else "Delete failed", Toast.LENGTH_SHORT).show()
+                            if (ok) {
+                                gistComments = gistComments.filterNot { it.id == deleteComment.id }
+                                commentToDelete = null
+                            }
+                            deletingComment = false
+                        }
+                    },
+                )
+            },
+            dismissButton = {
+                AiModuleTextAction(
+                    label = Strings.cancel,
+                    enabled = !deletingComment,
+                    onClick = { commentToDelete = null },
+                    tint = palette.textSecondary,
+                )
+            },
+        ) {
+            Text(
+                deleteComment.body,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+                fontSize = 12.sp,
+                color = palette.textPrimary,
+                fontFamily = JetBrainsMono,
+            )
         }
     }
 }
@@ -458,7 +598,147 @@ internal fun DeleteFileDialog(repo: GHRepo, file: GHContent, branch: String, onD
     }
 }
 
-private data class GistFileItem(val id: Int, val name: String, val content: String)
+private data class GistFileItem(
+    val id: Int,
+    val name: String,
+    val content: String,
+    val originalName: String? = null,
+)
+
+@Composable
+private fun EditGistDialog(
+    gist: GHGist,
+    content: Map<String, String>,
+    onDismiss: () -> Unit,
+    onUpdated: (Pair<String, Map<String, String>>) -> Unit,
+) {
+    var description by remember(gist.id) { mutableStateOf(gist.description) }
+    var files by remember(gist.id, content) {
+        mutableStateOf(
+            content.entries.mapIndexed { index, entry ->
+                GistFileItem(index, entry.key, entry.value, originalName = entry.key)
+            }.ifEmpty { listOf(GistFileItem(0, "", "")) },
+        )
+    }
+    var activeIndex by remember(gist.id) { mutableStateOf(0) }
+    var nextId by remember(gist.id, content) { mutableStateOf(files.size) }
+    var saving by remember(gist.id) { mutableStateOf(false) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val palette = AiModuleTheme.colors
+    val normalizedFiles = files.map { it.copy(name = it.name.trim()) }
+    val names = normalizedFiles.map { it.name }
+    val valid = names.isNotEmpty() && names.none { it.isBlank() } && names.distinct().size == names.size
+
+    AiModuleAlertDialog(
+        onDismissRequest = { if (!saving) onDismiss() },
+        title = "edit gist",
+        confirmButton = {
+            AiModuleTextAction(
+                label = if (saving) "saving…" else "save",
+                enabled = valid && !saving,
+                tint = palette.accent,
+                onClick = {
+                    if (!valid || saving) return@AiModuleTextAction
+                    saving = true
+                    val finalFiles = normalizedFiles.associate { it.name to it.content }
+                    val changes = linkedMapOf<String, String?>()
+                    normalizedFiles.forEach { file ->
+                        val oldName = file.originalName
+                        if (oldName != null && oldName != file.name) changes[oldName] = null
+                    }
+                    content.keys
+                        .filter { original -> normalizedFiles.none { it.originalName == original } }
+                        .forEach { changes[it] = null }
+                    finalFiles.forEach { (name, fileContent) -> changes[name] = fileContent }
+                    scope.launch {
+                        val ok = GitHubManager.updateGist(context, gist.id, description, changes)
+                        Toast.makeText(context, if (ok) "Gist updated" else "Update failed", Toast.LENGTH_SHORT).show()
+                        if (ok) onUpdated(description to finalFiles) else saving = false
+                    }
+                },
+            )
+        },
+        dismissButton = {
+            AiModuleTextAction(
+                label = Strings.cancel,
+                enabled = !saving,
+                onClick = onDismiss,
+                tint = palette.textSecondary,
+            )
+        },
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            AiModuleTextField(description, { description = it }, label = Strings.ghRepoDesc)
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                files.forEachIndexed { index, file ->
+                    val selected = index == activeIndex
+                    Box(
+                        Modifier
+                            .clip(RoundedCornerShape(GitHubControlRadius))
+                            .background(if (selected) palette.accent.copy(alpha = 0.15f) else palette.surface)
+                            .border(1.dp, if (selected) palette.accent else palette.border, RoundedCornerShape(GitHubControlRadius))
+                            .clickable(enabled = !saving) { activeIndex = index }
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                    ) {
+                        Text(
+                            file.name.ifBlank { "file ${index + 1}" },
+                            fontSize = 11.sp,
+                            fontFamily = JetBrainsMono,
+                            color = if (selected) palette.accent else palette.textSecondary,
+                        )
+                    }
+                }
+                AiModuleTextAction(
+                    label = "+ file",
+                    enabled = !saving,
+                    tint = palette.accent,
+                    onClick = {
+                        files = files + GistFileItem(nextId++, "", "")
+                        activeIndex = files.lastIndex
+                    },
+                )
+            }
+
+            val activeFile = files.getOrNull(activeIndex)
+            if (activeFile != null) {
+                if (files.size > 1) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        AiModuleTextAction(
+                            label = "delete file",
+                            enabled = !saving,
+                            tint = palette.error,
+                            onClick = {
+                                files = files.toMutableList().also { it.removeAt(activeIndex) }
+                                activeIndex = activeIndex.coerceAtMost(files.lastIndex)
+                            },
+                        )
+                    }
+                }
+                AiModuleTextField(
+                    activeFile.name,
+                    { value -> files = files.map { if (it.id == activeFile.id) it.copy(name = value) else it } },
+                    label = Strings.ghFilePath,
+                )
+                AiModuleTextField(
+                    activeFile.content,
+                    { value -> files = files.map { if (it.id == activeFile.id) it.copy(content = value) else it } },
+                    label = Strings.ghFileContent,
+                    minLines = 4,
+                    maxLines = 8,
+                )
+            }
+            if (names.size != names.distinct().size) {
+                Text("file names must be unique", fontSize = 10.sp, color = palette.error, fontFamily = JetBrainsMono)
+            }
+            if (saving) AiModuleSpinner(label = "saving")
+        }
+    }
+}
 
 @Composable
 private fun CreateGistDialog(onDismiss: () -> Unit, onCreated: () -> Unit) {

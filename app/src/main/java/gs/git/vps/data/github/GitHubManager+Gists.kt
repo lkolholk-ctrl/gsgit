@@ -103,9 +103,17 @@ internal fun parseGHGist(j: JSONObject): GHGist {
         isPublic = j.optBoolean("public", true),
         files = files,
         createdAt = j.optString("created_at", ""),
-        updatedAt = j.optString("updated_at", "")
+        updatedAt = j.optString("updated_at", ""),
+        owner = j.optJSONObject("owner")?.optString("login", "").orEmpty(),
+        comments = j.optInt("comments", 0),
+        htmlUrl = j.optString("html_url", ""),
     )
 }
 
 internal fun parseGHGistComment(j: JSONObject): GHGistComment =
-    GHGistComment(j.optLong("id"), j.optString("body"), j.optString("user_login", ""), j.optString("created_at", ""))
+    GHGistComment(
+        id = j.optLong("id"),
+        body = j.optString("body"),
+        user = j.optJSONObject("user")?.optString("login", "").orEmpty(),
+        createdAt = j.optString("created_at", ""),
+    )
