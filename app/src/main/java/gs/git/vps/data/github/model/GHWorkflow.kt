@@ -47,7 +47,8 @@ data class GHWorkflowRun(val id: Long, val name: String, val status: String, val
 data class GHJob(val id: Long, val name: String, val status: String, val conclusion: String,
     val startedAt: String, val completedAt: String, val steps: List<GHStep>)
 
-data class GHStep(val name: String, val status: String, val conclusion: String, val number: Int)
+data class GHStep(val name: String, val status: String, val conclusion: String, val number: Int,
+    val startedAt: String = "", val completedAt: String = "")
 
 data class GHArtifact(val id: Long, val name: String, val sizeInBytes: Long,
     val expired: Boolean, val createdAt: String, val expiresAt: String,

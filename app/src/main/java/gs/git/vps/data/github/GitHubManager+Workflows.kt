@@ -568,7 +568,8 @@ private fun parseJobs(body: String): List<GHJob> = try {
         val stepsArr = j.optJSONArray("steps")
         if (stepsArr != null) for (s in 0 until stepsArr.length()) {
             val sj = stepsArr.getJSONObject(s)
-            steps.add(GHStep(name = sj.optString("name"), status = sj.optString("status"), conclusion = sj.optString("conclusion", ""), number = sj.optInt("number")))
+            steps.add(GHStep(name = sj.optString("name"), status = sj.optString("status"), conclusion = sj.optString("conclusion", ""), number = sj.optInt("number"),
+                startedAt = sj.optString("started_at", ""), completedAt = sj.optString("completed_at", "")))
         }
         GHJob(id = j.optLong("id"), name = j.optString("name"), status = j.optString("status"),
             conclusion = j.optString("conclusion", ""), startedAt = j.optString("started_at", ""),

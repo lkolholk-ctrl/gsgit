@@ -162,7 +162,6 @@ import gs.git.vps.ui.theme.TextSecondary
 import gs.git.vps.ui.theme.TextTertiary
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -297,52 +296,6 @@ internal fun ensureJobLogsLoaded(
             jobStepLogs[job.id] = processed.steps
             jobLogMeta[job.id] = processed.meta
             Log.d(ACTIONS_JOB_LOG_TAG, "load complete job=${job.id} bytes=${log.toByteArray().size} steps=${processed.steps.size} file=${processed.meta.cacheFile?.absolutePath.orEmpty()}")
-            
-            // Simulating real-time Flow-based streaming for running tasks
-            if (job.status == "in_progress" || job.status == "queued") {
-                val initialLog = processed.preview.ifBlank { "Waiting for active runner assignment...\n" }
-                scope.launch {
-                    val streamLines = listOf(
-                        "Initializing workspace environment...",
-                        "Checking remote server credentials and SSH keys...",
-                        "Pulling action Docker image 'node:20' from Docker Hub...",
-                        "Docker container created and started successfully in 2.21s.",
-                        "Configuring build variables, API tokens and runtime parameters...",
-                        "Executing task: npm ci --prefer-offline --no-audit --silent",
-                        "Added 512 packages to node_modules in 4.5s.",
-                        "Running unit test runner: npm test",
-                        "PASS  src/ui/components/syntax_highlighter.test.ts (2.89s)",
-                        "PASS  src/security/encryption.test.ts (1.12s)",
-                        "PASS  src/data/github_manager.test.ts (5.31s)",
-                        "PASS  src/ui/screens/code_editor.test.ts (3.04s)",
-                        "Test Suites: 4 passed, 4 total",
-                        "Tests:       32 passed, 32 total",
-                        "Execution elapsed time: 12.36s",
-                        "Running webpack bundle optimization: npm run build:prod",
-                        "Creating an optimized CSS/JS production bundle...",
-                        "Code minification and Tree-Shaking complete.",
-                        "Build completed successfully in 16.92s.",
-                        "File sizes after gzip:",
-                        "  148.6 kB  build/static/js/main.3e1cf2a.js",
-                        "  6.8 kB    build/static/css/main.1f9b30c.css",
-                        "Packaging release archive artifacts...",
-                        "Uploading artifact build-prod to Actions CDN storage...",
-                        "Artifact uploaded to remote storage successfully.",
-                        "Tearing down Docker container environment...",
-                        "Job finished successfully in 41.24s."
-                    )
-                    
-                    var currentText = initialLog + "\n\n<<< LIVE STREAM ACTIVE (Real-time SSE Simulator) >>>\n"
-                    for (line in streamLines) {
-                        delay(650)
-                        val timestamp = java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.US).format(java.util.Date())
-                        currentText += "[$timestamp] $line\n"
-                        jobLogs[job.id] = currentText
-                    }
-                    currentText += "<<< LIVE STREAM COMPLETE >>>\n"
-                    jobLogs[job.id] = currentText
-                }
-            }
         } catch (t: Throwable) {
             Log.e(ACTIONS_JOB_LOG_TAG, "load failed job=${job.id}", t)
             jobLogs[job.id] = "Failed to load logs. ${actionsFriendlyError(t.message)}"
@@ -840,6 +793,70 @@ private fun splitLogsBySteps(job: GHJob, raw: String): Map<Int, String> {
     if (steps.isEmpty()) return emptyMap()
     val lines = raw.lines()
 
+    // Основной путь — по ВРЕМЕННО́МУ ОКНУ шага: каждая строка лога GitHub начинается
+    // с ISO8601-таймстемпа, а у шага в API есть started_at/completed_at. Строку
+    // относим к шагу, чей интервал её накрывает. Это не зависит от текста лога вообще,
+    // поэтому чинит «часть шагов без логов» (матчинг по имени промахивался на
+    // run:-шагах, где в ##[group] пишется команда, а не имя шага).
+    splitByStepTimestamps(steps, lines)?.let { return it }
+
+    // Запасной путь (лог без таймстемпов / у шагов нет времени) — по имени/порядку.
+    return splitByGroupBoundaries(job, lines, raw)
+}
+
+/**
+ * Разбивает лог по временны́м интервалам шагов. Возвращает null, если тайминги
+ * шагов или таймстемпы строк недоступны — тогда работает запасной сплит по группам.
+ */
+private fun splitByStepTimestamps(steps: List<GHStep>, lines: List<String>): Map<Int, String>? {
+    // Шаги, которые реально стартовали (у skipped-шагов started_at пустой — они
+    // логов и не имеют, корректно останутся без строк).
+    val timed = steps.mapNotNull { st ->
+        val start = parseIsoMillis(st.startedAt) ?: return@mapNotNull null
+        st.number to start
+    }.sortedBy { it.second }
+    if (timed.size < 2) return null
+
+    // Строки лога должны нести таймстемпы, иначе делить не по чему.
+    if (lines.take(60).none { lineTimestampMillis(it) != null }) return null
+
+    val buckets = linkedMapOf<Int, StringBuilder>()
+    timed.forEach { buckets[it.first] = StringBuilder() }
+
+    var current = timed.first().first
+    for (line in lines) {
+        val t = lineTimestampMillis(line)
+        if (t != null) {
+            // Последний шаг, чьё начало <= времени строки (шаги идут по возрастанию).
+            var chosen = timed.first().first
+            for ((num, start) in timed) {
+                if (start <= t) chosen = num else break
+            }
+            current = chosen
+        }
+        buckets[current]?.append(line)?.append('\n')
+    }
+
+    val result = buckets.mapValues { it.value.toString().trim() }.filterValues { it.isNotBlank() }
+    return result.ifEmpty { null }
+}
+
+private fun parseIsoMillis(value: String): Long? {
+    if (value.isBlank()) return null
+    return runCatching { java.time.Instant.parse(value).toEpochMilli() }.getOrNull()
+}
+
+private fun lineTimestampMillis(line: String): Long? {
+    // GitHub префиксует каждую строку лога ISO8601-таймстемпом (UTC) + пробел.
+    val sp = line.indexOf(' ')
+    if (sp < 20) return null
+    val head = line.substring(0, sp)
+    if (head.length < 20 || head[4] != '-' || !head.endsWith("Z")) return null
+    return parseIsoMillis(head)
+}
+
+private fun splitByGroupBoundaries(job: GHJob, lines: List<String>, raw: String): Map<Int, String> {
+    val steps = job.steps
     // Границу шага ищем по ИМЕНИ шага, а не по каждому ##[group]: внутри одного
     // шага GitHub эмитит десятки вложенных ##[group] (Gradle, под-действия).
     // Раньше границей был любой ##[group] → секции мапились 1:1 на шаги по
