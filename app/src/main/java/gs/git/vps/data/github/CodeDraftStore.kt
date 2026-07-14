@@ -13,7 +13,7 @@ import org.json.JSONObject
  * Авто-сохраняется молча на каждое изменение черновика; авто-восстанавливается при входе в Code /
  * возврате на ветку. См. docs/code-tab-spec.md.
  */
-object CodeDraftStore {
+internal object CodeDraftStore {
     private const val PREFS = "code_drafts"
 
     private fun key(repoFullName: String, branch: String): String = "$repoFullName@$branch"

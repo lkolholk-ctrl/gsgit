@@ -84,7 +84,8 @@ internal fun CodeCreateEntryDialog(
                         error != null -> error
                         target != null -> "/$target"
                         parentPath.isBlank() -> "repository root"
-                        else -> "/$parentPath",
+                        else -> "/$parentPath"
+                    },
                     color = if (error != null) palette.error else palette.textMuted,
                     fontFamily = JetBrainsMono,
                     fontSize = 11.sp,
