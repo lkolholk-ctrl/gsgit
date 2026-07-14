@@ -194,17 +194,21 @@ internal fun RepoDetailScreen(
     var readmeBlocks by remember { mutableStateOf<List<ReadmeRenderBlock>?>(null) }
     var readmeError by remember { mutableStateOf<String?>(null) }
     var readmeReloadNonce by remember { mutableIntStateOf(0) }
-    var workflowRuns by remember { mutableStateOf<List<GHWorkflowRun>>(emptyList()) }; var selectedRunId by remember { mutableStateOf<Long?>(null) }
+    var workflowRuns by remember { mutableStateOf<List<GHWorkflowRun>>(emptyList()) }; var selectedRunId by rememberSaveable(repo.fullName) { mutableStateOf<Long?>(null) }
     var workflows by remember { mutableStateOf<List<GHWorkflow>>(emptyList()) }; var showDispatch by remember { mutableStateOf(false) }
     var branches by remember { mutableStateOf<List<String>>(emptyList()) }; var loading by remember { mutableStateOf(true) }
-    var fileContent by remember { mutableStateOf<String?>(null) }; var openedFile by remember { mutableStateOf<GHContent?>(null) }; var editingFile by remember { mutableStateOf<GHContent?>(null) }
-    var showBlameFor by remember { mutableStateOf<GHContent?>(null) }; var showFileHistoryFor by remember { mutableStateOf<GHContent?>(null) }
+    var fileContent by remember { mutableStateOf<String?>(null) }
+    var openedFile by rememberSaveable(repo.fullName, stateSaver = NullableGitHubContentSaver) { mutableStateOf<GHContent?>(null) }
+    // A write editor without an explicit draft must not be resurrected with stale server text.
+    var editingFile by remember { mutableStateOf<GHContent?>(null) }
+    var showBlameFor by rememberSaveable(repo.fullName, stateSaver = NullableGitHubContentSaver) { mutableStateOf<GHContent?>(null) }
+    var showFileHistoryFor by rememberSaveable(repo.fullName, stateSaver = NullableGitHubContentSaver) { mutableStateOf<GHContent?>(null) }
     var repoQuery by rememberSaveable(repo.fullName) { mutableStateOf("") }
     var cloneProgress by remember { mutableStateOf<String?>(null) }; var isStarred by remember { mutableStateOf(false) }
     var isWatching by remember { mutableStateOf(false) }
     var showRepoOverflow by remember { mutableStateOf(false) }
-    var showRepoInsights by remember { mutableStateOf(false) }
-    var showGitDataTools by remember { mutableStateOf(false) }
+    var showRepoInsights by rememberSaveable(repo.fullName) { mutableStateOf(false) }
+    var showGitDataTools by rememberSaveable(repo.fullName) { mutableStateOf(false) }
     var repoReloadNonce by remember { mutableIntStateOf(0) }
     var showCopilotChat by rememberSaveable(repo.fullName) { mutableStateOf(false) }
     var copilotPrompt by remember { mutableStateOf<String?>(null) }
@@ -231,42 +235,50 @@ internal fun RepoDetailScreen(
     var loadingPaths by remember(repo.fullName, selectedBranch) { mutableStateOf(setOf<String>()) }
     var showUpload by remember { mutableStateOf(false) }; var showCreateFile by remember { mutableStateOf(false) }
     var showCreateBranch by remember { mutableStateOf(false) }; var showCreateIssue by remember { mutableStateOf(false) }
-    var showIssueEvents by remember { mutableStateOf(false) }
-    var showCreatePR by remember { mutableStateOf(false) }; var selectedIssue by remember { mutableStateOf<GHIssue?>(null) }
-    var selectedCommitSha by remember { mutableStateOf<String?>(null) }; var deleteTarget by remember { mutableStateOf<GHContent?>(null) }
+    var showIssueEvents by rememberSaveable(repo.fullName) { mutableStateOf(false) }
+    var showCreatePR by remember { mutableStateOf(false) }; var selectedIssueNumber by rememberSaveable(repo.fullName) { mutableStateOf<Int?>(null) }
+    var selectedCommitSha by rememberSaveable(repo.fullName) { mutableStateOf<String?>(null) }; var deleteTarget by remember { mutableStateOf<GHContent?>(null) }
     var showBranchPicker by remember { mutableStateOf(false) }
     var branchToDelete by remember { mutableStateOf<String?>(null) }
-    var selectedPRNumber by remember { mutableStateOf<Int?>(null) }
-    var selectedPullNumber by remember { mutableStateOf<Int?>(null) }
-    var showRepoSettings by remember { mutableStateOf(false) }
-    var showBranchProtection by remember { mutableStateOf(false) }
-    var showCollaborators by remember { mutableStateOf(false) }
-    var showTeams by remember { mutableStateOf(false) }
-    var showCompare by remember { mutableStateOf(false) }
-    var showWebhooks by remember { mutableStateOf(false) }
-    var showDiscussions by remember { mutableStateOf(false) }
-    var showRulesets by remember { mutableStateOf(false) }
-    var showSecurity by remember { mutableStateOf(false) }
-    var showAutolinks by remember { mutableStateOf(false) }
-    var showLfs by remember { mutableStateOf(false) }
-    var showInteractionLimits by remember { mutableStateOf(false) }
-    var showActionsTroubleshoot by remember { mutableStateOf(false) }
-    var showBuilds by remember { mutableStateOf(false) }
-    var returnToRepoSettings by remember { mutableStateOf(false) }
+    var selectedPRNumber by rememberSaveable(repo.fullName) { mutableStateOf<Int?>(null) }
+    var selectedPullNumber by rememberSaveable(repo.fullName) { mutableStateOf<Int?>(null) }
+    var showRepoSettings by rememberSaveable(repo.fullName) { mutableStateOf(false) }
+    var showBranchProtection by rememberSaveable(repo.fullName) { mutableStateOf(false) }
+    var showCollaborators by rememberSaveable(repo.fullName) { mutableStateOf(false) }
+    var showTeams by rememberSaveable(repo.fullName) { mutableStateOf(false) }
+    var showCompare by rememberSaveable(repo.fullName) { mutableStateOf(false) }
+    var showWebhooks by rememberSaveable(repo.fullName) { mutableStateOf(false) }
+    var showDiscussions by rememberSaveable(repo.fullName) { mutableStateOf(false) }
+    var showRulesets by rememberSaveable(repo.fullName) { mutableStateOf(false) }
+    var showSecurity by rememberSaveable(repo.fullName) { mutableStateOf(false) }
+    var showAutolinks by rememberSaveable(repo.fullName) { mutableStateOf(false) }
+    var showLfs by rememberSaveable(repo.fullName) { mutableStateOf(false) }
+    var showInteractionLimits by rememberSaveable(repo.fullName) { mutableStateOf(false) }
+    var showActionsTroubleshoot by rememberSaveable(repo.fullName) { mutableStateOf(false) }
+    var showBuilds by rememberSaveable(repo.fullName) { mutableStateOf(false) }
+    var returnToRepoSettings by rememberSaveable(repo.fullName) { mutableStateOf(false) }
     var editorInitialLine by remember { mutableStateOf<Int?>(null) }
     // Code-таб: открытый в редакторе файл (full-screen read-only, Стадия 2). null = редактор закрыт.
-    var codeEditorFile by remember { mutableStateOf<GHContent?>(null) }
+    var codeEditorFile by rememberSaveable(repo.fullName, stateSaver = NullableGitHubContentSaver) { mutableStateOf<GHContent?>(null) }
     var codeEditorContent by remember { mutableStateOf<String?>(null) }
+    var codeEditorBranch by rememberSaveable(repo.fullName) { mutableStateOf(selectedBranch) }
+    var codeDraftLoaded by remember(repo.fullName) { mutableStateOf(false) }
     // Code-таб: буфер черновика (path → новый контент), репо-скоуп; per-ветка персист/загрузка на диск.
     val codeDraft = remember(repo.fullName) { mutableStateMapOf<String, String>() }
     fun persistCodeDraft() = CodeDraftStore.save(context, repo.fullName, selectedBranch, codeDraft.toMap())
     // Стадия 6 «прочность»: загрузка/восстановление черновика для текущей (репо, ветка) — переживает
     // рестарт процесса и смену ветки (у каждой ветки свой черновик; старая ветка уже на диске).
     LaunchedEffect(repo.fullName, selectedBranch) {
+        codeDraftLoaded = false
         val loaded = CodeDraftStore.load(context, repo.fullName, selectedBranch)
         codeDraft.clear(); codeDraft.putAll(loaded)
         // S2: контент per-ветка — при смене ветки закрываем открытый редактор (не показываем стейл).
-        codeEditorFile = null; codeEditorContent = null
+        if (codeEditorBranch != selectedBranch) {
+            codeEditorFile = null
+            codeEditorContent = null
+        }
+        codeEditorBranch = selectedBranch
+        codeDraftLoaded = true
     }
     var showCodeCommitSheet by remember { mutableStateOf(false) }
     var codeCommitting by remember { mutableStateOf(false) }
@@ -306,19 +318,7 @@ internal fun RepoDetailScreen(
         while (codeRecents.size > 8) codeRecents.removeAt(codeRecents.lastIndex)
         CodeDraftStore.saveRecents(context, repo.fullName, codeRecents.map { it.path })  // S4: персист
         codeEditorFile = f
-        val draft = codeDraft[f.path]
-        if (draft != null) {
-            codeEditorContent = draft
-        } else {
-            codeEditorContent = null
-            scope.launch {
-                val c = runCatching { GitHubManager.getFileContent(context, repo.owner, repo.name, f.path, selectedBranch) }.getOrNull()
-                if (c == null) {
-                    codeEditorFile = null
-                    Toast.makeText(context, Strings.error, Toast.LENGTH_SHORT).show()
-                } else codeEditorContent = c
-            }
-        }
+        codeEditorContent = codeDraft[f.path]
     }
     var languages by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }; var contributors by remember { mutableStateOf<List<GHContributor>>(emptyList()) }
     // Pagination
@@ -368,17 +368,7 @@ internal fun RepoDetailScreen(
             }
             "Issue" -> {
                 nav.selectedSection = RepoTab.ISSUES
-                target.number?.let {
-                    selectedIssue = GHIssue(
-                        number = it,
-                        title = "",
-                        state = "",
-                        author = "",
-                        createdAt = "",
-                        comments = 0,
-                        isPR = false
-                    )
-                }
+                selectedIssueNumber = target.number
             }
             "Release" -> nav.selectedSection = RepoTab.RELEASES
             "Discussion" -> showDiscussions = true
@@ -451,7 +441,7 @@ internal fun RepoDetailScreen(
                 openedFile = null
                 fileContent = null
             }
-            selectedIssue != null -> selectedIssue = null
+            selectedIssueNumber != null -> selectedIssueNumber = null
             selectedCommitSha != null -> selectedCommitSha = null
             selectedPRNumber != null -> selectedPRNumber = null
             selectedPullNumber != null -> selectedPullNumber = null
@@ -611,24 +601,16 @@ internal fun RepoDetailScreen(
         IssueEventsScreen(
             repo = repo,
             onBack = { showIssueEvents = false },
-            onOpenIssue = { number, title ->
+            onOpenIssue = { number, _ ->
                 showIssueEvents = false
-                selectedIssue = GHIssue(
-                    number = number,
-                    title = title,
-                    state = "",
-                    author = "",
-                    createdAt = "",
-                    comments = 0,
-                    isPR = false
-                )
+                selectedIssueNumber = number
             },
         )
         return
     }
     if (showRepoInsights) { RepoInsightsScreen(repo) { showRepoInsights = false }; return }
     if (showGitDataTools) { GitDataToolsScreen(repo, canWrite = canWrite) { showGitDataTools = false }; return }
-    if (selectedIssue != null) { IssueDetailScreen(repo, selectedIssue!!.number) { selectedIssue = null }; return }
+    if (selectedIssueNumber != null) { IssueDetailScreen(repo, selectedIssueNumber!!) { selectedIssueNumber = null }; return }
     if (selectedCommitSha != null) { 
         CommitDiffScreen(repo.owner, repo.name, selectedCommitSha!!) { selectedCommitSha = null }; 
         return 
@@ -723,6 +705,20 @@ internal fun RepoDetailScreen(
     val codeFile = codeEditorFile
     if (nav.selectedSection == RepoTab.CODE && codeFile != null) {
         val codeContent = codeEditorContent
+        LaunchedEffect(codeFile.path, selectedBranch, codeDraftLoaded) {
+            if (codeDraftLoaded && codeEditorContent == null) {
+                val restoredContent = codeDraft[codeFile.path]
+                    ?: runCatching {
+                        GitHubManager.getFileContent(context, repo.owner, repo.name, codeFile.path, selectedBranch)
+                    }.getOrNull()
+                if (restoredContent == null) {
+                    codeEditorFile = null
+                    Toast.makeText(context, Strings.error, Toast.LENGTH_SHORT).show()
+                } else {
+                    codeEditorContent = restoredContent
+                }
+            }
+        }
         // browser→editor переход: редактор появляется slide-in справа + fade (push-open).
         // Закрытие мгновенное (early-return снимается на codeEditorFile=null).
         var editorShown by remember(codeFile.path) { mutableStateOf(false) }
@@ -1377,7 +1373,7 @@ internal fun RepoDetailScreen(
                 },
             )
             RepoTab.COMMITS -> CommitsTab(filteredCommits, commitsHasMore, { scope.launch { commitsPage++; val r = GitHubManager.getCommits(context, repo.owner, repo.name, commitsPage); if (r.size < 30) commitsHasMore = false; commits = commits + r } }, listState = commitsListState, onClick = { selectedCommitSha = it.sha }, onExploreFiles = { selectedBranch = it; nav.selectedSection = RepoTab.FILES })
-            RepoTab.ISSUES -> IssuesTab(filteredIssues, issuesHasMore, { scope.launch { issuesPage++; val r = GitHubManager.getIssues(context, repo.owner, repo.name, page = issuesPage); if (r.size < 30) issuesHasMore = false; issues = issues + r } }, listState = issuesListState) { selectedIssue = it }
+            RepoTab.ISSUES -> IssuesTab(filteredIssues, issuesHasMore, { scope.launch { issuesPage++; val r = GitHubManager.getIssues(context, repo.owner, repo.name, page = issuesPage); if (r.size < 30) issuesHasMore = false; issues = issues + r } }, listState = issuesListState) { selectedIssueNumber = it.number }
             RepoTab.PULLS -> PullsTab(
                 pulls = filteredPulls,
                 repo = repo,

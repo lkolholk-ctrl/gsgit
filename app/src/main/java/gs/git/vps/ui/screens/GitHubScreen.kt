@@ -58,7 +58,9 @@ fun GitHubScreen(
             val context = LocalContext.current
             var isLoggedIn by remember { mutableStateOf(GitHubManager.isLoggedIn(context)) }
             var user by remember { mutableStateOf(GitHubManager.getCachedUser(context)) }
-            var selectedRepo by remember { mutableStateOf<GHRepo?>(null) }
+            var selectedRepo by rememberSaveable(stateSaver = NullableGitHubRepoSaver) {
+                mutableStateOf<GHRepo?>(null)
+            }
             var showGists by rememberSaveable { mutableStateOf(false) }
             var showSettings by rememberSaveable { mutableStateOf(false) }
             var showNotifications by rememberSaveable { mutableStateOf(false) }
