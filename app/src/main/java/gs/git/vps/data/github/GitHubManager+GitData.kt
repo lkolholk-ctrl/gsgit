@@ -171,6 +171,7 @@ internal data class GHTreeEntry(
     val type: String = "blob",
     val sha: String? = null,
     val content: String? = null,
+    val delete: Boolean = false,
 )
 
 /**
@@ -192,6 +193,7 @@ internal suspend fun GitHubManager.createGitTreeBatch(
             put("mode", e.mode.ifBlank { "100644" })
             put("type", e.type.ifBlank { "blob" })
             when {
+                e.delete -> put("sha", JSONObject.NULL)
                 e.sha != null -> put("sha", e.sha)
                 e.content != null -> put("content", e.content)
             }

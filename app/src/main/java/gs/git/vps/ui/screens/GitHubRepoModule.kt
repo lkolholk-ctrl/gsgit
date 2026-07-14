@@ -173,7 +173,7 @@ internal fun RepoDetailScreen(
     val nav = rememberRepoNavState(repo.fullName); var contents by remember { mutableStateOf<List<GHContent>>(emptyList()) }
     // null selectedSection = лендинг (файлы): контент/загрузка трактуют его как FILES, подсветка — как «ничего».
     val shownSection = nav.selectedSection ?: RepoTab.FILES
-    // Bottom-bar: 3 пинных + слот-4. «code» — placeholder-секция (README), назначение уточняется отдельно.
+    // Bottom-bar: Code workspace + Actions + Settings + Issues.
     val bottomBarItems = remember(repo.openIssues) {
         listOf(
             RepoBottomBarItem("code", "code", Icons.Rounded.Code, section = RepoTab.CODE),
@@ -258,13 +258,13 @@ internal fun RepoDetailScreen(
     var showBuilds by rememberSaveable(repo.fullName) { mutableStateOf(false) }
     var returnToRepoSettings by rememberSaveable(repo.fullName) { mutableStateOf(false) }
     var editorInitialLine by remember { mutableStateOf<Int?>(null) }
-    // Code-таб: открытый в редакторе файл (full-screen read-only, Стадия 2). null = редактор закрыт.
+    // Code workspace: current editor file. null = browser is visible.
     var codeEditorFile by rememberSaveable(repo.fullName, stateSaver = NullableGitHubContentSaver) { mutableStateOf<GHContent?>(null) }
     var codeEditorContent by remember { mutableStateOf<String?>(null) }
     var codeEditorBranch by rememberSaveable(repo.fullName) { mutableStateOf(selectedBranch) }
     var codeDraftLoaded by remember(repo.fullName) { mutableStateOf(false) }
-    // Code-таб: буфер черновика (path → новый контент), репо-скоуп; per-ветка персист/загрузка на диск.
-    val codeDraft = remember(repo.fullName) { mutableStateMapOf<String, String>() }
+    // Typed A/M/D/R draft, scoped by repository and persisted separately for every branch.
+    val codeDraft = remember(repo.fullName) { mutableStateMapOf<String, CodeChange>() }
     fun persistCodeDraft() = CodeDraftStore.save(context, repo.fullName, selectedBranch, codeDraft.toMap())
     // Стадия 6 «прочность»: загрузка/восстановление черновика для текущей (репо, ветка) — переживает
     // рестарт процесса и смену ветки (у каждой ветки свой черновик; старая ветка уже на диске).
@@ -284,6 +284,7 @@ internal fun RepoDetailScreen(
     var codeCommitting by remember { mutableStateOf(false) }
     var codeCommitConflict by remember { mutableStateOf(false) }
     var showCodeDiscardAllDialog by remember { mutableStateOf(false) }
+    var codeRefreshKey by remember { mutableIntStateOf(0) }
     // Code-таб: недавно открытые файлы (most-recent-first, для строки «recent»). Скоуп репо.
     val codeRecents = remember(repo.fullName) { mutableStateListOf<GHContent>() }
     // S4: восстановить недавние с диска (переживают рестарт процесса).
@@ -318,7 +319,105 @@ internal fun RepoDetailScreen(
         while (codeRecents.size > 8) codeRecents.removeAt(codeRecents.lastIndex)
         CodeDraftStore.saveRecents(context, repo.fullName, codeRecents.map { it.path })  // S4: персист
         codeEditorFile = f
-        codeEditorContent = codeDraft[f.path]
+        codeEditorContent = codeDraft[f.path]?.draftContentOrNull()
+    }
+
+    suspend fun codeTargetExists(path: String, ignorePath: String? = null): Boolean {
+        if (path == ignorePath) return false
+        val local = codeDraft[path]
+        if (local != null) return local !is CodeDelete
+        val parent = path.substringBeforeLast('/', "")
+        return GitHubManager.getRepoContents(context, repo.owner, repo.name, parent, selectedBranch)
+            .any { it.path == path && it.path != ignorePath }
+    }
+
+    fun createCodeFile(path: String) {
+        scope.launch {
+            if (codeTargetExists(path)) {
+                Toast.makeText(context, "path already exists", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            val replacingDelete = codeDraft[path] is CodeDelete
+            codeDraft[path] = if (replacingDelete) CodeModify(path, "") else CodeAdd(path, "")
+            persistCodeDraft()
+            openCodeFile(GHContent(path.substringAfterLast('/'), path, "file", 0L, "", ""))
+        }
+    }
+
+    fun createCodeFolder(path: String) {
+        scope.launch {
+            if (codeTargetExists(path)) {
+                Toast.makeText(context, "folder already exists", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            val marker = "$path/.gitkeep"
+            codeDraft[marker] = CodeAdd(marker, "")
+            persistCodeDraft()
+            codePath = path
+        }
+    }
+
+    fun renameOrMoveCodeFile(item: GHContent, targetPath: String) {
+        scope.launch {
+            if (codeTargetExists(targetPath, ignorePath = item.path)) {
+                Toast.makeText(context, "target already exists", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            val existing = codeDraft.remove(item.path)
+            codeDraft.remove(targetPath) // replacing a locally deleted remote target is intentional
+            val moved = when (existing) {
+                is CodeAdd -> existing.copy(path = targetPath)
+                is CodeModify -> CodeRename(item.path, targetPath, existing.content, item.sha)
+                is CodeRename -> existing.copy(path = targetPath)
+                is CodeDelete -> return@launch
+                null -> CodeRename(item.path, targetPath, sourceSha = item.sha)
+            }
+            codeDraft[targetPath] = moved
+            codeRecents.removeAll { it.path == item.path || it.path == targetPath }
+            codeRecents.add(0, GHContent(targetPath.substringAfterLast('/'), targetPath, "file", item.size, "", item.sha))
+            CodeDraftStore.saveRecents(context, repo.fullName, codeRecents.map { it.path })
+            persistCodeDraft()
+        }
+    }
+
+    fun duplicateCodeFile(item: GHContent, targetPath: String) {
+        scope.launch {
+            if (codeTargetExists(targetPath)) {
+                Toast.makeText(context, "target already exists", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            val source = codeDraft[item.path]
+            val copy = when (source) {
+                is CodeAdd -> CodeAdd(targetPath, source.content, source.sourcePath ?: item.path, source.sourceSha ?: item.sha)
+                is CodeModify -> CodeAdd(targetPath, source.content)
+                is CodeRename -> CodeAdd(targetPath, source.content, source.oldPath, source.sourceSha ?: item.sha)
+                is CodeDelete -> return@launch
+                null -> CodeAdd(targetPath, content = null, sourcePath = item.path, sourceSha = item.sha)
+            }
+            codeDraft[targetPath] = copy
+            persistCodeDraft()
+        }
+    }
+
+    fun deleteCodeFile(item: GHContent) {
+        val existing = codeDraft.remove(item.path)
+        when (existing) {
+            is CodeAdd -> Unit // A then D cancels the local operation completely.
+            is CodeRename -> codeDraft[existing.oldPath] = CodeDelete(existing.oldPath, restore = existing)
+            is CodeModify -> codeDraft[item.path] = CodeDelete(item.path, restore = existing)
+            is CodeDelete -> codeDraft[item.path] = existing
+            null -> codeDraft[item.path] = CodeDelete(item.path)
+        }
+        codeRecents.removeAll { it.path == item.path }
+        CodeDraftStore.saveRecents(context, repo.fullName, codeRecents.map { it.path })
+        persistCodeDraft()
+    }
+    fun discardCodeChange(path: String) {
+        val removed = codeDraft.remove(path)
+        if (removed is CodeDelete && removed.restore != null) {
+            codeDraft[removed.restore.path] = removed.restore
+        }
+        persistCodeDraft()
     }
     var languages by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }; var contributors by remember { mutableStateOf<List<GHContributor>>(emptyList()) }
     // Pagination
@@ -594,7 +693,7 @@ internal fun RepoDetailScreen(
         RepoTab.CODE_SEARCH -> { /* searches on demand */ }
         RepoTab.TIME_TRAVEL -> { /* loaded dynamically */ }
         RepoTab.TELEMETRY -> { /* loaded dynamically */ }
-        RepoTab.CODE -> { /* Code-таб владеет своими данными (Стадия 0: заглушка) */ }
+        RepoTab.CODE -> { /* Code workspace owns its browser/editor/draft loading. */ }
     }; loading = false }
 
     if (showIssueEvents) {
@@ -701,15 +800,22 @@ internal fun RepoDetailScreen(
         return
     }
     
-    // Code-таб: редактор файла full-screen, read-only (Стадия 2). Бэк редактора → назад в Code-браузер.
+    // Code workspace editor. Back returns to the workspace browser.
     val codeFile = codeEditorFile
     if (nav.selectedSection == RepoTab.CODE && codeFile != null) {
         val codeContent = codeEditorContent
         LaunchedEffect(codeFile.path, selectedBranch, codeDraftLoaded) {
             if (codeDraftLoaded && codeEditorContent == null) {
-                val restoredContent = codeDraft[codeFile.path]
+                val change = codeDraft[codeFile.path]
+                val restoredContent = change?.draftContentOrNull()
                     ?: runCatching {
-                        GitHubManager.getFileContent(context, repo.owner, repo.name, codeFile.path, selectedBranch)
+                        GitHubManager.getFileContent(
+                            context,
+                            repo.owner,
+                            repo.name,
+                            change?.contentSourcePath() ?: codeFile.path,
+                            selectedBranch,
+                        )
                     }.getOrNull()
                 if (restoredContent == null) {
                     codeEditorFile = null
@@ -740,7 +846,11 @@ internal fun RepoDetailScreen(
                     branch = selectedBranch,
                     initialContent = codeContent,
                     lite = true,
-                    onSaveDraft = { p, c -> codeDraft[p] = c; persistCodeDraft() },
+                    readOnly = !canWrite,
+                    onSaveDraft = if (canWrite) ({ p, c ->
+                        codeDraft[p] = codeDraft[p]?.withEditedContent(c) ?: CodeModify(p, c)
+                        persistCodeDraft()
+                    }) else null,
                     onBack = { codeEditorFile = null; codeEditorContent = null },
                 )
             }
@@ -1426,16 +1536,30 @@ internal fun RepoDetailScreen(
                 repo = repo,
                 branch = selectedBranch,
                 codePath = codePath,
+                refreshKey = codeRefreshKey,
                 showChanges = showCodeChanges,
-                draftPaths = codeDraft.keys,
+                changes = codeDraft.values,
                 recents = codeRecents,
+                canWrite = canWrite,
                 onCodePathChange = { codePath = it },
                 onShowChanges = { showCodeChanges = true },
                 onOpenFile = { openCodeFile(it) },
-                onOpenPath = { path -> openCodeFile(GHContent(path.substringAfterLast('/'), path, "file", 0L, "", "")) },
+                onOpenPath = { path ->
+                    val change = codeDraft[path]
+                    if (change is CodeDelete) {
+                        Toast.makeText(context, "deleted file — discard to restore", Toast.LENGTH_SHORT).show()
+                    } else {
+                        openCodeFile(GHContent(path.substringAfterLast('/'), path, "file", 0L, "", ""))
+                    }
+                },
                 onCommit = { showCodeCommitSheet = true },
-                onDiscardFile = { codeDraft.remove(it); persistCodeDraft() },
+                onDiscardFile = { discardCodeChange(it) },
                 onDiscardAll = { showCodeDiscardAllDialog = true },
+                onCreateFile = { createCodeFile(it) },
+                onCreateFolder = { createCodeFolder(it) },
+                onRenameOrMove = { item, path -> renameOrMoveCodeFile(item, path) },
+                onDuplicate = { item, path -> duplicateCodeFile(item, path) },
+                onDelete = { deleteCodeFile(it) },
                 onBack = { codeInternalBack() },
             )
         }
@@ -1522,7 +1646,7 @@ internal fun RepoDetailScreen(
     if (showCodeCommitSheet) {
         CodeCommitSheet(
             fileCount = codeDraft.size,
-            paths = codeDraft.keys,
+            changes = codeDraft.values,
             branch = selectedBranch,
             committing = codeCommitting,
             conflict = codeCommitConflict,
@@ -1530,12 +1654,13 @@ internal fun RepoDetailScreen(
                 codeCommitting = true
                 codeCommitConflict = false
                 scope.launch {
-                    val res = GitHubManager.commitCodeDraft(context, repo.owner, repo.name, selectedBranch, msg, codeDraft.toMap())
+                    val res = GitHubManager.commitCodeDraft(context, repo.owner, repo.name, selectedBranch, msg, codeDraft.values.toList())
                     codeCommitting = false
                     when (res) {
                         is CodeCommitResult.Success -> {
                             codeDraft.clear()
                             persistCodeDraft()
+                            codeRefreshKey++
                             showCodeCommitSheet = false
                             Toast.makeText(context, "committed", Toast.LENGTH_SHORT).show()
                         }

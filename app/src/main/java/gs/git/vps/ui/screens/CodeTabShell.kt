@@ -7,6 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import gs.git.vps.data.github.model.GHContent
 import gs.git.vps.data.github.model.GHRepo
+import gs.git.vps.data.github.CodeChange
 
 /**
  * Оболочка нижнего таба **Code** (мини-IDE). Навигация (codePath, showChanges) поднята в
@@ -19,9 +20,11 @@ internal fun CodeTabShell(
     repo: GHRepo,
     branch: String,
     codePath: String,
+    refreshKey: Int,
     showChanges: Boolean,
-    draftPaths: Set<String>,
+    changes: Collection<CodeChange>,
     recents: List<GHContent>,
+    canWrite: Boolean,
     onCodePathChange: (String) -> Unit,
     onShowChanges: () -> Unit,
     onOpenFile: (GHContent) -> Unit,
@@ -29,6 +32,11 @@ internal fun CodeTabShell(
     onCommit: () -> Unit,
     onDiscardFile: (String) -> Unit,
     onDiscardAll: () -> Unit,
+    onCreateFile: (String) -> Unit,
+    onCreateFolder: (String) -> Unit,
+    onRenameOrMove: (GHContent, String) -> Unit,
+    onDuplicate: (GHContent, String) -> Unit,
+    onDelete: (GHContent) -> Unit,
     onBack: () -> Unit,
 ) {
     BackHandler(enabled = true) { onBack() }
@@ -41,19 +49,25 @@ internal fun CodeTabShell(
             repo = repo,
             branch = branch,
             path = codePath,
+            refreshKey = refreshKey,
             onOpenDir = { onCodePathChange(it.path) },
             onOpenFile = onOpenFile,
             onNavigatePath = onCodePathChange,
-            draftPaths = draftPaths,
-            draftCount = draftPaths.size,
+            changes = changes,
             recents = recents,
+            canWrite = canWrite,
             onCommit = onCommit,
             onShowChanges = onShowChanges,
             onDiscardAll = onDiscardAll,
+            onCreateFile = onCreateFile,
+            onCreateFolder = onCreateFolder,
+            onRenameOrMove = onRenameOrMove,
+            onDuplicate = onDuplicate,
+            onDelete = onDelete,
         )
         if (showChanges) {
             CodeChangesPanel(
-                draftPaths = draftPaths,
+                changes = changes,
                 onOpenPath = onOpenPath,
                 onDiscardPath = onDiscardFile,
                 onCommit = onCommit,

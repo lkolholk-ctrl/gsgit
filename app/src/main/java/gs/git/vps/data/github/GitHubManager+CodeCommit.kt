@@ -21,7 +21,7 @@ internal sealed interface CodeCommitResult {
  * → commit(parent=head) → update ref (force=false). force=false: если ветка уехала, updateRef падает
  * → [CodeCommitResult.Conflict] (без авто-мёрджа). Вся GitHub-логика коммита — здесь, не в редакторе.
  *
- * @param changes path → новый контент (модификации/добавления). Удаления/переименования — позже.
+ * @param changes типизированные операции рабочего дерева; rename кладётся как delete+add в один tree.
  */
 internal suspend fun GitHubManager.commitCodeDraft(
     context: Context,
@@ -29,7 +29,7 @@ internal suspend fun GitHubManager.commitCodeDraft(
     repo: String,
     branch: String,
     message: String,
-    changes: Map<String, String>,
+    changes: Collection<CodeChange>,
 ): CodeCommitResult {
     if (changes.isEmpty()) return CodeCommitResult.Error("no changes")
 
@@ -42,19 +42,38 @@ internal suspend fun GitHubManager.commitCodeDraft(
         ?: return CodeCommitResult.Error("failed to get base commit")
     val baseTree = headCommit.treeSha
 
-    val entries = ArrayList<GHTreeEntry>(changes.size)
-    for ((path, content) in changes) {
-        if (content.isNotBlank()) {
-            val blob = createGitBlob(context, owner, repo, content)
-                ?: return CodeCommitResult.Error("blob failed: $path")
-            entries.add(GHTreeEntry(path = path, sha = blob.sha))
-        } else {
-            // Пустой/whitespace файл: createGitBlob отвергает blank — кладём inline content.
-            entries.add(GHTreeEntry(path = path, content = content))
+    // One final entry per path. This also prevents an intermediate operation from leaking into tree.
+    val entries = linkedMapOf<String, GHTreeEntry>()
+    suspend fun putContent(path: String, content: String?, sourceSha: String?): CodeCommitResult.Error? {
+        val cleanPath = path.trim('/')
+        if (cleanPath.isBlank()) return CodeCommitResult.Error("invalid path")
+        val entry = when {
+            content != null && content.isNotBlank() -> {
+                val blob = createGitBlob(context, owner, repo, content)
+                    ?: return CodeCommitResult.Error("blob failed: $cleanPath")
+                GHTreeEntry(path = cleanPath, sha = blob.sha)
+            }
+            content != null -> GHTreeEntry(path = cleanPath, content = content)
+            !sourceSha.isNullOrBlank() -> GHTreeEntry(path = cleanPath, sha = sourceSha)
+            else -> return CodeCommitResult.Error("missing source: $cleanPath")
+        }
+        entries[cleanPath] = entry
+        return null
+    }
+
+    for (change in changes) {
+        when (change) {
+            is CodeAdd -> putContent(change.path, change.content, change.sourceSha)?.let { return it }
+            is CodeModify -> putContent(change.path, change.content, null)?.let { return it }
+            is CodeDelete -> entries[change.path] = GHTreeEntry(path = change.path, delete = true)
+            is CodeRename -> {
+                entries[change.oldPath] = GHTreeEntry(path = change.oldPath, delete = true)
+                putContent(change.path, change.content, change.sourceSha)?.let { return it }
+            }
         }
     }
 
-    val tree = createGitTreeBatch(context, owner, repo, baseTree, entries)
+    val tree = createGitTreeBatch(context, owner, repo, baseTree, entries.values.toList())
         ?: return CodeCommitResult.Error("tree failed")
     val commit = createGitCommit(context, owner, repo, message, tree.sha, listOf(headSha))
         ?: return CodeCommitResult.Error("commit failed")

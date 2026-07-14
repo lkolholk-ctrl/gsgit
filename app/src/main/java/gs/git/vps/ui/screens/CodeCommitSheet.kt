@@ -25,10 +25,12 @@ import gs.git.vps.ui.components.AiModuleText
 import gs.git.vps.ui.components.AiModuleTextField
 import gs.git.vps.ui.theme.AiModuleTheme
 import gs.git.vps.ui.theme.JetBrainsMono
+import gs.git.vps.data.github.CodeChange
+import gs.git.vps.data.github.CodeChangeKind
 
 /**
  * Шит сообщения для батч-коммита черновика Code-таба (Стадия 4 + P1-полиш). Показывает свёрнутый
- * список изменённых файлов (M-чип + имя, первые [PREVIEW_LIMIT] + «+N more»), собирает сообщение и
+ * список изменённых файлов (A/M/D/R + имя, первые [PREVIEW_LIMIT] + «+N more»), собирает сообщение и
  * запускает один коммит на [fileCount] файлов в [branch]. Пока [committing] — кнопки заблокированы.
  */
 private const val PREVIEW_LIMIT = 5
@@ -36,7 +38,7 @@ private const val PREVIEW_LIMIT = 5
 @Composable
 internal fun CodeCommitSheet(
     fileCount: Int,
-    paths: Set<String>,
+    changes: Collection<CodeChange>,
     branch: String,
     committing: Boolean,
     conflict: Boolean = false,
@@ -46,7 +48,7 @@ internal fun CodeCommitSheet(
     val palette = AiModuleTheme.colors
     val plural = if (fileCount == 1) "file" else "files"
     var message by remember { mutableStateOf("Update $fileCount $plural") }
-    val preview = remember(paths) { paths.sorted() }
+    val preview = changes.sortedBy { it.path }
 
     AiModuleAlertDialog(
         onDismissRequest = { if (!committing) onDismiss() },
@@ -80,15 +82,21 @@ internal fun CodeCommitSheet(
                 )
                 Spacer(Modifier.height(10.dp))
                 // Свёрнутый список изменённых файлов (M-чип + имя).
-                preview.take(PREVIEW_LIMIT).forEach { p ->
+                preview.take(PREVIEW_LIMIT).forEach { change ->
+                    val markerColor = when (change.kind) {
+                        CodeChangeKind.ADD -> palette.syntaxString
+                        CodeChangeKind.MODIFY -> palette.warning
+                        CodeChangeKind.DELETE -> palette.error
+                        CodeChangeKind.RENAME -> palette.accent
+                    }
                     Row(
                         Modifier.fillMaxWidth().padding(vertical = 2.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        AiModuleText("M", color = palette.warning, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.width(14.dp))
+                        AiModuleText(change.kind.marker, color = markerColor, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.width(14.dp))
                         Spacer(Modifier.width(8.dp))
                         AiModuleText(
-                            p.substringAfterLast('/'),
+                            change.path.substringAfterLast('/'),
                             color = palette.textPrimary,
                             fontFamily = JetBrainsMono,
                             fontSize = 12.sp,

@@ -3,6 +3,7 @@ package gs.git.vps.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -29,6 +31,7 @@ import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -48,6 +51,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import gs.git.vps.data.github.GitHubManager
+import gs.git.vps.data.github.CodeAdd
+import gs.git.vps.data.github.CodeChange
+import gs.git.vps.data.github.CodeDelete
+import gs.git.vps.data.github.CodeRename
+import gs.git.vps.data.github.CodeChangeKind
 import gs.git.vps.data.github.getRepoContents
 import gs.git.vps.data.github.model.GHContent
 import gs.git.vps.data.github.model.GHRepo
@@ -55,7 +63,7 @@ import gs.git.vps.ui.components.AiModuleText
 import gs.git.vps.ui.theme.AiModuleTheme
 import gs.git.vps.ui.theme.JetBrainsMono
 
-/** Иконка по типу/расширению файла (read-only браузер Code-таба). */
+/** Иконка по типу/расширению файла в рабочем дереве Code-таба. */
 private fun codeEntryIcon(item: GHContent): ImageVector {
     if (item.type == "dir") return Icons.Rounded.Folder
     return when (item.name.substringAfterLast('.', "").lowercase()) {
@@ -93,15 +101,21 @@ internal fun CodeBrowser(
     repo: GHRepo,
     branch: String,
     path: String,
+    refreshKey: Int,
     onOpenDir: (GHContent) -> Unit,
     onOpenFile: (GHContent) -> Unit,
     onNavigatePath: (String) -> Unit,
-    draftPaths: Set<String>,
-    draftCount: Int,
+    changes: Collection<CodeChange>,
     recents: List<GHContent>,
+    canWrite: Boolean,
     onCommit: () -> Unit,
     onShowChanges: () -> Unit,
     onDiscardAll: () -> Unit,
+    onCreateFile: (String) -> Unit,
+    onCreateFolder: (String) -> Unit,
+    onRenameOrMove: (GHContent, String) -> Unit,
+    onDuplicate: (GHContent, String) -> Unit,
+    onDelete: (GHContent) -> Unit,
 ) {
     val palette = AiModuleTheme.colors
     val context = LocalContext.current
@@ -110,8 +124,19 @@ internal fun CodeBrowser(
     var failed by remember { mutableStateOf(false) }
     var reloadNonce by remember { mutableIntStateOf(0) }
     var query by remember(path) { mutableStateOf("") }   // фильтр файлов, сброс при смене папки
+    var showCreateDialog by remember { mutableStateOf(false) }
+    var actionTarget by remember { mutableStateOf<GHContent?>(null) }
+    var deleteTarget by remember { mutableStateOf<GHContent?>(null) }
+    val draftPaths = changes.flatMapTo(linkedSetOf()) { change ->
+        when (change) {
+            is CodeRename -> listOf(change.oldPath, change.path)
+            else -> listOf(change.path)
+        }
+    }
+    val draftCount = changes.size
+    val changeByPath = changes.associateBy { it.path }
 
-    LaunchedEffect(repo.fullName, branch, path, reloadNonce) {
+    LaunchedEffect(repo.fullName, branch, path, reloadNonce, refreshKey) {
         loading = true; failed = false
         val r = runCatching { GitHubManager.getRepoContents(context, repo.owner, repo.name, path, branch) }.getOrNull()
         if (r == null) failed = true
@@ -120,7 +145,13 @@ internal fun CodeBrowser(
     }
 
     Column(Modifier.fillMaxSize()) {
-        CodeBreadcrumbs(path = path, branch = branch, onNavigatePath = onNavigatePath)
+        CodeBreadcrumbs(
+            path = path,
+            branch = branch,
+            canWrite = canWrite,
+            onNavigatePath = onNavigatePath,
+            onCreate = { showCreateDialog = true },
+        )
         if (recents.isNotEmpty()) CodeRecentsRow(recents = recents, onOpen = onOpenFile)
         Box(Modifier.fillMaxWidth().height(1.dp).background(palette.border.copy(alpha = 0.12f)))
         if (draftCount > 0) {
@@ -150,6 +181,7 @@ internal fun CodeBrowser(
             }
             Box(Modifier.fillMaxWidth().height(1.dp).background(palette.border.copy(alpha = 0.12f)))
         }
+        val workspaceItems = applyCodeChangesToDirectory(items, path, changes)
         when {
             loading -> GitHubMonoEmpty(title = "loading…")
             failed -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -159,11 +191,11 @@ internal fun CodeBrowser(
                     GitHubTerminalButton(label = "retry", onClick = { reloadNonce++ }, color = palette.accent)
                 }
             }
-            items.isEmpty() -> GitHubMonoEmpty(title = "empty directory")
+            workspaceItems.isEmpty() -> GitHubMonoEmpty(title = "empty directory")
             else -> {
-                val shown = if (query.isBlank()) items else items.filter { it.name.contains(query, ignoreCase = true) }
+                val shown = if (query.isBlank()) workspaceItems else workspaceItems.filter { it.name.contains(query, ignoreCase = true) }
                 Column(Modifier.fillMaxSize()) {
-                    if (items.size > 8) CodeBrowserFilter(query = query, onChange = { query = it })
+                    if (workspaceItems.size > 8) CodeBrowserFilter(query = query, onChange = { query = it })
                     if (shown.isEmpty()) {
                         GitHubMonoEmpty(title = "no matches")
                     } else {
@@ -172,7 +204,10 @@ internal fun CodeBrowser(
                                 CodeEntryRow(
                                     item = item,
                                     dirty = if (item.type == "dir") draftPaths.any { it.startsWith(item.path + "/") } else item.path in draftPaths,
+                                    status = changeByPath[item.path]?.kind,
                                     onClick = { if (item.type == "dir") onOpenDir(item) else onOpenFile(item) },
+                                    onLongClick = if (canWrite && item.type == "file") ({ actionTarget = item }) else null,
+                                    onActions = if (canWrite && item.type == "file") ({ actionTarget = item }) else null,
                                 )
                             }
                         }
@@ -181,40 +216,81 @@ internal fun CodeBrowser(
             }
         }
     }
+
+    if (showCreateDialog) {
+        CodeCreateEntryDialog(
+            parentPath = path,
+            existingNames = applyCodeChangesToDirectory(items, path, changes).mapTo(hashSetOf()) { it.name },
+            onCreateFile = { showCreateDialog = false; onCreateFile(it) },
+            onCreateFolder = { showCreateDialog = false; onCreateFolder(it) },
+            onDismiss = { showCreateDialog = false },
+        )
+    }
+    actionTarget?.let { target ->
+        CodeEntryActionsDialog(
+            item = target,
+            onRenameOrMove = { actionTarget = null; onRenameOrMove(target, it) },
+            onDuplicate = { actionTarget = null; onDuplicate(target, it) },
+            onRequestDelete = { actionTarget = null; deleteTarget = target },
+            onDismiss = { actionTarget = null },
+        )
+    }
+    deleteTarget?.let { target ->
+        CodeDeleteEntryDialog(
+            item = target,
+            onDelete = { deleteTarget = null; onDelete(target) },
+            onDismiss = { deleteTarget = null },
+        )
+    }
 }
 
 @Composable
-private fun CodeBreadcrumbs(path: String, branch: String, onNavigatePath: (String) -> Unit) {
+private fun CodeBreadcrumbs(
+    path: String,
+    branch: String,
+    canWrite: Boolean,
+    onNavigatePath: (String) -> Unit,
+    onCreate: () -> Unit,
+) {
     val palette = AiModuleTheme.colors
     val segments = if (path.isBlank()) emptyList() else path.split('/')
     Row(
-        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 10.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Rounded.AccountTree, contentDescription = "branch", modifier = Modifier.size(13.dp), tint = palette.textMuted)
-        Spacer(Modifier.width(5.dp))
-        AiModuleText(branch, color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 11.sp)
-        AiModuleText("  ", color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 11.sp)
-        AiModuleText(
-            "/",
-            color = if (segments.isEmpty()) palette.textSecondary else palette.accent,
-            fontFamily = JetBrainsMono,
-            fontWeight = FontWeight.Bold,
-            fontSize = 13.sp,
-            modifier = Modifier.clickable { onNavigatePath("") },
-        )
-        segments.forEachIndexed { i, seg ->
-            val isLast = i == segments.lastIndex
-            val subPath = segments.take(i + 1).joinToString("/")
-            AiModuleText(" / ", color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 13.sp)
+        Row(
+            Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Rounded.AccountTree, contentDescription = "branch", modifier = Modifier.size(13.dp), tint = palette.textMuted)
+            Spacer(Modifier.width(5.dp))
+            AiModuleText(branch, color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 11.sp)
+            AiModuleText("  ", color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 11.sp)
             AiModuleText(
-                seg,
-                color = if (isLast) palette.textSecondary else palette.accent,
+                "/",
+                color = if (segments.isEmpty()) palette.textSecondary else palette.accent,
                 fontFamily = JetBrainsMono,
-                fontWeight = if (isLast) FontWeight.Bold else FontWeight.Normal,
+                fontWeight = FontWeight.Bold,
                 fontSize = 13.sp,
-                modifier = Modifier.clickable(enabled = !isLast) { onNavigatePath(subPath) },
+                modifier = Modifier.clickable { onNavigatePath("") },
             )
+            segments.forEachIndexed { i, seg ->
+                val isLast = i == segments.lastIndex
+                val subPath = segments.take(i + 1).joinToString("/")
+                AiModuleText(" / ", color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 13.sp)
+                AiModuleText(
+                    seg,
+                    color = if (isLast) palette.textSecondary else palette.accent,
+                    fontFamily = JetBrainsMono,
+                    fontWeight = if (isLast) FontWeight.Bold else FontWeight.Normal,
+                    fontSize = 13.sp,
+                    modifier = Modifier.clickable(enabled = !isLast) { onNavigatePath(subPath) },
+                )
+            }
+        }
+        if (canWrite) {
+            Spacer(Modifier.width(10.dp))
+            GitHubTerminalButton(label = "+ new", onClick = onCreate, color = palette.accent)
         }
     }
 }
@@ -246,12 +322,23 @@ private fun CodeRecentsRow(recents: List<GHContent>, onOpen: (GHContent) -> Unit
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun CodeEntryRow(item: GHContent, dirty: Boolean, onClick: () -> Unit) {
+private fun CodeEntryRow(
+    item: GHContent,
+    dirty: Boolean,
+    status: CodeChangeKind?,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)?,
+    onActions: (() -> Unit)?,
+) {
     val palette = AiModuleTheme.colors
     val isDir = item.type == "dir"
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 11.dp),
+        Modifier
+            .fillMaxWidth()
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .padding(horizontal = 16.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
@@ -271,8 +358,22 @@ private fun CodeEntryRow(item: GHContent, dirty: Boolean, onClick: () -> Unit) {
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        if (dirty) {
-            // Грязный маркер = «modified» (amber/warning), консистентно с «M» в панели изменений.
+        if (status != null) {
+            val statusColor = when (status) {
+                CodeChangeKind.ADD -> palette.syntaxString
+                CodeChangeKind.MODIFY -> palette.warning
+                CodeChangeKind.DELETE -> palette.error
+                CodeChangeKind.RENAME -> palette.accent
+            }
+            AiModuleText(
+                status.marker,
+                color = statusColor,
+                fontFamily = JetBrainsMono,
+                fontWeight = FontWeight.Bold,
+                fontSize = 12.sp,
+            )
+            Spacer(Modifier.width(10.dp))
+        } else if (dirty) {
             Box(Modifier.size(7.dp).clip(CircleShape).background(palette.warning))
             Spacer(Modifier.width(10.dp))
         }
@@ -280,6 +381,15 @@ private fun CodeEntryRow(item: GHContent, dirty: Boolean, onClick: () -> Unit) {
             Icon(Icons.Rounded.ChevronRight, contentDescription = null, modifier = Modifier.size(18.dp), tint = palette.textMuted)
         } else if (item.size > 0) {
             AiModuleText(formatCodeSize(item.size), color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 10.sp)
+        }
+        if (onActions != null) {
+            Spacer(Modifier.width(8.dp))
+            Icon(
+                Icons.Rounded.MoreVert,
+                contentDescription = "file actions",
+                modifier = Modifier.size(20.dp).clickable(onClick = onActions),
+                tint = palette.textMuted,
+            )
         }
     }
 }
@@ -317,3 +427,46 @@ private val CODE_BINARY_EXTS = setOf(
 
 internal fun isLikelyBinaryFile(name: String): Boolean =
     name.substringAfterLast('.', "").lowercase() in CODE_BINARY_EXTS
+
+/** Apply the draft as an overlay without mutating the remote directory response. */
+private fun applyCodeChangesToDirectory(
+    remote: List<GHContent>,
+    directory: String,
+    changes: Collection<CodeChange>,
+): List<GHContent> {
+    val result = remote.associateByTo(linkedMapOf()) { it.path }
+    fun directChild(path: String): String? {
+        val prefix = directory.trim('/').let { if (it.isBlank()) "" else "$it/" }
+        if (!path.startsWith(prefix)) return null
+        return path.removePrefix(prefix).takeIf { it.isNotBlank() }?.substringBefore('/')
+    }
+
+    changes.forEach { change ->
+        when (change) {
+            is CodeDelete -> if (change.path.substringBeforeLast('/', "") == directory) result.remove(change.path)
+            is CodeRename -> {
+                if (change.oldPath.substringBeforeLast('/', "") == directory) result.remove(change.oldPath)
+                val child = directChild(change.path) ?: return@forEach
+                val childPath = listOf(directory.trim('/'), child).filter { it.isNotBlank() }.joinToString("/")
+                val directFile = change.path == childPath
+                result[childPath] = if (directFile) {
+                    GHContent(child, childPath, "file", change.content?.length?.toLong() ?: 0L, "", change.sourceSha.orEmpty())
+                } else {
+                    GHContent(child, childPath, "dir", 0L, "", "")
+                }
+            }
+            is CodeAdd -> {
+                val child = directChild(change.path) ?: return@forEach
+                val childPath = listOf(directory.trim('/'), child).filter { it.isNotBlank() }.joinToString("/")
+                val directFile = change.path == childPath
+                result[childPath] = if (directFile) {
+                    GHContent(child, childPath, "file", change.content?.length?.toLong() ?: 0L, "", change.sourceSha.orEmpty())
+                } else {
+                    GHContent(child, childPath, "dir", 0L, "", "")
+                }
+            }
+            else -> Unit
+        }
+    }
+    return result.values.sortedWith(compareBy({ it.type != "dir" }, { it.name.lowercase() }))
+}

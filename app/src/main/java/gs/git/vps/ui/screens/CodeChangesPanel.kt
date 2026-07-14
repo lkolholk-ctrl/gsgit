@@ -46,24 +46,27 @@ import androidx.compose.ui.unit.sp
 import gs.git.vps.ui.components.AiModuleText
 import gs.git.vps.ui.theme.AiModuleTheme
 import gs.git.vps.ui.theme.JetBrainsMono
+import gs.git.vps.data.github.CodeChange
+import gs.git.vps.data.github.CodeChangeKind
+import gs.git.vps.data.github.CodeRename
 
 /**
  * Панель «изменения» Code-таба — **bottom-sheet поверх дерева** (VS Code SCM), терминальный стиль:
  * mono-заголовок, бордерная поверхность (как ghGlassCard), GitHubTerminalButton для commit, mono-маркер
- * «M» (modified/amber). Дерево видно сверху (тап закрывает); sheet выезжает снизу (slide-up + fade) и
- * поднят над плавающим bottom-bar. Источник правды — buffer черновика (path → content) в
+ * маркер типа A/M/D/R. Дерево видно сверху (тап закрывает); sheet выезжает снизу (slide-up + fade) и
+ * поднят над плавающим bottom-bar. Источник правды — типизированный A/M/D/R draft в
  * RepoDetailScreen. См. docs/code-tab-spec.md.
  */
 @Composable
 internal fun CodeChangesPanel(
-    draftPaths: Set<String>,
+    changes: Collection<CodeChange>,
     onOpenPath: (String) -> Unit,
     onDiscardPath: (String) -> Unit,
     onCommit: () -> Unit,
     onBack: () -> Unit,
 ) {
     val palette = AiModuleTheme.colors
-    val sorted = remember(draftPaths) { draftPaths.sorted() }
+    val sorted = changes.sortedBy { it.path }
     val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val sheetShape = RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp)
     var shown by remember { mutableStateOf(false) }
@@ -117,11 +120,11 @@ internal fun CodeChangesPanel(
                     }
                 } else {
                     LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp)) {
-                        items(sorted, key = { it }) { path ->
+                        items(sorted, key = { "${it.kind}:${it.path}" }) { change ->
                             CodeChangeRow(
-                                path = path,
-                                onOpen = { onOpenPath(path) },
-                                onDiscard = { onDiscardPath(path) },
+                                change = change,
+                                onOpen = { onOpenPath(change.path) },
+                                onDiscard = { onDiscardPath(change.path) },
                             )
                         }
                     }
@@ -132,21 +135,37 @@ internal fun CodeChangesPanel(
 }
 
 @Composable
-private fun CodeChangeRow(path: String, onOpen: () -> Unit, onDiscard: () -> Unit) {
+private fun CodeChangeRow(change: CodeChange, onOpen: () -> Unit, onDiscard: () -> Unit) {
     val palette = AiModuleTheme.colors
+    val path = change.path
     val name = path.substringAfterLast('/')
     val dir = path.substringBeforeLast('/', "")
+    val markerColor = when (change.kind) {
+        CodeChangeKind.ADD -> palette.syntaxString
+        CodeChangeKind.MODIFY -> palette.warning
+        CodeChangeKind.DELETE -> palette.error
+        CodeChangeKind.RENAME -> palette.accent
+    }
     Row(
         Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // mono-маркер типа изменения: M (modified) — amber/warning. Будущие A (green) / D (error).
-        AiModuleText("M", color = palette.warning, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.width(16.dp))
+        AiModuleText(change.kind.marker, color = markerColor, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.width(16.dp))
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
             AiModuleText(name, color = palette.textPrimary, fontFamily = JetBrainsMono, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (dir.isNotEmpty()) {
                 AiModuleText(dir, color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            if (change is CodeRename) {
+                AiModuleText(
+                    "from ${change.oldPath}",
+                    color = palette.textMuted,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 10.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
         Spacer(Modifier.width(10.dp))
