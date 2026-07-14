@@ -6,6 +6,9 @@ import gs.git.vps.data.github.model.GHBlockedEntry
 import gs.git.vps.data.github.model.GHContributionDay
 import gs.git.vps.data.github.model.GHEmailEntry
 import gs.git.vps.data.github.model.GHFollowerEntry
+import gs.git.vps.data.github.model.GHContributionActivity
+import gs.git.vps.data.github.model.GHLanguageUsage
+import gs.git.vps.data.github.model.GHProfileInsights
 import gs.git.vps.data.github.model.GHInteractionLimitEntry
 import gs.git.vps.data.github.model.GHSocialAccountEntry
 import gs.git.vps.data.github.model.GHUser
@@ -83,6 +86,109 @@ internal suspend fun GitHubManager.getUserContributions(context: Context, userna
         }.toList()
     } catch (e: Exception) {
         emptyList()
+    }
+}
+
+/**
+ * Fetch profile analytics from GitHub rather than manufacturing client-side scores. Contribution
+ * totals/calendar are GitHub's current contributionCollection window. Language sizes are aggregated
+ * byte counts from up to 100 owned, public, non-fork repositories returned by the same query.
+ */
+internal suspend fun GitHubManager.getUserProfileInsights(
+    context: Context,
+    username: String,
+): GHProfileInsights? {
+    val query = """
+        query(${'$'}login: String!) {
+          user(login: ${'$'}login) {
+            contributionsCollection {
+              startedAt
+              endedAt
+              totalCommitContributions
+              totalIssueContributions
+              totalPullRequestContributions
+              totalPullRequestReviewContributions
+              contributionCalendar {
+                totalContributions
+                weeks {
+                  contributionDays { date contributionCount contributionLevel }
+                }
+              }
+            }
+            repositories(
+              first: 100
+              ownerAffiliations: OWNER
+              privacy: PUBLIC
+              isFork: false
+            ) {
+              nodes {
+                languages(first: 10, orderBy: {field: SIZE, direction: DESC}) {
+                  edges { size node { name } }
+                }
+              }
+            }
+          }
+        }
+    """.trimIndent()
+    val data = graphql(context, query, JSONObject().put("login", username)) ?: return null
+    return try {
+        val user = data.optJSONObject("user") ?: return null
+        val collection = user.optJSONObject("contributionsCollection") ?: return null
+        val calendar = collection.optJSONObject("contributionCalendar") ?: return null
+        val days = buildList {
+            val weeks = calendar.optJSONArray("weeks") ?: JSONArray()
+            for (weekIndex in 0 until weeks.length()) {
+                val contributionDays = weeks.optJSONObject(weekIndex)?.optJSONArray("contributionDays") ?: continue
+                for (dayIndex in 0 until contributionDays.length()) {
+                    val day = contributionDays.optJSONObject(dayIndex) ?: continue
+                    val date = day.optString("date")
+                    if (date.isBlank()) continue
+                    val count = day.optInt("contributionCount", 0)
+                    val level = when (day.optString("contributionLevel")) {
+                        "FIRST_QUARTILE" -> 1
+                        "SECOND_QUARTILE" -> 2
+                        "THIRD_QUARTILE" -> 3
+                        "FOURTH_QUARTILE" -> 4
+                        else -> 0
+                    }
+                    add(GHContributionDay(date = date, level = level, count = count))
+                }
+            }
+        }
+        val languageBytes = linkedMapOf<String, Long>()
+        val repos = user.optJSONObject("repositories")?.optJSONArray("nodes") ?: JSONArray()
+        for (repoIndex in 0 until repos.length()) {
+            val edges = repos.optJSONObject(repoIndex)
+                ?.optJSONObject("languages")
+                ?.optJSONArray("edges") ?: continue
+            for (edgeIndex in 0 until edges.length()) {
+                val edge = edges.optJSONObject(edgeIndex) ?: continue
+                val name = edge.optJSONObject("node")?.optString("name").orEmpty()
+                val bytes = edge.optLong("size", 0L)
+                if (name.isNotBlank() && bytes > 0L) {
+                    languageBytes[name] = languageBytes.getOrDefault(name, 0L) + bytes
+                }
+            }
+        }
+        GHProfileInsights(
+            contributionDays = days.sortedBy { it.date },
+            totalContributions = calendar.optInt("totalContributions", days.sumOf { it.count }),
+            activity = GHContributionActivity(
+                commits = collection.optInt("totalCommitContributions", 0),
+                pullRequests = collection.optInt("totalPullRequestContributions", 0),
+                issues = collection.optInt("totalIssueContributions", 0),
+                reviews = collection.optInt("totalPullRequestReviewContributions", 0),
+            ),
+            languages = languageBytes.entries
+                .sortedByDescending { it.value }
+                .map { GHLanguageUsage(it.key, it.value) },
+            windowStartedAt = collection.optString("startedAt"),
+            windowEndedAt = collection.optString("endedAt"),
+            repositoriesSampled = repos.length(),
+        )
+    } catch (e: Exception) {
+        Log.e(USERS_TAG, "Parse profile insights failed")
+        null
     }
 }
 

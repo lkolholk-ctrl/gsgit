@@ -83,7 +83,6 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntSize
 import kotlin.math.cos
 import kotlin.math.sin
-import kotlin.math.absoluteValue
 import kotlin.math.sqrt
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -115,27 +114,26 @@ fun ProfileScreen(
     var showEdit by remember { mutableStateOf(false) }
     var contributions by remember { mutableStateOf<List<GHContributionDay>>(emptyList()) }
     var userEvents by remember { mutableStateOf<List<GHRepoEvent>>(emptyList()) }
+    var profileInsights by remember { mutableStateOf<gs.git.vps.data.github.model.GHProfileInsights?>(null) }
+    var insightsLoaded by remember { mutableStateOf(false) }
     
-    val topLanguages = remember(repos) {
-        repos.filter { it.language.isNotBlank() }
-            .groupBy { it.language }
-            .mapValues { it.value.size }
-            .toList()
-            .sortedByDescending { it.second }
-            .take(5)
+    val topLanguages = remember(profileInsights) {
+        profileInsights?.languages
+            ?.map { it.name to it.bytes }
+            .orEmpty()
     }
     
     val starsCount = remember(repos) {
         repos.sumOf { it.stars }
     }
     
-    val streakStats = remember(contributions) {
+    val streakStats = remember(contributions, profileInsights?.totalContributions) {
         var maxStreak = 0
         var currentStreak = 0
         var tempStreak = 0
         val sorted = contributions.sortedBy { it.date }
         sorted.forEach { day ->
-            if (day.level > 0) {
+            if (day.count > 0) {
                 tempStreak++
                 if (tempStreak > maxStreak) maxStreak = tempStreak
             } else {
@@ -146,12 +144,12 @@ fun ProfileScreen(
         val cal = java.util.Calendar.getInstance()
         cal.add(java.util.Calendar.DAY_OF_YEAR, -1)
         val yesterdayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
-        val activeRecent = sorted.any { (it.date == todayStr || it.date == yesterdayStr) && it.level > 0 }
+        val activeRecent = sorted.any { (it.date == todayStr || it.date == yesterdayStr) && it.count > 0 }
         if (activeRecent) {
             var streakCount = 0
             for (i in sorted.indices.reversed()) {
                 val day = sorted[i]
-                if (day.level > 0) {
+                if (day.count > 0) {
                     streakCount++
                 } else {
                     if (day.date != todayStr) break
@@ -161,30 +159,19 @@ fun ProfileScreen(
         } else {
             currentStreak = 0
         }
-        val totalContribs = sorted.sumOf { it.level }
+        val totalContribs = profileInsights?.totalContributions ?: sorted.sumOf { it.count }
         StreakData(currentStreak, maxStreak, totalContribs)
     }
 
-    val activityBreakdown = remember(userEvents) {
-        if (userEvents.isEmpty()) {
+    val activityBreakdown = remember(profileInsights) {
+        profileInsights?.activity?.let { activity ->
             listOf(
-                ActivitySlice("commits", 1f, Color(0xFF2EA043)),
-                ActivitySlice("PRs", 1f, Color(0xFF58A6FF)),
-                ActivitySlice("issues", 1f, Color(0xFFD29922)),
-                ActivitySlice("reviews", 1f, Color(0xFFBC8CFF))
+                ActivitySlice("commits", activity.commits.toFloat(), Color(0xFF2EA043)),
+                ActivitySlice("PRs", activity.pullRequests.toFloat(), Color(0xFF58A6FF)),
+                ActivitySlice("issues", activity.issues.toFloat(), Color(0xFFD29922)),
+                ActivitySlice("reviews", activity.reviews.toFloat(), Color(0xFFBC8CFF))
             )
-        } else {
-            val commits = userEvents.count { it.type == "PushEvent" }.coerceAtLeast(1).toFloat()
-            val prs = userEvents.count { it.type == "PullRequestEvent" }.coerceAtLeast(1).toFloat()
-            val issues = userEvents.count { it.type == "IssuesEvent" }.coerceAtLeast(1).toFloat()
-            val reviews = userEvents.count { it.type == "PullRequestReviewEvent" }.coerceAtLeast(1).toFloat()
-            listOf(
-                ActivitySlice("commits", commits, Color(0xFF2EA043)),
-                ActivitySlice("PRs", prs, Color(0xFF58A6FF)),
-                ActivitySlice("issues", issues, Color(0xFFD29922)),
-                ActivitySlice("reviews", reviews, Color(0xFFBC8CFF))
-            )
-        }
+        }.orEmpty()
     }
     val listState = rememberSaveable(username, saver = LazyListState.Saver) { LazyListState(0, 0) }
     val cachedSelf = GitHubManager.getCachedUser(context)?.login
@@ -193,8 +180,18 @@ fun ProfileScreen(
         profile = GitHubManager.getUserProfile(context, username)
         repos = GitHubManager.getUserRepos(context, username)
         isFollowing = GitHubManager.isFollowing(context, username)
-        contributions = GitHubManager.getUserContributions(context, username)
-        userEvents = GitHubManager.getUserPublicEvents(context, username)
+        profileInsights = GitHubManager.getUserProfileInsights(context, username)
+        insightsLoaded = true
+        contributions = profileInsights?.contributionDays
+            ?: GitHubManager.getUserContributions(context, username)
+        val loadedEvents = mutableListOf<GHRepoEvent>()
+        for (page in 1..3) {
+            val events = GitHubManager.getUserPublicEvents(context, username, page)
+            if (events.isEmpty()) break
+            loadedEvents.addAll(events)
+            if (events.size < 100) break
+        }
+        userEvents = loadedEvents
         loading = false
     }
 
@@ -311,7 +308,10 @@ fun ProfileScreen(
                                     topLanguages = topLanguages,
                                     starsCount = starsCount,
                                     streakStats = streakStats,
-                                    activityBreakdown = activityBreakdown
+                                    activityBreakdown = activityBreakdown,
+                                    insights = profileInsights,
+                                    insightsLoaded = insightsLoaded,
+                                    publicEvents = userEvents,
                                 )
                             }
                         }
@@ -669,7 +669,13 @@ private fun ContributionGridPanel(days: List<GHContributionDay>) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = selectedDay?.let { "${it.date} · level ${it.level} activity" } ?: "Tap a square to view details",
+                text = selectedDay?.let {
+                    when {
+                        it.count > 0 -> "${it.date} · ${it.count} contributions"
+                        it.level > 0 -> "${it.date} · level ${it.level} · exact count unavailable"
+                        else -> "${it.date} · 0 contributions"
+                    }
+                } ?: "Tap a square to view exact count",
                 fontFamily = JetBrainsMono,
                 fontSize = 11.sp,
                 color = if (selectedDay != null) palette.textPrimary else palette.textMuted
@@ -712,10 +718,13 @@ private data class ActivitySlice(
 @Composable
 private fun ProfileInsightsPanel(
     profile: GHUserProfile,
-    topLanguages: List<Pair<String, Int>>,
+    topLanguages: List<Pair<String, Long>>,
     starsCount: Int,
     streakStats: StreakData,
-    activityBreakdown: List<ActivitySlice>
+    activityBreakdown: List<ActivitySlice>,
+    insights: gs.git.vps.data.github.model.GHProfileInsights?,
+    insightsLoaded: Boolean,
+    publicEvents: List<GHRepoEvent>,
 ) {
     val palette = AiModuleTheme.colors
     
@@ -744,12 +753,20 @@ private fun ProfileInsightsPanel(
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    text = "languages matrix",
+                    text = "languages by byte volume",
                     color = palette.accent,
                     fontFamily = JetBrainsMono,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold
                 )
+                if (insights != null) {
+                    Text(
+                        "Top 5 · GraphQL top 10/repo · ${insights.repositoriesSampled} owned public non-fork repos",
+                        fontFamily = JetBrainsMono,
+                        fontSize = 8.sp,
+                        color = palette.textMuted,
+                    )
+                }
                 LanguageRadarChart(topLanguages)
             }
         }
@@ -763,13 +780,27 @@ private fun ProfileInsightsPanel(
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    text = "activity donut",
+                    text = "contributions by type",
                     color = palette.accent,
                     fontFamily = JetBrainsMono,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold
                 )
-                ActivityDonutChart(activityBreakdown)
+                if (insights != null) {
+                    Text(
+                        "${insights.windowStartedAt.take(10)} → ${insights.windowEndedAt.take(10)} · GitHub GraphQL",
+                        fontFamily = JetBrainsMono,
+                        fontSize = 8.sp,
+                        color = palette.textMuted,
+                    )
+                }
+                if (activityBreakdown.isNotEmpty()) ActivityDonutChart(activityBreakdown)
+                else Text(
+                    if (insightsLoaded) "GitHub contribution data unavailable" else "loading…",
+                    fontFamily = JetBrainsMono,
+                    fontSize = 11.sp,
+                    color = palette.textMuted,
+                )
             }
         }
         
@@ -788,85 +819,78 @@ private fun ProfileInsightsPanel(
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold
                 )
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column {
-                        Text("current streak", fontFamily = JetBrainsMono, fontSize = 9.sp, color = palette.textMuted)
-                        Text("${streakStats.current} days", fontFamily = JetBrainsMono, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2EA043))
+                if (insights != null) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text("current streak", fontFamily = JetBrainsMono, fontSize = 9.sp, color = palette.textMuted)
+                            Text("${streakStats.current} days", fontFamily = JetBrainsMono, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2EA043))
+                        }
+                        Column {
+                            Text("longest streak", fontFamily = JetBrainsMono, fontSize = 9.sp, color = palette.textMuted)
+                            Text("${streakStats.longest} days", fontFamily = JetBrainsMono, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = palette.textPrimary)
+                        }
+                        Column {
+                            Text("contributions", fontFamily = JetBrainsMono, fontSize = 9.sp, color = palette.textMuted)
+                            Text("${streakStats.total}", fontFamily = JetBrainsMono, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = palette.textSecondary)
+                        }
                     }
-                    Column {
-                        Text("longest streak", fontFamily = JetBrainsMono, fontSize = 9.sp, color = palette.textMuted)
-                        Text("${streakStats.longest} days", fontFamily = JetBrainsMono, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = palette.textPrimary)
-                    }
-                    Column {
-                        Text("total events sum", fontFamily = JetBrainsMono, fontSize = 9.sp, color = palette.textMuted)
-                        Text("${streakStats.total} pts", fontFamily = JetBrainsMono, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = palette.textSecondary)
-                    }
+                    Text(
+                        "Exact contributionCount values · ${insights.windowStartedAt.take(10)} → ${insights.windowEndedAt.take(10)}",
+                        fontFamily = JetBrainsMono,
+                        fontSize = 8.sp,
+                        color = palette.textMuted,
+                    )
+                } else {
+                    Text(
+                        if (insightsLoaded) "GitHub contribution data unavailable" else "loading…",
+                        fontFamily = JetBrainsMono,
+                        fontSize = 11.sp,
+                        color = palette.textMuted,
+                    )
                 }
             }
         }
 
-        DeveloperPersonaCard(profile, topLanguages, activityBreakdown)
+        DeveloperPersonaCard(topLanguages, activityBreakdown)
         
-        CommitHourVelocityChart(profile)
+        CommitHourVelocityChart(publicEvents)
         
         AchievementsMatrixPanel(profile, topLanguages, starsCount)
         
-        SystemLifespanTelemetryPanel(profile)
+        SystemLifespanTelemetryPanel(profile, insights, publicEvents.size)
     }
 }
 
 @Composable
 private fun DeveloperPersonaCard(
-    profile: GHUserProfile,
-    topLanguages: List<Pair<String, Int>>,
+    topLanguages: List<Pair<String, Long>>,
     activityBreakdown: List<ActivitySlice>
 ) {
     val palette = AiModuleTheme.colors
     val mainLang = topLanguages.firstOrNull()?.first?.lowercase() ?: ""
-    val (archetype, desc) = remember(mainLang) {
+    val archetype = remember(mainLang) {
         when {
-            mainLang in listOf("kotlin", "java") -> 
-                "MOBILE CYBER-ENGINEER" to "Specializes in building robust, low-latency mobile interfaces and telemetry trackers. Master of Android compilation layers."
-            mainLang in listOf("typescript", "javascript", "html", "css") -> 
-                "FULLSTACK NET-RUNNER" to "Manipulates the DOM and web sockets. Weaves responsive user-facing screens and interfaces with high design polish."
-            mainLang in listOf("rust", "c", "cpp", "go") -> 
-                "SYSTEM ARCHITECT" to "Writes high-performance, memory-safe compiled layers. Manages native structures, buffers, and system-level operations."
-            mainLang in listOf("python", "r", "julia") -> 
-                "DATA CYBER-NETICIST" to "Processes neural networks, matrices, and telemetry pipelines. Explores patterns, trends, and data streams."
-            else -> 
-                "VERSATILE AGENT" to "A jack-of-all-trades builder comfortable operating across different layers of the software stack."
+            mainLang in listOf("kotlin", "java", "dart", "swift") -> "MOBILE ENGINEER"
+            mainLang in listOf("typescript", "javascript", "html", "css") -> "WEB ENGINEER"
+            mainLang in listOf("rust", "c", "c++", "cpp", "go") -> "SYSTEMS ENGINEER"
+            mainLang in listOf("python", "r", "julia", "jupyter notebook") -> "DATA ENGINEER"
+            mainLang.isBlank() -> "INSUFFICIENT PUBLIC DATA"
+            else -> "POLYGLOT ENGINEER"
         }
     }
-    
-    val skillSpeed = remember(mainLang, archetype) {
-        when (archetype) {
-            "MOBILE CYBER-ENGINEER" -> 85f
-            "FULLSTACK NET-RUNNER" -> 75f
-            "SYSTEM ARCHITECT" -> 95f
-            "DATA CYBER-NETICIST" -> 80f
-            else -> 70f
-        }
-    }
-    val skillAesthetics = remember(mainLang, archetype) {
-        when (archetype) {
-            "MOBILE CYBER-ENGINEER" -> 80f
-            "FULLSTACK NET-RUNNER" -> 95f
-            "SYSTEM ARCHITECT" -> 60f
-            "DATA CYBER-NETICIST" -> 70f
-            else -> 75f
-        }
-    }
-    val skillComplexity = remember(mainLang, archetype) {
-        when (archetype) {
-            "MOBILE CYBER-ENGINEER" -> 78f
-            "FULLSTACK NET-RUNNER" -> 82f
-            "SYSTEM ARCHITECT" -> 92f
-            "DATA CYBER-NETICIST" -> 88f
-            else -> 80f
-        }
+    val languageTotal = topLanguages.sumOf { it.second }.toFloat()
+    val activityTotal = activityBreakdown.sumOf { it.percentage.toDouble() }.toFloat()
+    val commitCount = activityBreakdown.firstOrNull { it.label == "commits" }?.percentage ?: 0f
+    val primaryLanguageShare = if (languageTotal > 0f) topLanguages.first().second / languageTotal * 100f else 0f
+    val codeContributionShare = if (activityTotal > 0f) commitCount / activityTotal * 100f else 0f
+    val collaborationShare = if (activityTotal > 0f) (activityTotal - commitCount) / activityTotal * 100f else 0f
+    val desc = if (mainLang.isBlank()) {
+        "GitHub returned no public language-byte data for owned non-fork repositories."
+    } else {
+        "Rule-based label: ${topLanguages.first().first} is the largest public language by byte volume. The bars below are measured shares, not a skill rating."
     }
 
     Box(
@@ -878,7 +902,7 @@ private fun DeveloperPersonaCard(
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
-                text = "developer classification schema",
+                text = "developer profile · calculated",
                 color = palette.accent,
                 fontFamily = JetBrainsMono,
                 fontSize = 10.sp,
@@ -903,9 +927,9 @@ private fun DeveloperPersonaCard(
             
             Spacer(Modifier.height(4.dp))
             
-            AttributeBar("SPEED / COMPILATION", skillSpeed, palette.accent)
-            AttributeBar("AESTHETICS / INTERFACE", skillAesthetics, Color(0xFFBC8CFF))
-            AttributeBar("COMPLEXITY / DATA", skillComplexity, Color(0xFFD29922))
+            AttributeBar("PRIMARY LANGUAGE SHARE", primaryLanguageShare, palette.accent)
+            AttributeBar("COMMIT SHARE OF CONTRIBUTIONS", codeContributionShare, Color(0xFFBC8CFF))
+            AttributeBar("PR / ISSUE / REVIEW SHARE", collaborationShare, Color(0xFFD29922))
         }
     }
 }
@@ -937,30 +961,25 @@ private fun AttributeBar(label: String, value: Float, color: Color) {
 }
 
 @Composable
-private fun CommitHourVelocityChart(profile: GHUserProfile) {
+private fun CommitHourVelocityChart(publicEvents: List<GHRepoEvent>) {
     val palette = AiModuleTheme.colors
-    val login = profile.login
-    
-    val seed = remember(login) { login.hashCode().absoluteValue }
-    val hourlyActivity = remember(login, seed) {
-        val r = java.util.Random(seed.toLong())
-        val isNightOwl = (seed % 2 == 0)
-        IntArray(24) { hour ->
-            val base = if (isNightOwl) {
-                if (hour in 23..23 || hour in 0..5) 40 + r.nextInt(60)
-                else 5 + r.nextInt(25)
-            } else {
-                if (hour in 9..17) 50 + r.nextInt(50)
-                else 5 + r.nextInt(20)
-            }
-            base
+    val hourlyActivity = remember(publicEvents) {
+        IntArray(24).also { hours ->
+            publicEvents.asSequence()
+                .filter { it.type == "PushEvent" && it.size > 0 }
+                .forEach { event ->
+                    runCatching {
+                        java.time.OffsetDateTime.parse(event.createdAt)
+                            .atZoneSameInstant(java.time.ZoneId.systemDefault())
+                            .hour
+                    }.getOrNull()?.let { hour -> hours[hour] += event.size }
+                }
         }
     }
-    
-    val peakRangeText = remember(seed) {
-        if (seed % 2 == 0) "NIGHT OWL (23:00 - 05:00)" else "WORK HOURS (09:00 - 17:00)"
-    }
-    
+    val totalCommits = hourlyActivity.sum()
+    val peakHour = hourlyActivity.indices.maxByOrNull { hourlyActivity[it] } ?: 0
+    val eventDates = publicEvents.map { it.createdAt.take(10) }.filter { it.isNotBlank() }
+
     Box(
         Modifier
             .fillMaxWidth()
@@ -975,62 +994,59 @@ private fun CommitHourVelocityChart(profile: GHUserProfile) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "commit velocity by hour",
+                    text = "pushed commits by hour",
                     color = palette.accent,
                     fontFamily = JetBrainsMono,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = peakRangeText,
+                    text = if (totalCommits > 0) "PEAK ${peakHour.toString().padStart(2, '0')}:00 · LOCAL" else "NO PUSH DATA",
                     color = palette.textSecondary,
                     fontFamily = JetBrainsMono,
                     fontSize = 8.sp,
                     fontWeight = FontWeight.Bold
                 )
             }
-            
-            Canvas(
-                Modifier
-                    .fillMaxWidth()
-                    .height(80.dp)
-            ) {
-                val maxVal = (hourlyActivity.maxOrNull() ?: 100).toFloat()
-                val barSpacing = 2.dp.toPx()
-                val totalBars = 24
-                val totalSpacing = barSpacing * (totalBars - 1)
-                val barWidth = (size.width - totalSpacing) / totalBars
-                
-                for (hour in 0 until totalBars) {
-                    val count = hourlyActivity[hour]
-                    val heightRatio = if (maxVal > 0) count / maxVal else 0f
-                    val barHeight = size.height * heightRatio
-                    val x = hour * (barWidth + barSpacing)
-                    val y = size.height - barHeight
-                    
-                    val isPeakHour = if (seed % 2 == 0) {
-                        hour in 23..23 || hour in 0..5
-                    } else {
-                        hour in 9..17
+            Text(
+                text = if (eventDates.isNotEmpty()) {
+                    "Public Events sample ${eventDates.minOrNull()} → ${eventDates.maxOrNull()} · ${publicEvents.size}/300 events · payload.size"
+                } else {
+                    "GitHub returned no public events for this profile"
+                },
+                color = palette.textMuted,
+                fontFamily = JetBrainsMono,
+                fontSize = 8.sp,
+            )
+
+            if (totalCommits > 0) {
+                Canvas(Modifier.fillMaxWidth().height(80.dp)) {
+                    val maxVal = hourlyActivity.maxOrNull()?.coerceAtLeast(1)?.toFloat() ?: 1f
+                    val barSpacing = 2.dp.toPx()
+                    val totalSpacing = barSpacing * 23
+                    val barWidth = (size.width - totalSpacing) / 24
+                    for (hour in 0 until 24) {
+                        val count = hourlyActivity[hour]
+                        if (count == 0) continue
+                        val barHeight = size.height * (count / maxVal)
+                        val x = hour * (barWidth + barSpacing)
+                        val color = when {
+                            hour == peakHour -> palette.accent
+                            else -> palette.accentDim
+                        }
+                        drawRoundRect(
+                            color = color,
+                            topLeft = Offset(x, size.height - barHeight),
+                            size = Size(barWidth, barHeight),
+                            cornerRadius = CornerRadius(1.dp.toPx(), 1.dp.toPx())
+                        )
                     }
-                    val barColor = if (isPeakHour) palette.accent else palette.border.copy(alpha = 0.5f)
-                    
-                    drawRoundRect(
-                        color = barColor,
-                        topLeft = Offset(x, y),
-                        size = Size(barWidth, barHeight),
-                        cornerRadius = CornerRadius(1.dp.toPx(), 1.dp.toPx())
-                    )
                 }
-            }
-            
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text("00:00", fontFamily = JetBrainsMono, fontSize = 8.sp, color = palette.textMuted)
-                Text("12:00", fontFamily = JetBrainsMono, fontSize = 8.sp, color = palette.textMuted)
-                Text("23:00", fontFamily = JetBrainsMono, fontSize = 8.sp, color = palette.textMuted)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("00:00", fontFamily = JetBrainsMono, fontSize = 8.sp, color = palette.textMuted)
+                    Text("12:00", fontFamily = JetBrainsMono, fontSize = 8.sp, color = palette.textMuted)
+                    Text("23:00", fontFamily = JetBrainsMono, fontSize = 8.sp, color = palette.textMuted)
+                }
             }
         }
     }
@@ -1047,7 +1063,7 @@ private data class AchievementItem(
 @Composable
 private fun AchievementsMatrixPanel(
     profile: GHUserProfile,
-    topLanguages: List<Pair<String, Int>>,
+    topLanguages: List<Pair<String, Long>>,
     starsCount: Int
 ) {
     val palette = AiModuleTheme.colors
@@ -1184,7 +1200,11 @@ private fun AchievementsMatrixPanel(
 }
 
 @Composable
-private fun SystemLifespanTelemetryPanel(profile: GHUserProfile) {
+private fun SystemLifespanTelemetryPanel(
+    profile: GHUserProfile,
+    insights: gs.git.vps.data.github.model.GHProfileInsights?,
+    publicEventCount: Int,
+) {
     val palette = AiModuleTheme.colors
     val daysActive = remember(profile.createdAt) {
         try {
@@ -1222,14 +1242,14 @@ private fun SystemLifespanTelemetryPanel(profile: GHUserProfile) {
                 fontSize = 9.sp
             )
             Text(
-                text = "SYSTEM UPTIME: $daysActive DAYS",
+                text = "ACCOUNT AGE : $daysActive DAYS",
                 color = Color(0xFF39D353),
                 fontFamily = JetBrainsMono,
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = "STATUS      : ONLINE // SIGNATURE VALID",
+                text = "DATA STATUS : ${if (insights != null) "PROFILE + GRAPHQL SNAPSHOT" else "PROFILE SNAPSHOT ONLY"}",
                 color = palette.textSecondary,
                 fontFamily = JetBrainsMono,
                 fontSize = 9.sp
@@ -1237,13 +1257,14 @@ private fun SystemLifespanTelemetryPanel(profile: GHUserProfile) {
             
             Spacer(Modifier.height(6.dp))
             
-            val bootLogs = remember(profile.login, daysActive) {
+            val bootLogs = remember(profile.login, profile.publicRepos, insights, publicEventCount) {
                 listOf(
-                    "[OK] SYSTEM BOOT COMPLETED IN 0.042s",
-                    "[OK] SECURE TELEMETRY BINDING ATTACHED",
-                    "[OK] REPO CACHE INTEGRITY CHECK: PASS",
-                    "[OK] USER @${profile.login.uppercase()} VERIFIED",
-                    "[LOG] ACTIVE CYBERNETIC INDEX: $daysActive D_UP"
+                    "[API] USER @${profile.login.uppercase()} PROFILE FETCHED",
+                    "[API] PUBLIC REPOSITORIES: ${profile.publicRepos}",
+                    "[API] CONTRIBUTIONS: ${insights?.totalContributions ?: "UNAVAILABLE"}",
+                    "[API] LANGUAGE REPOS SAMPLED: ${insights?.repositoriesSampled ?: "UNAVAILABLE"}",
+                    "[API] PUBLIC EVENTS SAMPLE: $publicEventCount / 300 MAX",
+                    "[CALC] ACCOUNT AGE FROM created_at"
                 )
             }
             
@@ -1263,7 +1284,7 @@ private fun SystemLifespanTelemetryPanel(profile: GHUserProfile) {
 @Composable
 private fun DeveloperAccessCard(
     profile: GHUserProfile,
-    topLanguages: List<Pair<String, Int>>,
+    topLanguages: List<Pair<String, Long>>,
     starsCount: Int
 ) {
     val context = LocalContext.current
@@ -1379,7 +1400,7 @@ private fun DeveloperAccessCard(
                     Spacer(Modifier.height(4.dp))
                     
                     Text(
-                        text = "RANK  : ${if (profile.followers > 50) "S-CLASS ELITE" else "A-CLASS DEVELOPER"}",
+                        text = "REPOS : ${profile.publicRepos} PUBLIC",
                         fontFamily = JetBrainsMono,
                         fontSize = 9.sp,
                         color = palette.textSecondary
@@ -1410,7 +1431,7 @@ private fun DeveloperAccessCard(
                     .padding(horizontal = 6.dp, vertical = 2.dp)
             ) {
                 Text(
-                    text = "ACTIVE",
+                    text = "PUBLIC DATA",
                     fontFamily = JetBrainsMono,
                     fontSize = 7.sp,
                     fontWeight = FontWeight.Bold,
@@ -1438,16 +1459,21 @@ private fun DeveloperAccessCard(
 }
 
 @Composable
-private fun LanguageRadarChart(topLanguages: List<Pair<String, Int>>) {
+private fun LanguageRadarChart(topLanguages: List<Pair<String, Long>>) {
     val palette = AiModuleTheme.colors
     val density = LocalDensity.current
+    if (topLanguages.isEmpty()) {
+        Text(
+            "No language-byte data returned for owned public non-fork repositories.",
+            fontFamily = JetBrainsMono,
+            fontSize = 11.sp,
+            color = palette.textMuted,
+        )
+        return
+    }
     
     val languages = remember(topLanguages) {
-        if (topLanguages.isEmpty()) {
-            listOf("KOTLIN" to 5, "JAVA" to 3, "TS" to 2, "C++" to 1, "PY" to 1)
-        } else {
-            topLanguages.map { it.first.uppercase() to it.second }
-        }
+        topLanguages.take(5).map { it.first.uppercase() to it.second }
     }
     
     val totalRepos = remember(languages) { languages.sumOf { it.second }.toFloat() }
@@ -1480,8 +1506,8 @@ private fun LanguageRadarChart(topLanguages: List<Pair<String, Int>>) {
                         var clickedIdx: Int? = null
                         for (i in 0 until N) {
                             val angle = i * (2f * Math.PI.toFloat() / N) - (Math.PI.toFloat() / 2f)
-                            val fraction = if (totalRepos > 0) languages[i].second / totalRepos else 0.2f
-                            val score = (0.2f + 0.8f * fraction).coerceIn(0f, 1.0f)
+                            val fraction = if (totalRepos > 0) languages[i].second / totalRepos else 0f
+                            val score = fraction.coerceIn(0f, 1.0f)
                             val r = maxRadius * score
                             val px = centerX + r * cos(angle)
                             val py = centerY + r * sin(angle)
@@ -1565,7 +1591,7 @@ private fun LanguageRadarChart(topLanguages: List<Pair<String, Int>>) {
                 for (i in 0 until N) {
                     val angle = i * (2f * Math.PI.toFloat() / N) - (Math.PI.toFloat() / 2f)
                     val fraction = languages[i].second / totalRepos
-                    val score = (0.2f + 0.8f * fraction).coerceIn(0f, 1.0f)
+                    val score = fraction.coerceIn(0f, 1.0f)
                     val r = maxRadius * score
                     val px = center.x + r * cos(angle)
                     val py = center.y + r * sin(angle)
@@ -1633,13 +1659,13 @@ private fun LanguageRadarChart(topLanguages: List<Pair<String, Int>>) {
                             color = palette.accent
                         )
                         Text(
-                            text = "REPOSITORIES : ${lang.second} active projects",
+                            text = "BYTE VOLUME : ${formatLanguageBytes(lang.second)}",
                             fontFamily = JetBrainsMono,
                             fontSize = 10.sp,
                             color = palette.textPrimary
                         )
                         Text(
-                            text = "VOLUME SHARE : $pct% of public stack",
+                            text = "VOLUME SHARE : $pct% within displayed top 5",
                             fontFamily = JetBrainsMono,
                             fontSize = 10.sp,
                             color = palette.textSecondary
@@ -1649,6 +1675,13 @@ private fun LanguageRadarChart(topLanguages: List<Pair<String, Int>>) {
             }
         }
     }
+}
+
+private fun formatLanguageBytes(bytes: Long): String = when {
+    bytes >= 1024L * 1024L * 1024L -> String.format(Locale.US, "%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0))
+    bytes >= 1024L * 1024L -> String.format(Locale.US, "%.2f MB", bytes / (1024.0 * 1024.0))
+    bytes >= 1024L -> String.format(Locale.US, "%.1f KB", bytes / 1024.0)
+    else -> "$bytes B"
 }
 
 @Composable
@@ -1779,14 +1812,14 @@ private fun ActivityDonutChart(slices: List<ActivitySlice>) {
                         )
                     } else {
                         Text(
-                            text = "SYS",
+                            text = totalWeight.toInt().toString(),
                             fontFamily = JetBrainsMono,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             color = palette.accent
                         )
                         Text(
-                            text = "ACT",
+                            text = "TOTAL",
                             fontFamily = JetBrainsMono,
                             fontSize = 8.sp,
                             color = palette.textMuted
@@ -1838,7 +1871,7 @@ private fun ActivityDonutChart(slices: List<ActivitySlice>) {
                             )
                         }
                         Text(
-                            text = "$pct%",
+                            text = "${slice.percentage.toInt()} · $pct%",
                             fontFamily = JetBrainsMono,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
@@ -1857,11 +1890,11 @@ private fun ActivityDonutChart(slices: List<ActivitySlice>) {
             selectedSliceIndex?.let { idx ->
                 val slice = slices[idx]
                 val descText = when (slice.label.lowercase()) {
-                    "commits" -> "Code modifications, direct contributions, and updates written to repository lanes."
-                    "prs" -> "Pull Requests submitted for team code reviews, repository merging, and project branches."
-                    "issues" -> "Bug reports, telemetry logs, tasks, and issues created or managed in this workspace."
-                    "reviews" -> "Quality control audits, approvals, changes requested, and feedback on active peer branches."
-                    else -> "General cybernetic repository activity and event interactions."
+                    "commits" -> "totalCommitContributions in GitHub's displayed contribution window."
+                    "prs" -> "totalPullRequestContributions in GitHub's displayed contribution window."
+                    "issues" -> "totalIssueContributions in GitHub's displayed contribution window."
+                    "reviews" -> "totalPullRequestReviewContributions in GitHub's displayed contribution window."
+                    else -> "GitHub contribution activity."
                 }
                 Box(
                     modifier = Modifier
@@ -1928,7 +1961,7 @@ private fun exportDevCardToPng(
     paint.color = 0xFF38BDF8.toInt()
     paint.textSize = 24f
     paint.typeface = android.graphics.Typeface.create(android.graphics.Typeface.MONOSPACE, android.graphics.Typeface.BOLD)
-    canvas.drawText("GSGIT ACCESS CARD // LEVEL PERMIT", 48f, 70f, paint)
+    canvas.drawText("GSGIT PROFILE // API SNAPSHOT", 48f, 70f, paint)
     
     paint.color = 0xFFFFFFFF.toInt()
     paint.textSize = 36f
@@ -1941,13 +1974,13 @@ private fun exportDevCardToPng(
     
     paint.color = 0xFFE5E7EB.toInt()
     paint.textSize = 22f
-    canvas.drawText("RANK : ${if (profile.followers > 50) "S-CLASS ELITE" else "A-CLASS DEVELOPER"}", 48f, 250f, paint)
+    canvas.drawText("REPOS: ${profile.publicRepos} PUBLIC", 48f, 250f, paint)
     canvas.drawText("STARS: $starsCount \u2605", 48f, 300f, paint)
     canvas.drawText("STACK: ${topLanguages.joinToString(", ").uppercase()}", 48f, 350f, paint)
     
     paint.color = 0xFF38BDF8.toInt()
     paint.textSize = 18f
-    canvas.drawText("TELEMETRY STATUS: ACTIVE", 48f, 430f, paint)
+    canvas.drawText("DATA SOURCE: GITHUB API SNAPSHOT", 48f, 430f, paint)
     
     try {
         val file = java.io.File("/storage/emulated/0/Download/devcard-${profile.login}.png")

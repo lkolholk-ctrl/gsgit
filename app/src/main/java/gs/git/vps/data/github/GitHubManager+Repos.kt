@@ -260,13 +260,15 @@ internal suspend fun GitHubManager.getRepoEvents(context: Context, owner: String
 
 // --- Репозитории пользователя / организации ---
 
-internal suspend fun GitHubManager.getUserRepos(context: Context, username: String): List<GHRepo> {
-    val r = request(context, "/users/$username/repos?sort=updated&per_page=30")
+internal suspend fun GitHubManager.getUserRepos(context: Context, username: String, page: Int = 1): List<GHRepo> {
+    val r = request(context, "/users/$username/repos?sort=updated&per_page=100&page=$page")
     if (!r.success) return emptyList()
-    return try {
+    val repos = try {
         val arr = JSONArray(r.body)
         (0 until arr.length()).map { parseRepo(arr.getJSONObject(it)) }
     } catch (e: Exception) { emptyList() }
+    val nextPage = parseNextPage(r.headers) ?: return repos
+    return repos + getUserRepos(context, username, nextPage)
 }
 
 internal suspend fun GitHubManager.getStarredRepos(context: Context, page: Int = 1): List<GHRepo> {
