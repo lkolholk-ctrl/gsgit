@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -280,10 +281,11 @@ fun CodeEditorScreen(
     val hasChanges = text != savedContent
     // Workspace tabs must not lose the latest keystrokes when switching through Quick Open/history.
     // The parent owns the typed draft and decides whether a reverted remote file should be removed.
-    LaunchedEffect(currentFile.path, text, onDraftChanged) {
-        if (onDraftChanged != null) {
+    val latestDraftChanged by rememberUpdatedState(onDraftChanged)
+    LaunchedEffect(currentFile.path, text) {
+        if (latestDraftChanged != null) {
             kotlinx.coroutines.delay(350)
-            onDraftChanged(currentFile.path, text, hasChanges || workspaceHasSavedDraft)
+            latestDraftChanged?.invoke(currentFile.path, text, hasChanges || workspaceHasSavedDraft)
         }
     }
     // Авто-сейв черновика при уходе в фон (ON_STOP) — правки не теряются при смерти процесса.
@@ -403,10 +405,16 @@ fun CodeEditorScreen(
             showOutline -> showOutline = false
             showSearch -> showSearch = false
             onSaveDraft != null && hasChanges -> { focusManager.clearFocus(); onSaveDraft(currentFile.path, text); onBack() }
+            onDraftChanged != null -> {
+                focusManager.clearFocus()
+                onDraftChanged(currentFile.path, text, hasChanges || workspaceHasSavedDraft)
+                onBack()
+            }
             hasChanges && !isImage -> showDiscardDialog = true
             else -> { focusManager.clearFocus(); onBack() }
         }
     }
+    BackHandler(enabled = true, onBack = ::handleEditorBack)
 
     fun applyState(newState: TextFieldValue) {
         if (newState != textState) {
