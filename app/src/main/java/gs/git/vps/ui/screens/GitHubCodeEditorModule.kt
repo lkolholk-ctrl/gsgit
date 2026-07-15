@@ -161,6 +161,18 @@ fun CodeEditorScreen(
     initialLine: Int? = null,
     readOnly: Boolean = false,
     lite: Boolean = false,
+    workspaceTabs: List<GHContent> = emptyList(),
+    workspaceDirtyPaths: Set<String> = emptySet(),
+    canNavigateWorkspaceBack: Boolean = false,
+    canNavigateWorkspaceForward: Boolean = false,
+    initialHasDraft: Boolean = false,
+    onSelectWorkspaceTab: ((GHContent) -> Unit)? = null,
+    onCloseWorkspaceTab: ((GHContent) -> Unit)? = null,
+    onWorkspaceBack: (() -> Unit)? = null,
+    onWorkspaceForward: (() -> Unit)? = null,
+    onQuickOpen: (() -> Unit)? = null,
+    onGlobalSearch: (() -> Unit)? = null,
+    onDraftChanged: ((path: String, content: String, changedFromInitial: Boolean) -> Unit)? = null,
     onSaveDraft: ((path: String, content: String) -> Unit)? = null,
     onBack: () -> Unit,
     onAskAi: ((prompt: String?) -> Unit)? = null
@@ -196,6 +208,7 @@ fun CodeEditorScreen(
     var savedContent by remember { mutableStateOf(initialContent) }
     var savedSha by remember { mutableStateOf(file.sha) }
     var mode by remember { mutableStateOf(GitHubEditorMode.EDIT) }
+    var workspaceHasSavedDraft by remember(file.path, branch) { mutableStateOf(initialHasDraft) }
     var lineNumbers by rememberSaveable(file.path, branch) { mutableStateOf(true) }
     var wrapLines by rememberSaveable(file.path, branch) { mutableStateOf(prefs.getBoolean("editor_word_wrap", false)) }
     var showSearch by rememberSaveable(file.path, branch) { mutableStateOf(false) }
@@ -265,6 +278,14 @@ fun CodeEditorScreen(
     val text = textState.text
     val lines = remember(text) { text.lines() }
     val hasChanges = text != savedContent
+    // Workspace tabs must not lose the latest keystrokes when switching through Quick Open/history.
+    // The parent owns the typed draft and decides whether a reverted remote file should be removed.
+    LaunchedEffect(currentFile.path, text, onDraftChanged) {
+        if (onDraftChanged != null) {
+            kotlinx.coroutines.delay(350)
+            onDraftChanged(currentFile.path, text, hasChanges || workspaceHasSavedDraft)
+        }
+    }
     // Авто-сейв черновика при уходе в фон (ON_STOP) — правки не теряются при смерти процесса.
     // Спека: «авто-сохраняется молча на уход в фон». Только когда есть onSaveDraft (Code-таб draft-режим).
     if (onSaveDraft != null) {
@@ -849,6 +870,7 @@ fun CodeEditorScreen(
             if (onSaveDraft != null) {
                 onSaveDraft(currentFile.path, text)
                 savedContent = text
+                workspaceHasSavedDraft = true
                 Toast.makeText(context, "saved to draft", Toast.LENGTH_SHORT).show()
             } else { showCommitDialog = true }
         }
@@ -856,12 +878,26 @@ fun CodeEditorScreen(
         // search + autocomplete — всё внутри ветки !zenMode). Ядро редактирования (ModernEditCanvas) и
         // accessory гейтятся отдельно. См. docs/code-tab-ui-plan.md (Phase-2 редактора).
         if (lite) {
+            val flushDraft = {
+                onDraftChanged?.invoke(currentFile.path, text, hasChanges || workspaceHasSavedDraft)
+                Unit
+            }
             LiteEditorTopBar(
                 file = currentFile,
                 ext = ext,
                 hasChanges = hasChanges,
+                tabs = workspaceTabs,
+                dirtyPaths = workspaceDirtyPaths,
+                canGoBack = canNavigateWorkspaceBack,
+                canGoForward = canNavigateWorkspaceForward,
                 onSave = onSaveAction,
                 onBack = ::handleEditorBack,
+                onSelectTab = { selected -> flushDraft(); onSelectWorkspaceTab?.invoke(selected) },
+                onCloseTab = { selected -> flushDraft(); onCloseWorkspaceTab?.invoke(selected) },
+                onHistoryBack = { flushDraft(); onWorkspaceBack?.invoke() },
+                onHistoryForward = { flushDraft(); onWorkspaceForward?.invoke() },
+                onQuickOpen = { flushDraft(); onQuickOpen?.invoke() },
+                onGlobalSearch = { flushDraft(); onGlobalSearch?.invoke() },
             )
         } else if (!zenMode) {
             GitHubEditorTopBar(
@@ -1822,8 +1858,18 @@ private fun LiteEditorTopBar(
     file: GHContent,
     ext: String,
     hasChanges: Boolean,
+    tabs: List<GHContent>,
+    dirtyPaths: Set<String>,
+    canGoBack: Boolean,
+    canGoForward: Boolean,
     onSave: () -> Unit,
     onBack: () -> Unit,
+    onSelectTab: (GHContent) -> Unit,
+    onCloseTab: (GHContent) -> Unit,
+    onHistoryBack: () -> Unit,
+    onHistoryForward: () -> Unit,
+    onQuickOpen: () -> Unit,
+    onGlobalSearch: () -> Unit,
 ) {
     val colors = AiModuleTheme.colors
     val sub = file.path.substringBeforeLast('/', "").ifEmpty { ext }
@@ -1867,6 +1913,19 @@ private fun LiteEditorTopBar(
         Spacer(Modifier.height(4.dp))
         Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border))
     }
+    CodeWorkspaceToolbar(
+        canGoBack = canGoBack,
+        canGoForward = canGoForward,
+        onGoBack = onHistoryBack,
+        onGoForward = onHistoryForward,
+        onQuickOpen = onQuickOpen,
+        onGlobalSearch = onGlobalSearch,
+    )
+    CodeWorkspaceTabsRow(
+        tabs = tabs,
+        activePath = file.path,
+        dirtyPaths = dirtyPaths,
+        onSelect = onSelectTab,
+        onClose = onCloseTab,
+    )
 }
-
-

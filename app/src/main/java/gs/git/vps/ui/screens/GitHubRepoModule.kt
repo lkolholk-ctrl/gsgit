@@ -261,23 +261,44 @@ internal fun RepoDetailScreen(
     // Code workspace: current editor file. null = browser is visible.
     var codeEditorFile by rememberSaveable(repo.fullName, stateSaver = NullableGitHubContentSaver) { mutableStateOf<GHContent?>(null) }
     var codeEditorContent by remember { mutableStateOf<String?>(null) }
-    var codeEditorBranch by rememberSaveable(repo.fullName) { mutableStateOf(selectedBranch) }
     var codeDraftLoaded by remember(repo.fullName) { mutableStateOf(false) }
     // Typed A/M/D/R draft, scoped by repository and persisted separately for every branch.
     val codeDraft = remember(repo.fullName) { mutableStateMapOf<String, CodeChange>() }
+    // 1.0.52 workspace: lightweight paths are persistent per branch; file contents stay in draft/API.
+    val codeTabs = remember(repo.fullName) { mutableStateListOf<GHContent>() }
+    val codeBackHistory = remember(repo.fullName) { mutableStateListOf<String>() }
+    val codeForwardHistory = remember(repo.fullName) { mutableStateListOf<String>() }
     fun persistCodeDraft() = CodeDraftStore.save(context, repo.fullName, selectedBranch, codeDraft.toMap())
+    fun persistCodeWorkspace(activePath: String? = codeEditorFile?.path) = CodeWorkspaceStore.save(
+        context = context,
+        repoFullName = repo.fullName,
+        branch = selectedBranch,
+        snapshot = CodeWorkspaceSnapshot(
+            openPaths = codeTabs.map { it.path },
+            activePath = activePath,
+            backHistory = codeBackHistory.toList(),
+            forwardHistory = codeForwardHistory.toList(),
+        ),
+    )
     // Стадия 6 «прочность»: загрузка/восстановление черновика для текущей (репо, ветка) — переживает
     // рестарт процесса и смену ветки (у каждой ветки свой черновик; старая ветка уже на диске).
     LaunchedEffect(repo.fullName, selectedBranch) {
         codeDraftLoaded = false
         val loaded = CodeDraftStore.load(context, repo.fullName, selectedBranch)
         codeDraft.clear(); codeDraft.putAll(loaded)
-        // S2: контент per-ветка — при смене ветки закрываем открытый редактор (не показываем стейл).
-        if (codeEditorBranch != selectedBranch) {
-            codeEditorFile = null
-            codeEditorContent = null
+        val workspace = CodeWorkspaceStore.load(context, repo.fullName, selectedBranch)
+        codeTabs.clear()
+        codeTabs.addAll(workspace.openPaths.map { path ->
+            GHContent(path.substringAfterLast('/'), path, "file", 0L, "", "")
+        })
+        codeBackHistory.clear(); codeBackHistory.addAll(workspace.backHistory)
+        codeForwardHistory.clear(); codeForwardHistory.addAll(workspace.forwardHistory)
+        val activePath = workspace.activePath
+        codeEditorFile = activePath?.let { path ->
+            codeTabs.firstOrNull { it.path == path }
+                ?: GHContent(path.substringAfterLast('/'), path, "file", 0L, "", "")
         }
-        codeEditorBranch = selectedBranch
+        codeEditorContent = activePath?.let { codeDraft[it]?.draftContentOrNull() }
         codeDraftLoaded = true
     }
     var showCodeCommitSheet by remember { mutableStateOf(false) }
@@ -301,6 +322,8 @@ internal fun RepoDetailScreen(
     // верхняя стрелка топбара (handleRepoBack) шли через ОДИН обработчик — поведение идентично.
     var codePath by rememberSaveable(repo.fullName) { mutableStateOf("") }
     var showCodeChanges by rememberSaveable(repo.fullName) { mutableStateOf(false) }
+    var showCodeQuickOpen by rememberSaveable(repo.fullName) { mutableStateOf(false) }
+    var showCodeGlobalSearch by rememberSaveable(repo.fullName) { mutableStateOf(false) }
     fun codeInternalBack() {
         when {
             showCodeChanges -> showCodeChanges = false           // панель «изменения» → дерево
@@ -309,10 +332,26 @@ internal fun RepoDetailScreen(
         }
     }
     // Открыть файл в Code-редакторе (из браузера/недавних/панели изменений): recents + draft-aware фетч.
-    fun openCodeFile(f: GHContent) {
+    fun openCodeFile(f: GHContent, recordHistory: Boolean = true) {
         if (isLikelyBinaryFile(f.name)) {
             Toast.makeText(context, "binary file — can't open in editor", Toast.LENGTH_SHORT).show()
             return
+        }
+        val previousPath = codeEditorFile?.path
+        if (recordHistory && previousPath != null && previousPath != f.path) {
+            if (codeBackHistory.lastOrNull() != previousPath) codeBackHistory.add(previousPath)
+            while (codeBackHistory.size > CodeWorkspaceStore.MAX_HISTORY) codeBackHistory.removeAt(0)
+            codeForwardHistory.clear()
+        }
+        val existingTab = codeTabs.indexOfFirst { it.path == f.path }
+        if (existingTab >= 0) {
+            codeTabs[existingTab] = f.copy(
+                size = f.size.takeIf { it > 0 } ?: codeTabs[existingTab].size,
+                sha = f.sha.ifBlank { codeTabs[existingTab].sha },
+            )
+        } else {
+            while (codeTabs.size >= CodeWorkspaceStore.MAX_OPEN_TABS) codeTabs.removeAt(0)
+            codeTabs.add(f)
         }
         codeRecents.removeAll { it.path == f.path }
         codeRecents.add(0, f)
@@ -320,6 +359,51 @@ internal fun RepoDetailScreen(
         CodeDraftStore.saveRecents(context, repo.fullName, codeRecents.map { it.path })  // S4: персист
         codeEditorFile = f
         codeEditorContent = codeDraft[f.path]?.draftContentOrNull()
+        persistCodeWorkspace(activePath = f.path)
+    }
+
+    fun closeCodeTab(file: GHContent) {
+        val index = codeTabs.indexOfFirst { it.path == file.path }
+        if (index < 0) return
+        val wasActive = codeEditorFile?.path == file.path
+        codeTabs.removeAt(index)
+        if (wasActive) {
+            val next = codeTabs.getOrNull(index.coerceAtMost(codeTabs.lastIndex))
+            codeEditorFile = next
+            codeEditorContent = next?.let { codeDraft[it.path]?.draftContentOrNull() }
+        }
+        persistCodeWorkspace(activePath = codeEditorFile?.path)
+    }
+
+    fun navigateCodeHistory(backward: Boolean) {
+        val source = if (backward) codeBackHistory else codeForwardHistory
+        val destination = if (backward) codeForwardHistory else codeBackHistory
+        if (source.isEmpty()) return
+        val current = codeEditorFile?.path
+        val target = source.removeAt(source.lastIndex)
+        if (current != null && destination.lastOrNull() != current) destination.add(current)
+        while (destination.size > CodeWorkspaceStore.MAX_HISTORY) destination.removeAt(0)
+        openCodeFile(
+            GHContent(target.substringAfterLast('/'), target, "file", 0L, "", ""),
+            recordHistory = false,
+        )
+    }
+
+    fun closeCodeEditorToBrowser() {
+        codeEditorFile = null
+        codeEditorContent = null
+        persistCodeWorkspace(activePath = null)
+    }
+
+    fun updateCodeDraftFromEditor(path: String, content: String, keepAsDraft: Boolean) {
+        val existing = codeDraft[path]
+        when {
+            keepAsDraft -> codeDraft[path] = existing?.withEditedContent(content) ?: CodeModify(path, content)
+            existing is CodeAdd || existing is CodeRename -> codeDraft[path] = existing.withEditedContent(content)
+            existing is CodeModify -> codeDraft.remove(path)
+            existing == null -> Unit
+        }
+        persistCodeDraft()
     }
 
     suspend fun codeTargetExists(path: String, ignorePath: String? = null): Boolean {
@@ -373,10 +457,22 @@ internal fun RepoDetailScreen(
                 null -> CodeRename(item.path, targetPath, sourceSha = item.sha)
             }
             codeDraft[targetPath] = moved
+            val tabIndex = codeTabs.indexOfFirst { it.path == item.path }
+            if (tabIndex >= 0) {
+                val renamed = GHContent(targetPath.substringAfterLast('/'), targetPath, "file", item.size, "", item.sha)
+                codeTabs[tabIndex] = renamed
+                if (codeEditorFile?.path == item.path) {
+                    codeEditorFile = renamed
+                    codeEditorContent = moved.draftContentOrNull()
+                }
+                for (i in codeBackHistory.indices) if (codeBackHistory[i] == item.path) codeBackHistory[i] = targetPath
+                for (i in codeForwardHistory.indices) if (codeForwardHistory[i] == item.path) codeForwardHistory[i] = targetPath
+            }
             codeRecents.removeAll { it.path == item.path || it.path == targetPath }
             codeRecents.add(0, GHContent(targetPath.substringAfterLast('/'), targetPath, "file", item.size, "", item.sha))
             CodeDraftStore.saveRecents(context, repo.fullName, codeRecents.map { it.path })
             persistCodeDraft()
+            persistCodeWorkspace(activePath = codeEditorFile?.path)
         }
     }
 
@@ -410,6 +506,7 @@ internal fun RepoDetailScreen(
         }
         codeRecents.removeAll { it.path == item.path }
         CodeDraftStore.saveRecents(context, repo.fullName, codeRecents.map { it.path })
+        closeCodeTab(item)
         persistCodeDraft()
     }
     fun discardCodeChange(path: String) {
@@ -531,7 +628,10 @@ internal fun RepoDetailScreen(
             showGitDataTools -> showGitDataTools = false
             showActionsTroubleshoot -> showActionsTroubleshoot = false
             showBuilds -> showBuilds = false
+            showCodeQuickOpen -> showCodeQuickOpen = false
+            showCodeGlobalSearch -> showCodeGlobalSearch = false
             deleteTarget != null -> deleteTarget = null
+            codeEditorFile != null && nav.selectedSection == RepoTab.CODE -> closeCodeEditorToBrowser()
             editingFile != null -> {
                 editingFile = null
                 fileContent = null
@@ -800,7 +900,27 @@ internal fun RepoDetailScreen(
         return
     }
     
-    // Code workspace editor. Back returns to the workspace browser.
+    if (showCodeQuickOpen) {
+        CodeQuickOpenDialog(
+            repo = repo,
+            branch = selectedBranch,
+            changes = codeDraft.values,
+            preferredPaths = codeTabs.map { it.path },
+            onOpen = { file -> showCodeQuickOpen = false; openCodeFile(file) },
+            onDismiss = { showCodeQuickOpen = false },
+        )
+    }
+    if (showCodeGlobalSearch) {
+        CodeGlobalSearchDialog(
+            repo = repo,
+            branch = selectedBranch,
+            changes = codeDraft.values,
+            onOpen = { file -> showCodeGlobalSearch = false; openCodeFile(file) },
+            onDismiss = { showCodeGlobalSearch = false },
+        )
+    }
+
+    // Code workspace editor. Back returns to the workspace browser while tabs stay open.
     val codeFile = codeEditorFile
     if (nav.selectedSection == RepoTab.CODE && codeFile != null) {
         val codeContent = codeEditorContent
@@ -818,7 +938,7 @@ internal fun RepoDetailScreen(
                         )
                     }.getOrNull()
                 if (restoredContent == null) {
-                    codeEditorFile = null
+                    closeCodeEditorToBrowser()
                     Toast.makeText(context, Strings.error, Toast.LENGTH_SHORT).show()
                 } else {
                     codeEditorContent = restoredContent
@@ -839,20 +959,35 @@ internal fun RepoDetailScreen(
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { AiModuleSpinner(label = "loading…") }
                 }
             } else {
-                CodeEditorScreen(
-                    repoOwner = repo.owner,
-                    repoName = repo.name,
-                    file = codeFile,
-                    branch = selectedBranch,
-                    initialContent = codeContent,
-                    lite = true,
-                    readOnly = !canWrite,
-                    onSaveDraft = if (canWrite) ({ p, c ->
-                        codeDraft[p] = codeDraft[p]?.withEditedContent(c) ?: CodeModify(p, c)
-                        persistCodeDraft()
-                    }) else null,
-                    onBack = { codeEditorFile = null; codeEditorContent = null },
-                )
+                key(codeFile.path, selectedBranch) {
+                    CodeEditorScreen(
+                        repoOwner = repo.owner,
+                        repoName = repo.name,
+                        file = codeFile,
+                        branch = selectedBranch,
+                        initialContent = codeContent,
+                        lite = true,
+                        readOnly = !canWrite,
+                        workspaceTabs = codeTabs,
+                        workspaceDirtyPaths = codeDraft.keys,
+                        canNavigateWorkspaceBack = codeBackHistory.isNotEmpty(),
+                        canNavigateWorkspaceForward = codeForwardHistory.isNotEmpty(),
+                        initialHasDraft = codeDraft.containsKey(codeFile.path),
+                        onSelectWorkspaceTab = { openCodeFile(it) },
+                        onCloseWorkspaceTab = { closeCodeTab(it) },
+                        onWorkspaceBack = { navigateCodeHistory(backward = true) },
+                        onWorkspaceForward = { navigateCodeHistory(backward = false) },
+                        onQuickOpen = { showCodeQuickOpen = true },
+                        onGlobalSearch = { showCodeGlobalSearch = true },
+                        onDraftChanged = if (canWrite) ({ p, c, keep ->
+                            updateCodeDraftFromEditor(p, c, keep)
+                        }) else null,
+                        onSaveDraft = if (canWrite) ({ p, c ->
+                            updateCodeDraftFromEditor(p, c, keepAsDraft = true)
+                        }) else null,
+                        onBack = { closeCodeEditorToBrowser() },
+                    )
+                }
             }
         }
         return
@@ -1540,7 +1675,11 @@ internal fun RepoDetailScreen(
                 showChanges = showCodeChanges,
                 changes = codeDraft.values,
                 recents = codeRecents,
+                openTabs = codeTabs,
+                activePath = codeEditorFile?.path,
                 canWrite = canWrite,
+                canGoBack = codeBackHistory.isNotEmpty(),
+                canGoForward = codeForwardHistory.isNotEmpty(),
                 onCodePathChange = { codePath = it },
                 onShowChanges = { showCodeChanges = true },
                 onOpenFile = { openCodeFile(it) },
@@ -1560,6 +1699,11 @@ internal fun RepoDetailScreen(
                 onRenameOrMove = { item, path -> renameOrMoveCodeFile(item, path) },
                 onDuplicate = { item, path -> duplicateCodeFile(item, path) },
                 onDelete = { deleteCodeFile(it) },
+                onHistoryBack = { navigateCodeHistory(backward = true) },
+                onHistoryForward = { navigateCodeHistory(backward = false) },
+                onQuickOpen = { showCodeQuickOpen = true },
+                onGlobalSearch = { showCodeGlobalSearch = true },
+                onCloseTab = { closeCodeTab(it) },
                 onBack = { codeInternalBack() },
             )
         }

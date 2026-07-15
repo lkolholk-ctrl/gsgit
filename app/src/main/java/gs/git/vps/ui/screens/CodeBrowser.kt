@@ -107,7 +107,16 @@ internal fun CodeBrowser(
     onNavigatePath: (String) -> Unit,
     changes: Collection<CodeChange>,
     recents: List<GHContent>,
+    openTabs: List<GHContent>,
+    activePath: String?,
     canWrite: Boolean,
+    canGoBack: Boolean,
+    canGoForward: Boolean,
+    onHistoryBack: () -> Unit,
+    onHistoryForward: () -> Unit,
+    onQuickOpen: () -> Unit,
+    onGlobalSearch: () -> Unit,
+    onCloseTab: (GHContent) -> Unit,
     onCommit: () -> Unit,
     onShowChanges: () -> Unit,
     onDiscardAll: () -> Unit,
@@ -145,6 +154,21 @@ internal fun CodeBrowser(
     }
 
     Column(Modifier.fillMaxSize()) {
+        CodeWorkspaceToolbar(
+            canGoBack = canGoBack,
+            canGoForward = canGoForward,
+            onGoBack = onHistoryBack,
+            onGoForward = onHistoryForward,
+            onQuickOpen = onQuickOpen,
+            onGlobalSearch = onGlobalSearch,
+        )
+        CodeWorkspaceTabsRow(
+            tabs = openTabs,
+            activePath = activePath,
+            dirtyPaths = draftPaths,
+            onSelect = onOpenFile,
+            onClose = onCloseTab,
+        )
         CodeBreadcrumbs(
             path = path,
             branch = branch,
