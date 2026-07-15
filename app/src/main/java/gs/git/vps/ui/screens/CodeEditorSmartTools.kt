@@ -280,7 +280,7 @@ private fun formatBraceLanguage(text: String, indentUnit: String): String {
         inBacktick = structure.backtick
         val chars = structure.chars
         if (preserveLiteralLine) return@joinToString original
-        val leadingClosers = chars.takeWhile { it == '}' || it == ']' || it == ')' }.length
+        val leadingClosers = chars.takeWhile { it == '}' || it == ']' || it == ')' }.size
         val lineDepth = (depth - leadingClosers).coerceAtLeast(0)
         val result = indentUnit.repeat(lineDepth) + trimmed
         val opens = chars.count { it == '{' || it == '[' || it == '(' }
