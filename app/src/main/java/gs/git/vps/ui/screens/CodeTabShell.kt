@@ -34,6 +34,7 @@ internal fun CodeTabShell(
     onOpenFile: (GHContent) -> Unit,
     onOpenPath: (String) -> Unit,
     onCommit: () -> Unit,
+    onBranchFromDraft: () -> Unit,
     onDiscardFile: (String) -> Unit,
     onDiscardAll: () -> Unit,
     onCreateFile: (String) -> Unit,
@@ -75,6 +76,7 @@ internal fun CodeTabShell(
             onGlobalSearch = onGlobalSearch,
             onCloseTab = onCloseTab,
             onCommit = onCommit,
+            onBranchFromDraft = onBranchFromDraft,
             onShowChanges = onShowChanges,
             onDiscardAll = onDiscardAll,
             onCreateFile = onCreateFile,
@@ -89,6 +91,7 @@ internal fun CodeTabShell(
                 onOpenPath = onOpenPath,
                 onDiscardPath = onDiscardFile,
                 onCommit = onCommit,
+                onBranchFromDraft = onBranchFromDraft,
                 onBack = onBack,
             )
         }

@@ -40,14 +40,16 @@ internal fun CodeCommitSheet(
     fileCount: Int,
     changes: Collection<CodeChange>,
     branch: String,
+    defaultBranch: String,
     committing: Boolean,
     conflict: Boolean = false,
-    onCommit: (message: String) -> Unit,
+    onCommit: (message: String, createPullRequest: Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val palette = AiModuleTheme.colors
     val plural = if (fileCount == 1) "file" else "files"
     var message by remember { mutableStateOf("Update $fileCount $plural") }
+    var createPullRequest by remember(branch, defaultBranch) { mutableStateOf(branch != defaultBranch) }
     val preview = changes.sortedBy { it.path }
 
     AiModuleAlertDialog(
@@ -57,7 +59,7 @@ internal fun CodeCommitSheet(
             AiModulePrimaryButton(
                 label = if (committing) "committing…" else if (conflict) "retry" else "commit",
                 enabled = !committing && message.isNotBlank(),
-                onClick = { onCommit(message.trim()) },
+                onClick = { onCommit(message.trim(), createPullRequest) },
             )
         },
         dismissButton = {
@@ -67,7 +69,7 @@ internal fun CodeCommitSheet(
             Column {
                 if (conflict) {
                     AiModuleText(
-                        "Branch moved on the server. Commit again to retry — no auto-merge.",
+                        "Branch moved on the server. Draft was rebased with three-way merge; resolve any markers, then retry.",
                         color = palette.error,
                         fontFamily = JetBrainsMono,
                         fontSize = 12.sp,
@@ -122,7 +124,79 @@ internal fun CodeCommitSheet(
                     label = "commit message",
                     enabled = !committing,
                 )
+                if (branch != defaultBranch) {
+                    Spacer(Modifier.height(8.dp))
+                    GitHubTerminalCheckbox(
+                        label = "create pull request to $defaultBranch after commit",
+                        checked = createPullRequest,
+                        onToggle = { createPullRequest = !createPullRequest },
+                        enabled = !committing,
+                    )
+                }
             }
         },
     )
 }
+
+@Composable
+internal fun CodeDraftBranchDialog(
+    currentBranch: String,
+    existingBranches: Collection<String>,
+    creating: Boolean,
+    onCreate: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val palette = AiModuleTheme.colors
+    var name by remember(currentBranch) { mutableStateOf("work/${currentBranch.substringAfterLast('/')}" ) }
+    val clean = name.trim().trim('/')
+    val valid = isValidDraftBranchName(clean) && clean !in existingBranches
+    AiModuleAlertDialog(
+        onDismissRequest = { if (!creating) onDismiss() },
+        title = "new branch from draft",
+        confirmButton = {
+            AiModulePrimaryButton(
+                label = if (creating) "creating…" else "create & switch",
+                enabled = !creating && valid,
+                onClick = { onCreate(clean) },
+            )
+        },
+        dismissButton = {
+            AiModuleSecondaryButton("cancel", enabled = !creating, onClick = onDismiss)
+        },
+        content = {
+            Column {
+                AiModuleText(
+                    "Moves all uncommitted changes from $currentBranch into a new server branch. Nothing is committed yet.",
+                    color = palette.textSecondary,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 12.sp,
+                )
+                Spacer(Modifier.height(10.dp))
+                AiModuleTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = "branch name",
+                    enabled = !creating,
+                    singleLine = true,
+                )
+                if (clean in existingBranches) {
+                    Spacer(Modifier.height(6.dp))
+                    AiModuleText("branch already exists", color = palette.error, fontFamily = JetBrainsMono, fontSize = 11.sp)
+                } else if (clean.isNotEmpty() && !isValidDraftBranchName(clean)) {
+                    Spacer(Modifier.height(6.dp))
+                    AiModuleText("invalid Git branch name", color = palette.error, fontFamily = JetBrainsMono, fontSize = 11.sp)
+                }
+            }
+        },
+    )
+}
+
+private fun isValidDraftBranchName(name: String): Boolean =
+    name.isNotBlank() &&
+        !name.startsWith('.') &&
+        !name.endsWith('.') &&
+        !name.endsWith(".lock") &&
+        !name.contains("..") &&
+        !name.contains("@{") &&
+        !name.contains("//") &&
+        name.none { it.isWhitespace() || it.isISOControl() || it in "~^:?*[\\" }

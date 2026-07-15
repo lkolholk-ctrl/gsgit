@@ -108,7 +108,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import gs.git.vps.data.Strings
-import gs.git.vps.data.github.model.GHCommit
+import gs.git.vps.data.github.model.GHBlameRange
 import gs.git.vps.data.github.*
 import gs.git.vps.data.github.GitHubManager
 import gs.git.vps.data.github.model.GHContent
@@ -171,6 +171,8 @@ fun CodeEditorScreen(
     onWorkspaceForward: (() -> Unit)? = null,
     onQuickOpen: (() -> Unit)? = null,
     onGlobalSearch: (() -> Unit)? = null,
+    onOpenBlame: ((GHContent) -> Unit)? = null,
+    onOpenHistory: ((GHContent) -> Unit)? = null,
     onDraftChanged: ((path: String, content: String, changedFromInitial: Boolean) -> Unit)? = null,
     onSaveDraft: ((path: String, content: String) -> Unit)? = null,
     onBack: () -> Unit,
@@ -250,18 +252,18 @@ fun CodeEditorScreen(
     var showBranchSwitcher by remember { mutableStateOf(false) }
     var branches by remember { mutableStateOf<List<String>>(emptyList()) }
     var loadingBranches by remember { mutableStateOf(false) }
-    var fileCommits by remember { mutableStateOf<List<GHCommit>>(emptyList()) }
-    var loadingCommits by remember { mutableStateOf(false) }
+    var fileBlame by remember { mutableStateOf<List<GHBlameRange>>(emptyList()) }
     var showBlame by rememberSaveable(file.path) { mutableStateOf(false) }
 
     val currentFile = tabs.getOrNull(activeTabIndex)?.file ?: file
 
-    LaunchedEffect(currentBranch, currentFile.path) {
-        loadingCommits = true
-        try {
-            fileCommits = GitHubManager.getFileCommits(context, repoOwner, repoName, currentFile.path, currentBranch)
-        } catch (_: java.lang.Exception) {}
-        loadingCommits = false
+    LaunchedEffect(currentBranch, currentFile.path, showBlame) {
+        if (!showBlame) return@LaunchedEffect
+        fileBlame = try {
+            GitHubManager.getFileBlame(context, repoOwner, repoName, currentFile.path, currentBranch)
+        } catch (_: java.lang.Exception) {
+            emptyList()
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -389,12 +391,8 @@ fun CodeEditorScreen(
         }
     }
 
-    val activeCommit = remember(fileCommits, currentLine) {
-        if (fileCommits.isEmpty()) null
-        else {
-            val index = (currentLine - 1).coerceAtLeast(0) % fileCommits.size
-            fileCommits[index]
-        }
+    val activeBlame = remember(fileBlame, currentLine) {
+        fileBlame.firstOrNull { currentLine in it.startLine..it.endLine }
     }
 
     val undoStack = remember(file.path) { mutableStateListOf<TextFieldValue>() }
@@ -856,6 +854,8 @@ fun CodeEditorScreen(
                 onHistoryForward = { flushDraft(); onWorkspaceForward?.invoke() },
                 onQuickOpen = { flushDraft(); onQuickOpen?.invoke() },
                 onGlobalSearch = { flushDraft(); onGlobalSearch?.invoke() },
+                onOpenBlame = onOpenBlame?.let { action -> { flushDraft(); action(currentFile) } },
+                onOpenHistory = onOpenHistory?.let { action -> { flushDraft(); action(currentFile) } },
             )
         } else if (!zenMode) {
             GitHubEditorTopBar(
@@ -1530,8 +1530,8 @@ fun CodeEditorScreen(
             }
         }
 
-        AnimatedVisibility(showBlame && activeCommit != null && !zenMode) {
-            activeCommit?.let { commit ->
+        AnimatedVisibility(showBlame && activeBlame != null && !zenMode) {
+            activeBlame?.let { blame ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1554,14 +1554,14 @@ fun CodeEditorScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "${commit.author} · ${formatRelativeTime(commit.date)}",
+                            text = "${blame.author} · ${formatRelativeTime(blame.date)} · L${blame.startLine}-${blame.endLine}",
                             color = palette.textSecondary,
                             fontFamily = JetBrainsMono,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "· ${commit.message}",
+                            text = "· ${blame.message}",
                             color = palette.textMuted,
                             fontFamily = JetBrainsMono,
                             fontSize = 11.sp,
@@ -1570,7 +1570,7 @@ fun CodeEditorScreen(
                         )
                     }
                     Text(
-                        text = commit.sha.take(7),
+                        text = blame.sha.take(7),
                         color = palette.accent,
                         fontFamily = JetBrainsMono,
                         fontSize = 10.sp,
@@ -1839,6 +1839,8 @@ private fun LiteEditorTopBar(
     onHistoryForward: () -> Unit,
     onQuickOpen: () -> Unit,
     onGlobalSearch: () -> Unit,
+    onOpenBlame: (() -> Unit)?,
+    onOpenHistory: (() -> Unit)?,
 ) {
     val colors = AiModuleTheme.colors
     val sub = file.path.substringBeforeLast('/', "").ifEmpty { ext }
@@ -1876,6 +1878,12 @@ private fun LiteEditorTopBar(
             if (hasChanges) {
                 Text(text = "●", color = colors.warning, fontFamily = JetBrainsMono, fontSize = 11.sp)
                 Spacer(Modifier.width(8.dp))
+            }
+            onOpenBlame?.let {
+                GitHubTopBarAction(glyph = "B", onClick = it, tint = colors.textSecondary, contentDescription = "blame")
+            }
+            onOpenHistory?.let {
+                GitHubTopBarAction(glyph = "H", onClick = it, tint = colors.textSecondary, contentDescription = "file history")
             }
             GitHubTerminalButton(label = "save", onClick = onSave, color = colors.accent)
         }

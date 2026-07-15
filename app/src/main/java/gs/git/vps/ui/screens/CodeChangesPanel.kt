@@ -63,6 +63,7 @@ internal fun CodeChangesPanel(
     onOpenPath: (String) -> Unit,
     onDiscardPath: (String) -> Unit,
     onCommit: () -> Unit,
+    onBranchFromDraft: () -> Unit,
     onBack: () -> Unit,
 ) {
     val palette = AiModuleTheme.colors
@@ -105,6 +106,8 @@ internal fun CodeChangesPanel(
                     AiModuleText("changes (${sorted.size})", color = palette.textPrimary, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     Spacer(Modifier.weight(1f))
                     if (sorted.isNotEmpty()) {
+                        GitHubTerminalButton(label = "branch", onClick = onBranchFromDraft, color = palette.textSecondary)
+                        Spacer(Modifier.width(6.dp))
                         GitHubTerminalButton(label = "commit", onClick = onCommit, color = palette.accent)
                     }
                 }

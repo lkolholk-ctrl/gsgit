@@ -264,11 +264,14 @@ internal fun RepoDetailScreen(
     var codeDraftLoaded by remember(repo.fullName) { mutableStateOf(false) }
     // Typed A/M/D/R draft, scoped by repository and persisted separately for every branch.
     val codeDraft = remember(repo.fullName) { mutableStateMapOf<String, CodeChange>() }
+    // Remote ancestor text for three-way conflict resolution (1.0.54), scoped like the draft.
+    val codeDraftBases = remember(repo.fullName) { mutableStateMapOf<String, String>() }
     // 1.0.52 workspace: lightweight paths are persistent per branch; file contents stay in draft/API.
     val codeTabs = remember(repo.fullName) { mutableStateListOf<GHContent>() }
     val codeBackHistory = remember(repo.fullName) { mutableStateListOf<String>() }
     val codeForwardHistory = remember(repo.fullName) { mutableStateListOf<String>() }
     fun persistCodeDraft() = CodeDraftStore.save(context, repo.fullName, selectedBranch, codeDraft.toMap())
+    fun persistCodeDraftBases() = CodeDraftBaseStore.save(context, repo.fullName, selectedBranch, codeDraftBases.toMap())
     fun persistCodeWorkspace(activePath: String? = codeEditorFile?.path) = CodeWorkspaceStore.save(
         context = context,
         repoFullName = repo.fullName,
@@ -286,6 +289,8 @@ internal fun RepoDetailScreen(
         codeDraftLoaded = false
         val loaded = CodeDraftStore.load(context, repo.fullName, selectedBranch)
         codeDraft.clear(); codeDraft.putAll(loaded)
+        codeDraftBases.clear()
+        codeDraftBases.putAll(CodeDraftBaseStore.load(context, repo.fullName, selectedBranch))
         val workspace = CodeWorkspaceStore.load(context, repo.fullName, selectedBranch)
         codeTabs.clear()
         codeTabs.addAll(workspace.openPaths.map { path ->
@@ -304,6 +309,8 @@ internal fun RepoDetailScreen(
     var showCodeCommitSheet by remember { mutableStateOf(false) }
     var codeCommitting by remember { mutableStateOf(false) }
     var codeCommitConflict by remember { mutableStateOf(false) }
+    var showCodeDraftBranch by remember { mutableStateOf(false) }
+    var codeDraftBranchCreating by remember { mutableStateOf(false) }
     var showCodeDiscardAllDialog by remember { mutableStateOf(false) }
     var codeRefreshKey by remember { mutableIntStateOf(0) }
     // Code-таб: недавно открытые файлы (most-recent-first, для строки «recent»). Скоуп репо.
@@ -395,15 +402,22 @@ internal fun RepoDetailScreen(
         persistCodeWorkspace(activePath = null)
     }
 
-    fun updateCodeDraftFromEditor(path: String, content: String, keepAsDraft: Boolean) {
+    fun updateCodeDraftFromEditor(path: String, content: String, baseContent: String, keepAsDraft: Boolean) {
         val existing = codeDraft[path]
         when {
-            keepAsDraft -> codeDraft[path] = existing?.withEditedContent(content) ?: CodeModify(path, content)
+            keepAsDraft -> {
+                codeDraft[path] = existing?.withEditedContent(content) ?: CodeModify(path, content)
+                if (existing == null) codeDraftBases.putIfAbsent(path, baseContent)
+            }
             existing is CodeAdd || existing is CodeRename -> codeDraft[path] = existing.withEditedContent(content)
-            existing is CodeModify -> codeDraft.remove(path)
+            existing is CodeModify -> {
+                codeDraft.remove(path)
+                codeDraftBases.remove(path)
+            }
             existing == null -> Unit
         }
         persistCodeDraft()
+        persistCodeDraftBases()
     }
 
     suspend fun codeTargetExists(path: String, ignorePath: String? = null): Boolean {
@@ -423,7 +437,9 @@ internal fun RepoDetailScreen(
             }
             val replacingDelete = codeDraft[path] is CodeDelete
             codeDraft[path] = if (replacingDelete) CodeModify(path, "") else CodeAdd(path, "")
+            codeDraftBases[path] = ""
             persistCodeDraft()
+            persistCodeDraftBases()
             openCodeFile(GHContent(path.substringAfterLast('/'), path, "file", 0L, "", ""))
         }
     }
@@ -436,7 +452,9 @@ internal fun RepoDetailScreen(
             }
             val marker = "$path/.gitkeep"
             codeDraft[marker] = CodeAdd(marker, "")
+            codeDraftBases[marker] = ""
             persistCodeDraft()
+            persistCodeDraftBases()
             codePath = path
         }
     }
@@ -447,8 +465,22 @@ internal fun RepoDetailScreen(
                 Toast.makeText(context, "target already exists", Toast.LENGTH_SHORT).show()
                 return@launch
             }
-            val existing = codeDraft.remove(item.path)
+            val existing = codeDraft[item.path]
+            val knownBase = codeDraftBases[item.path]
+            val remoteBase = if (knownBase != null || existing is CodeAdd) knownBase.orEmpty() else {
+                val fetched = runCatching {
+                    GitHubManager.getCodeRemoteText(context, repo.owner, repo.name, selectedBranch, item.path)
+                }.getOrNull()
+                if (fetched == null) {
+                    Toast.makeText(context, "failed to capture remote base", Toast.LENGTH_LONG).show()
+                    return@launch
+                }
+                fetched
+            }
+            codeDraft.remove(item.path)
+            codeDraftBases.remove(item.path)
             codeDraft.remove(targetPath) // replacing a locally deleted remote target is intentional
+            codeDraftBases.remove(targetPath)
             val moved = when (existing) {
                 is CodeAdd -> existing.copy(path = targetPath)
                 is CodeModify -> CodeRename(item.path, targetPath, existing.content, item.sha)
@@ -457,6 +489,7 @@ internal fun RepoDetailScreen(
                 null -> CodeRename(item.path, targetPath, sourceSha = item.sha)
             }
             codeDraft[targetPath] = moved
+            codeDraftBases[targetPath] = remoteBase
             val tabIndex = codeTabs.indexOfFirst { it.path == item.path }
             if (tabIndex >= 0) {
                 val renamed = GHContent(targetPath.substringAfterLast('/'), targetPath, "file", item.size, "", item.sha)
@@ -472,6 +505,7 @@ internal fun RepoDetailScreen(
             codeRecents.add(0, GHContent(targetPath.substringAfterLast('/'), targetPath, "file", item.size, "", item.sha))
             CodeDraftStore.saveRecents(context, repo.fullName, codeRecents.map { it.path })
             persistCodeDraft()
+            persistCodeDraftBases()
             persistCodeWorkspace(activePath = codeEditorFile?.path)
         }
     }
@@ -491,30 +525,46 @@ internal fun RepoDetailScreen(
                 null -> CodeAdd(targetPath, content = null, sourcePath = item.path, sourceSha = item.sha)
             }
             codeDraft[targetPath] = copy
+            codeDraftBases[targetPath] = ""
             persistCodeDraft()
+            persistCodeDraftBases()
         }
     }
 
     fun deleteCodeFile(item: GHContent) {
-        val existing = codeDraft.remove(item.path)
-        when (existing) {
-            is CodeAdd -> Unit // A then D cancels the local operation completely.
-            is CodeRename -> codeDraft[existing.oldPath] = CodeDelete(existing.oldPath, restore = existing)
-            is CodeModify -> codeDraft[item.path] = CodeDelete(item.path, restore = existing)
-            is CodeDelete -> codeDraft[item.path] = existing
-            null -> codeDraft[item.path] = CodeDelete(item.path)
+        scope.launch {
+            val existing = codeDraft.remove(item.path)
+            if (existing !is CodeAdd && item.path !in codeDraftBases) {
+                runCatching {
+                    GitHubManager.getCodeRemoteText(context, repo.owner, repo.name, selectedBranch, item.path)
+                }.getOrNull()?.let { codeDraftBases[item.path] = it }
+            }
+            when (existing) {
+                is CodeAdd -> {
+                    codeDraftBases.remove(item.path)
+                    Unit // A then D cancels the local operation completely.
+                }
+                is CodeRename -> codeDraft[existing.oldPath] = CodeDelete(existing.oldPath, restore = existing)
+                is CodeModify -> codeDraft[item.path] = CodeDelete(item.path, restore = existing)
+                is CodeDelete -> codeDraft[item.path] = existing
+                null -> codeDraft[item.path] = CodeDelete(item.path)
+            }
+            codeRecents.removeAll { it.path == item.path }
+            CodeDraftStore.saveRecents(context, repo.fullName, codeRecents.map { it.path })
+            closeCodeTab(item)
+            persistCodeDraft()
+            persistCodeDraftBases()
         }
-        codeRecents.removeAll { it.path == item.path }
-        CodeDraftStore.saveRecents(context, repo.fullName, codeRecents.map { it.path })
-        closeCodeTab(item)
-        persistCodeDraft()
     }
     fun discardCodeChange(path: String) {
         val removed = codeDraft.remove(path)
         if (removed is CodeDelete && removed.restore != null) {
             codeDraft[removed.restore.path] = removed.restore
+        } else {
+            codeDraftBases.remove(path)
         }
         persistCodeDraft()
+        persistCodeDraftBases()
     }
     var languages by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }; var contributors by remember { mutableStateOf<List<GHContributor>>(emptyList()) }
     // Pagination
@@ -630,6 +680,9 @@ internal fun RepoDetailScreen(
             showBuilds -> showBuilds = false
             showCodeQuickOpen -> showCodeQuickOpen = false
             showCodeGlobalSearch -> showCodeGlobalSearch = false
+            showCodeDraftBranch && !codeDraftBranchCreating -> showCodeDraftBranch = false
+            showBlameFor != null -> showBlameFor = null
+            showFileHistoryFor != null -> showFileHistoryFor = null
             deleteTarget != null -> deleteTarget = null
             codeEditorFile != null && nav.selectedSection == RepoTab.CODE -> closeCodeEditorToBrowser()
             editingFile != null -> {
@@ -920,6 +973,30 @@ internal fun RepoDetailScreen(
         )
     }
 
+    // Code workspace auxiliary views keep the editor/tab state alive underneath.
+    val codeBlameFile = showBlameFor
+    if (codeBlameFile != null) {
+        BlameViewScreen(
+            repo = repo,
+            file = codeBlameFile,
+            branch = selectedBranch,
+            onBack = { showBlameFor = null },
+            onCommitClick = { sha -> selectedCommitSha = sha; showBlameFor = null },
+        )
+        return
+    }
+    val codeHistoryFile = showFileHistoryFor
+    if (codeHistoryFile != null) {
+        FileHistoryScreen(
+            repo = repo,
+            file = codeHistoryFile,
+            branch = selectedBranch,
+            onBack = { showFileHistoryFor = null },
+            onCommitClick = { sha -> selectedCommitSha = sha; showFileHistoryFor = null },
+        )
+        return
+    }
+
     // Code workspace editor. Back returns to the workspace browser while tabs stay open.
     val codeFile = codeEditorFile
     if (nav.selectedSection == RepoTab.CODE && codeFile != null) {
@@ -927,16 +1004,23 @@ internal fun RepoDetailScreen(
         LaunchedEffect(codeFile.path, selectedBranch, codeDraftLoaded) {
             if (codeDraftLoaded && codeEditorContent == null) {
                 val change = codeDraft[codeFile.path]
-                val restoredContent = change?.draftContentOrNull()
-                    ?: runCatching {
-                        GitHubManager.getFileContent(
-                            context,
-                            repo.owner,
-                            repo.name,
-                            change?.contentSourcePath() ?: codeFile.path,
-                            selectedBranch,
+                val needsRemoteBase = change != null && change !is CodeAdd && codeFile.path !in codeDraftBases
+                val remoteContent = if (change?.draftContentOrNull() == null || needsRemoteBase) {
+                    runCatching {
+                        GitHubManager.getCodeRemoteText(
+                            context = context,
+                            owner = repo.owner,
+                            repo = repo.name,
+                            branch = selectedBranch,
+                            path = change?.contentSourcePath() ?: codeFile.path,
                         )
                     }.getOrNull()
+                } else null
+                if (needsRemoteBase && remoteContent != null) {
+                    codeDraftBases[codeFile.path] = remoteContent
+                    persistCodeDraftBases()
+                }
+                val restoredContent = change?.draftContentOrNull() ?: remoteContent
                 if (restoredContent == null) {
                     closeCodeEditorToBrowser()
                     Toast.makeText(context, Strings.error, Toast.LENGTH_SHORT).show()
@@ -979,11 +1063,13 @@ internal fun RepoDetailScreen(
                         onWorkspaceForward = { navigateCodeHistory(backward = false) },
                         onQuickOpen = { showCodeQuickOpen = true },
                         onGlobalSearch = { showCodeGlobalSearch = true },
+                        onOpenBlame = { showBlameFor = it },
+                        onOpenHistory = { showFileHistoryFor = it },
                         onDraftChanged = if (canWrite) ({ p, c, keep ->
-                            updateCodeDraftFromEditor(p, c, keep)
+                            updateCodeDraftFromEditor(p, c, codeDraftBases[p] ?: codeContent, keep)
                         }) else null,
                         onSaveDraft = if (canWrite) ({ p, c ->
-                            updateCodeDraftFromEditor(p, c, keepAsDraft = true)
+                            updateCodeDraftFromEditor(p, c, codeDraftBases[p] ?: codeContent, keepAsDraft = true)
                         }) else null,
                         onBack = { closeCodeEditorToBrowser() },
                     )
@@ -1042,32 +1128,6 @@ internal fun RepoDetailScreen(
         return
     }
     
-    // Blame screen
-    val safeBlameFile = showBlameFor
-    if (safeBlameFile != null) {
-        BlameViewScreen(
-            repo = repo,
-            file = safeBlameFile,
-            branch = selectedBranch,
-            onBack = { showBlameFor = null },
-            onCommitClick = { sha -> selectedCommitSha = sha; showBlameFor = null }
-        )
-        return
-    }
-
-    // File History screen
-    val safeHistoryFile = showFileHistoryFor
-    if (safeHistoryFile != null) {
-        FileHistoryScreen(
-            repo = repo,
-            file = safeHistoryFile,
-            branch = selectedBranch,
-            onBack = { showFileHistoryFor = null },
-            onCommitClick = { sha -> selectedCommitSha = sha; showFileHistoryFor = null }
-        )
-        return
-    }
-
     // Releases screen
     if (nav.selectedSection == RepoTab.RELEASES) {
         gs.git.vps.ui.screens.ReleasesScreen(
@@ -1692,6 +1752,7 @@ internal fun RepoDetailScreen(
                     }
                 },
                 onCommit = { showCodeCommitSheet = true },
+                onBranchFromDraft = { showCodeDraftBranch = true },
                 onDiscardFile = { discardCodeChange(it) },
                 onDiscardAll = { showCodeDiscardAllDialog = true },
                 onCreateFile = { createCodeFile(it) },
@@ -1787,14 +1848,58 @@ internal fun RepoDetailScreen(
         )
     }
     if (showDispatch && workflows.isNotEmpty()) DispatchWorkflowDialog(repo, workflows, branches, { showDispatch = false }) { showDispatch = false; scope.launch { workflowRuns = GitHubManager.getWorkflowRuns(context, repo.owner, repo.name) } }
+    if (showCodeDraftBranch) {
+        CodeDraftBranchDialog(
+            currentBranch = selectedBranch,
+            existingBranches = branches,
+            creating = codeDraftBranchCreating,
+            onCreate = { newBranch ->
+                codeDraftBranchCreating = true
+                scope.launch {
+                    val sourceBranch = selectedBranch
+                    val draftSnapshot = codeDraft.toMap()
+                    val baseSnapshot = codeDraftBases.toMap()
+                    val created = runCatching {
+                        GitHubManager.createBranch(context, repo.owner, repo.name, newBranch, sourceBranch)
+                    }.getOrDefault(false)
+                    codeDraftBranchCreating = false
+                    if (created) {
+                        CodeDraftStore.save(context, repo.fullName, newBranch, draftSnapshot)
+                        CodeDraftBaseStore.save(context, repo.fullName, newBranch, baseSnapshot)
+                        codeDraft.clear()
+                        codeDraftBases.clear()
+                        CodeDraftStore.save(context, repo.fullName, sourceBranch, emptyMap())
+                        CodeDraftBaseStore.save(context, repo.fullName, sourceBranch, emptyMap())
+                        showCodeDraftBranch = false
+                        branches = (branches + newBranch).distinct().sorted()
+                        selectedBranch = newBranch
+                        Toast.makeText(context, "draft moved to $newBranch", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "failed to create branch", Toast.LENGTH_LONG).show()
+                    }
+                }
+            },
+            onDismiss = { if (!codeDraftBranchCreating) showCodeDraftBranch = false },
+        )
+    }
     if (showCodeCommitSheet) {
         CodeCommitSheet(
             fileCount = codeDraft.size,
             changes = codeDraft.values,
             branch = selectedBranch,
+            defaultBranch = repo.defaultBranch,
             committing = codeCommitting,
             conflict = codeCommitConflict,
-            onCommit = { msg ->
+            onCommit = commitDraft@{ msg, createPullRequest ->
+                val unresolved = codeDraft.values.firstOrNull { change ->
+                    change.draftContentOrNull()?.let { "<<<<<<<" in it && ">>>>>>>" in it } == true
+                }
+                if (unresolved != null) {
+                    showCodeCommitSheet = false
+                    openCodeFile(GHContent(unresolved.path.substringAfterLast('/'), unresolved.path, "file", 0L, "", ""))
+                    Toast.makeText(context, "resolve conflict markers before commit", Toast.LENGTH_LONG).show()
+                    return@commitDraft
+                }
                 codeCommitting = true
                 codeCommitConflict = false
                 scope.launch {
@@ -1803,12 +1908,64 @@ internal fun RepoDetailScreen(
                     when (res) {
                         is CodeCommitResult.Success -> {
                             codeDraft.clear()
+                            codeDraftBases.clear()
                             persistCodeDraft()
+                            persistCodeDraftBases()
                             codeRefreshKey++
                             showCodeCommitSheet = false
-                            Toast.makeText(context, "committed", Toast.LENGTH_SHORT).show()
+                            val prCreated = if (createPullRequest && selectedBranch != repo.defaultBranch) {
+                                runCatching {
+                                    GitHubManager.createPullRequest(
+                                        context = context,
+                                        owner = repo.owner,
+                                        repo = repo.name,
+                                        title = msg,
+                                        body = "Created from GsGit Code workspace.\n\nCommit: ${res.commitSha}",
+                                        head = selectedBranch,
+                                        base = repo.defaultBranch,
+                                    )
+                                }.getOrDefault(false)
+                            } else null
+                            val notice = when (prCreated) {
+                                true -> "committed · pull request created"
+                                false -> "committed · pull request failed"
+                                null -> "committed"
+                            }
+                            Toast.makeText(context, notice, if (prCreated == false) Toast.LENGTH_LONG else Toast.LENGTH_SHORT).show()
                         }
-                        is CodeCommitResult.Conflict -> codeCommitConflict = true  // sheet остаётся, кнопка → «retry»
+                        is CodeCommitResult.Conflict -> {
+                            val rebased = GitHubManager.rebaseCodeDraft(
+                                context = context,
+                                owner = repo.owner,
+                                repo = repo.name,
+                                branch = selectedBranch,
+                                changes = codeDraft.values.toList(),
+                                bases = codeDraftBases.toMap(),
+                            )
+                            codeCommitConflict = true
+                            if (rebased.error != null) {
+                                Toast.makeText(context, "rebase error: ${rebased.error}", Toast.LENGTH_LONG).show()
+                            } else {
+                                codeDraft.clear()
+                                rebased.changes.forEach { codeDraft[it.path] = it }
+                                codeDraftBases.clear()
+                                codeDraftBases.putAll(rebased.bases)
+                                persistCodeDraft()
+                                persistCodeDraftBases()
+                                val firstConflict = rebased.conflictedPaths.firstOrNull()
+                                if (firstConflict != null) {
+                                    showCodeCommitSheet = false
+                                    openCodeFile(GHContent(firstConflict.substringAfterLast('/'), firstConflict, "file", 0L, "", ""))
+                                    Toast.makeText(
+                                        context,
+                                        "three-way rebase: ${rebased.conflictedPaths.size} file conflict(s)",
+                                        Toast.LENGTH_LONG,
+                                    ).show()
+                                } else {
+                                    Toast.makeText(context, "draft rebased onto latest head · review and retry", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }
                         is CodeCommitResult.Error ->
                             Toast.makeText(context, "commit error: ${res.message}", Toast.LENGTH_LONG).show()
                     }
@@ -1825,7 +1982,13 @@ internal fun RepoDetailScreen(
             confirmButton = {
                 GitHubTerminalButton(
                     label = "discard $n",
-                    onClick = { codeDraft.clear(); persistCodeDraft(); showCodeDiscardAllDialog = false },
+                    onClick = {
+                        codeDraft.clear()
+                        codeDraftBases.clear()
+                        persistCodeDraft()
+                        persistCodeDraftBases()
+                        showCodeDiscardAllDialog = false
+                    },
                     color = palette.error,
                 )
             },

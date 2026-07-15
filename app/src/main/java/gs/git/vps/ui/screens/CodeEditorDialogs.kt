@@ -266,6 +266,7 @@ private sealed class MergeBlock {
     data class Conflict(
         val base: String,
         val incoming: String,
+        val ancestor: String? = null,
         val baseName: String = "Current (Base)",
         val incomingName: String = "Incoming (Head)",
         var resolvedContent: String? = null
@@ -279,8 +280,10 @@ private fun parseConflictContent(content: String): List<MergeBlock> {
     
     var inConflict = false
     val baseBuilder = StringBuilder()
+    val ancestorBuilder = StringBuilder()
     val incomingBuilder = StringBuilder()
     var inIncoming = false
+    var inAncestor = false
     
     var baseLabel = "Current (Base)"
     var incomingLabel = "Incoming (Head)"
@@ -293,10 +296,17 @@ private fun parseConflictContent(content: String): List<MergeBlock> {
             }
             inConflict = true
             inIncoming = false
+            inAncestor = false
             baseLabel = line.substring(7).trim().ifBlank { "Current (Base)" }
             baseBuilder.clear()
+            ancestorBuilder.clear()
+            incomingBuilder.clear()
+        } else if (line.startsWith("|||||||") && inConflict) {
+            inAncestor = true
+            inIncoming = false
         } else if (line.startsWith("=======")) {
             if (inConflict) {
+                inAncestor = false
                 inIncoming = true
             } else {
                 currentNormal.append(line).append("\n")
@@ -308,14 +318,17 @@ private fun parseConflictContent(content: String): List<MergeBlock> {
                     MergeBlock.Conflict(
                         base = baseBuilder.toString().trimEnd('\n'),
                         incoming = incomingBuilder.toString().trimEnd('\n'),
+                        ancestor = ancestorBuilder.toString().trimEnd('\n').takeIf { it.isNotEmpty() },
                         baseName = baseLabel,
                         incomingName = incomingLabel
                     )
                 )
                 baseBuilder.clear()
+                ancestorBuilder.clear()
                 incomingBuilder.clear()
                 inConflict = false
                 inIncoming = false
+                inAncestor = false
             } else {
                 currentNormal.append(line).append("\n")
             }
@@ -323,6 +336,8 @@ private fun parseConflictContent(content: String): List<MergeBlock> {
             if (inConflict) {
                 if (inIncoming) {
                     incomingBuilder.append(line).append("\n")
+                } else if (inAncestor) {
+                    ancestorBuilder.append(line).append("\n")
                 } else {
                     baseBuilder.append(line).append("\n")
                 }
@@ -356,7 +371,9 @@ private fun assembleResolvedContent(blocks: List<MergeBlock>): String {
                 sb.append(block.content).append("\n")
             }
             is MergeBlock.Conflict -> {
-                val resolved = block.resolvedContent ?: "<<<<<<< ${block.baseName}\n${block.base}\n=======\n${block.incoming}\n>>>>>>> ${block.incomingName}"
+                val ancestor = block.ancestor?.let { "\n||||||| BASE\n$it" }.orEmpty()
+                val resolved = block.resolvedContent
+                    ?: "<<<<<<< ${block.baseName}\n${block.base}$ancestor\n=======\n${block.incoming}\n>>>>>>> ${block.incomingName}"
                 if (resolved.isNotEmpty()) {
                     sb.append(resolved).append("\n")
                 }
@@ -456,6 +473,32 @@ internal fun ConflictResolverDialog(
                                     color = Color(0xFFFF9500),
                                     fontFamily = JetBrainsMono
                                 )
+
+                                block.ancestor?.let { ancestor ->
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(palette.background.copy(alpha = 0.55f))
+                                            .padding(8.dp)
+                                    ) {
+                                        Text(
+                                            text = "Base ancestor",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = palette.textMuted,
+                                            fontFamily = JetBrainsMono
+                                        )
+                                        Spacer(Modifier.height(4.dp))
+                                        Text(
+                                            text = ancestor.ifBlank { "(empty)" },
+                                            fontSize = 10.sp,
+                                            fontFamily = JetBrainsMono,
+                                            color = palette.textMuted,
+                                            maxLines = 4,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
                                 
                                 val isBaseActive = block.resolvedContent == block.base
                                 Column(
@@ -710,4 +753,3 @@ internal fun computeGutterDiff(oldText: String, newText: String): List<GutterDif
     
     return states
 }
-

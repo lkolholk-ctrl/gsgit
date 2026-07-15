@@ -366,7 +366,7 @@ internal fun FileHistoryScreen(
                                 }
                             }
                             Text(
-                                c.sha,
+                                c.sha.take(7),
                                 fontSize = 11.sp, fontFamily = JetBrainsMono,
                                 color = palette.accent, fontWeight = FontWeight.Bold
                             )
@@ -377,4 +377,3 @@ internal fun FileHistoryScreen(
         }
     }
 }
-

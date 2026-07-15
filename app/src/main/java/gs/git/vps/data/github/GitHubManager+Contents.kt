@@ -60,7 +60,8 @@ internal suspend fun GitHubManager.getFileBlame(context: Context, owner: String,
             GHBlameRange(
                 startLine = r.optInt("startingLine"),
                 endLine = r.optInt("endingLine"),
-                sha = commit?.optString("abbreviatedOid") ?: "",
+                sha = commit?.optString("oid")?.takeIf { it.isNotBlank() }
+                    ?: commit?.optString("abbreviatedOid").orEmpty(),
                 message = commit?.optString("message")?.lineSequence()?.firstOrNull() ?: "",
                 author = commit?.optJSONObject("author")?.optString("name") ?: "?",
                 date = commit?.optJSONObject("author")?.optString("date") ?: "",

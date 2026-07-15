@@ -118,6 +118,7 @@ internal fun CodeBrowser(
     onGlobalSearch: () -> Unit,
     onCloseTab: (GHContent) -> Unit,
     onCommit: () -> Unit,
+    onBranchFromDraft: () -> Unit,
     onShowChanges: () -> Unit,
     onDiscardAll: () -> Unit,
     onCreateFile: (String) -> Unit,
@@ -201,6 +202,7 @@ internal fun CodeBrowser(
                     )
                 }
                 GitHubTerminalButton(label = "discard", onClick = onDiscardAll, color = palette.error)
+                GitHubTerminalButton(label = "branch", onClick = onBranchFromDraft, color = palette.textSecondary)
                 GitHubTerminalButton(label = "commit", onClick = onCommit, color = palette.accent)
             }
             Box(Modifier.fillMaxWidth().height(1.dp).background(palette.border.copy(alpha = 0.12f)))
