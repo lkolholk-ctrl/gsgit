@@ -133,8 +133,6 @@ import gs.git.vps.ui.theme.SeparatorColor
 import gs.git.vps.ui.theme.TextSecondary
 import gs.git.vps.ui.theme.TextTertiary
 import kotlinx.coroutines.launch
-import org.json.JSONArray
-import org.json.JSONObject
 
 internal enum class GitHubEditorMode { EDIT, READ, PREVIEW, DIFF }
 
@@ -205,6 +203,10 @@ fun CodeEditorScreen(
     }
 
     val prefs = remember(context) { context.getSharedPreferences("github_prefs", Context.MODE_PRIVATE) }
+    val editorIndentUnit = remember(file.path, branch) {
+        if (prefs.getBoolean("editor_use_tabs", false)) "\t"
+        else " ".repeat(prefs.getInt("editor_tab_size", 4).coerceIn(1, 8))
+    }
     var textState by remember { mutableStateOf(TextFieldValue(initialContent)) }
     var savedContent by remember { mutableStateOf(initialContent) }
     var savedSha by remember { mutableStateOf(file.sha) }
@@ -279,6 +281,15 @@ fun CodeEditorScreen(
     val text = textState.text
     val lines = remember(text) { text.lines() }
     val hasChanges = text != savedContent
+    val diagnosticsSkipped = text.length > 1_000_000
+    var diagnostics by remember(currentFile.path, branch) { mutableStateOf<List<EditorDiagnostic>>(emptyList()) }
+    var showDiagnosticsDialog by rememberSaveable(currentFile.path, branch) { mutableStateOf(false) }
+    LaunchedEffect(text, ext) {
+        kotlinx.coroutines.delay(280)
+        diagnostics = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            analyzeEditorText(text, ext)
+        }
+    }
     // Workspace tabs must not lose the latest keystrokes when switching through Quick Open/history.
     // The parent owns the typed draft and decides whether a reverted remote file should be removed.
     val latestDraftChanged by rememberUpdatedState(onDraftChanged)
@@ -305,7 +316,6 @@ fun CodeEditorScreen(
             onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
         }
     }
-    val commentPrefix = remember(ext) { commentPrefixForExtension(ext) }
     val currentLine = remember(textState.selection, text) {
         text.take(textState.selection.start.coerceIn(0, text.length)).count { it == '\n' } + 1
     }
@@ -444,30 +454,7 @@ fun CodeEditorScreen(
     }
 
     fun applyEditorInput(newState: TextFieldValue) {
-        val old = textState
-        val insertedNewLine = newState.text.length == old.text.length + 1 &&
-            newState.selection.start == newState.selection.end &&
-            newState.selection.start > 0 &&
-            newState.text.getOrNull(newState.selection.start - 1) == '\n'
-
-        if (!insertedNewLine) {
-            applyState(newState)
-            return
-        }
-
-        val cursorAfterBreak = newState.selection.start
-        val previousLineEnd = (cursorAfterBreak - 2).coerceAtLeast(0)
-        val previousLineStart = old.text.lastIndexOf('\n', previousLineEnd).let { if (it < 0) 0 else it + 1 }
-        val previousLine = old.text.substring(previousLineStart, (previousLineEnd + 1).coerceAtMost(old.text.length))
-        val indent = previousLine.takeWhile { it == ' ' || it == '\t' }
-        val extra = if (previousLine.trimEnd().endsWith("{") || previousLine.trimEnd().endsWith("[") || previousLine.trimEnd().endsWith("(")) "    " else ""
-        val insert = indent + extra
-        if (insert.isEmpty()) {
-            applyState(newState)
-            return
-        }
-        val adjusted = newState.text.substring(0, cursorAfterBreak) + insert + newState.text.substring(cursorAfterBreak)
-        applyState(TextFieldValue(adjusted, TextRange(cursorAfterBreak + insert.length)))
+        applyState(applySmartEditorInput(textState, newState, ext, editorIndentUnit))
     }
 
     fun insertText(value: String) {
@@ -504,27 +491,7 @@ fun CodeEditorScreen(
     }
 
     fun toggleComment() {
-        val prefix = commentPrefix ?: return
-        val selection = textState.selection
-        val startOffset = minOf(selection.start, selection.end).coerceIn(0, text.length)
-        val endOffset = maxOf(selection.start, selection.end).coerceIn(0, text.length)
-        val startLine = text.take(startOffset).count { it == '\n' }
-        val endLine = text.take(endOffset).count { it == '\n' }
-        val mutableLines = lines.toMutableList()
-        val range = startLine..endLine.coerceAtMost(mutableLines.lastIndex.coerceAtLeast(0))
-        val uncomment = range.all { idx -> mutableLines[idx].trimStart().startsWith(prefix) }
-        range.forEach { idx ->
-            val original = mutableLines[idx]
-            val indent = original.takeWhile { it == ' ' || it == '\t' }
-            val trimmed = original.removePrefix(indent)
-            mutableLines[idx] = if (uncomment) {
-                if (trimmed.startsWith(prefix)) indent + trimmed.removePrefix(prefix).removePrefix(" ") else original
-            } else {
-                indent + prefix + if (trimmed.isNotBlank()) " $trimmed" else ""
-            }
-        }
-        val newText = mutableLines.joinToString("\n")
-        applyState(TextFieldValue(newText, selection.coerceIn(newText.length)))
+        applyState(toggleEditorComment(textState, ext))
     }
 
     fun goToLine(lineNumber: Int) {
@@ -559,47 +526,19 @@ fun CodeEditorScreen(
         textState = textState.copy(selection = TextRange(0, text.length))
     }
 
-    fun formatJsonDocument() {
-        if (ext != "json") return
-        val formatted = try {
-            val trimmed = text.trim()
-            when {
-                trimmed.startsWith("[") -> JSONArray(trimmed).toString(2)
-                trimmed.startsWith("{") -> JSONObject(trimmed).toString(2)
-                else -> null
-            }
-        } catch (_: Exception) {
-            null
-        }
-        if (formatted == null) {
-            Toast.makeText(context, "Invalid JSON", Toast.LENGTH_SHORT).show()
-            return
-        }
-        applyState(TextFieldValue(formatted, TextRange(0)))
-    }
-
     fun formatCodeDocument() {
-        if (ext == "json") {
-            formatJsonDocument()
+        val result = formatEditorDocument(textState.text, ext, editorIndentUnit)
+        if (result.error != null) {
+            Toast.makeText(context, result.error, Toast.LENGTH_SHORT).show()
             return
         }
-        val currentText = textState.text
-        val linesList = currentText.split("\n")
-        var indentLevel = 0
-        val tabSize = prefs.getInt("editor_tab_size", 4)
-        val tabString = if (prefs.getBoolean("editor_use_tabs", false)) "\t" else " ".repeat(tabSize)
-        val formatted = linesList.joinToString("\n") { line ->
-            var trimmed = line.trim()
-            if (trimmed.startsWith("}") || trimmed.startsWith("</") || trimmed.startsWith("]") || trimmed.startsWith(")")) {
-                indentLevel = maxOf(0, indentLevel - 1)
-            }
-            val padded = tabString.repeat(indentLevel) + trimmed
-            if ((trimmed.endsWith("{") || trimmed.endsWith("<") || trimmed.startsWith("<") && !trimmed.startsWith("</") && trimmed.endsWith(">") && !trimmed.endsWith("/>") || trimmed.endsWith("(")) && !trimmed.contains("</")) {
-                indentLevel++
-            }
-            padded
+        if (result.text == textState.text) {
+            Toast.makeText(context, "Already formatted", Toast.LENGTH_SHORT).show()
+            return
         }
-        applyState(TextFieldValue(formatted, TextRange(0)))
+        val cursor = textState.selection.start.coerceIn(0, result.text.length)
+        applyState(TextFieldValue(result.text, TextRange(cursor)))
+        Toast.makeText(context, "Formatted: ${result.label}", Toast.LENGTH_SHORT).show()
     }
 
     fun replaceCurrent() {
@@ -644,6 +583,17 @@ fun CodeEditorScreen(
     LaunchedEffect(matches) {
         if (matches.isEmpty()) currentMatchIndex = 0
         else if (currentMatchIndex !in matches.indices) currentMatchIndex = 0
+    }
+
+    if (showDiagnosticsDialog) {
+        EditorDiagnosticsDialog(
+            diagnostics = diagnostics,
+            onSelect = { diagnostic ->
+                goToLine(diagnostic.line)
+                showDiagnosticsDialog = false
+            },
+            onDismiss = { showDiagnosticsDialog = false },
+        )
     }
 
     if (showGoToLine) {
@@ -1335,7 +1285,14 @@ fun CodeEditorScreen(
             }
         }
 
-        if (!isImage && mode == GitHubEditorMode.EDIT && !zenMode && !lite) {
+        AnimatedVisibility(diagnostics.isNotEmpty() && !isImage && !zenMode) {
+            EditorDiagnosticsBar(
+                diagnostics = diagnostics,
+                onOpen = { showDiagnosticsDialog = true },
+            )
+        }
+
+        if (!isImage && mode == GitHubEditorMode.EDIT && !zenMode) {
             UpgradedEditorAccessoryBar(
                 palette = palette,
                 onInsert = { insertText(it) },
@@ -1633,6 +1590,10 @@ fun CodeEditorScreen(
                 currentLine = currentLine,
                 currentColumn = currentColumn,
                 mode = mode,
+                indentLabel = if (editorIndentUnit == "\t") "Tabs" else "Spaces: ${editorIndentUnit.length}",
+                diagnosticErrors = diagnostics.count { it.severity == EditorDiagnosticSeverity.ERROR },
+                diagnosticWarnings = diagnostics.count { it.severity == EditorDiagnosticSeverity.WARNING },
+                diagnosticsSkipped = diagnosticsSkipped,
                 onBranchClick = { showBranchSwitcher = true }
             )
         }

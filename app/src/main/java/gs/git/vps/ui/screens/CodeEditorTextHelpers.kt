@@ -299,13 +299,6 @@ internal fun buildEditorSymbols(lines: List<String>, ext: String): List<EditorSy
     return symbols
 }
 
-internal fun commentPrefixForExtension(ext: String): String? = when (ext) {
-    "kt", "java", "js", "ts", "tsx", "jsx", "c", "cpp", "h", "hpp", "cs", "swift", "go", "rs", "scala", "gradle" -> "//"
-    "py", "sh", "bash", "yaml", "yml", "toml", "ini", "properties", "rb", "pl" -> "#"
-    "sql", "lua" -> "--"
-    else -> null
-}
-
 internal fun TextRange.coerceIn(length: Int): TextRange {
     val safeStart = start.coerceIn(0, length)
     val safeEnd = end.coerceIn(0, length)
@@ -322,4 +315,3 @@ private fun openUrl(context: Context, url: String) {
         Toast.makeText(context, Strings.error, Toast.LENGTH_SHORT).show()
     }
 }
-

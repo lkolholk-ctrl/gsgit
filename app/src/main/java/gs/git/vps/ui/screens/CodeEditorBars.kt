@@ -356,6 +356,10 @@ internal fun EditorStatusBar(
     currentLine: Int,
     currentColumn: Int,
     mode: GitHubEditorMode,
+    indentLabel: String,
+    diagnosticErrors: Int,
+    diagnosticWarnings: Int,
+    diagnosticsSkipped: Boolean,
     onBranchClick: () -> Unit
 ) {
     Row(
@@ -364,9 +368,10 @@ internal fun EditorStatusBar(
             .height(26.dp)
             .background(palette.surface)
             .border(0.5.dp, palette.border, RoundedCornerShape(0.dp))
+            .horizontalScroll(rememberScrollState())
             .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // Left side: Branch & File type
         Row(
@@ -438,7 +443,7 @@ internal fun EditorStatusBar(
             Box(Modifier.width(1.dp).height(12.dp).background(palette.border))
 
             Text(
-                text = "Spaces: 4",
+                text = indentLabel,
                 color = palette.textSecondary,
                 fontFamily = JetBrainsMono,
                 fontSize = 11.sp
@@ -455,6 +460,26 @@ internal fun EditorStatusBar(
 
             Box(Modifier.width(1.dp).height(12.dp).background(palette.border))
 
+            Text(
+                text = when {
+                    diagnosticsSkipped -> "analysis off >1 MB"
+                    diagnosticErrors > 0 -> "× $diagnosticErrors"
+                    diagnosticWarnings > 0 -> "! $diagnosticWarnings"
+                    else -> "✓ 0 problems"
+                },
+                color = when {
+                    diagnosticsSkipped -> palette.textMuted
+                    diagnosticErrors > 0 -> palette.error
+                    diagnosticWarnings > 0 -> palette.warning
+                    else -> palette.syntaxString
+                },
+                fontFamily = JetBrainsMono,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+            )
+
+            Box(Modifier.width(1.dp).height(12.dp).background(palette.border))
+
             val lockText = if (mode == GitHubEditorMode.READ) "L" else "e"
             Text(
                 text = lockText,
@@ -466,4 +491,3 @@ internal fun EditorStatusBar(
         }
     }
 }
-
