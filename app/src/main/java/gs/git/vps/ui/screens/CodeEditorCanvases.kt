@@ -356,16 +356,19 @@ internal fun ModernReadCanvas(
 }
 
 @Composable
-internal fun ModernImageCanvas(file: GHContent) {
+internal fun ModernImageCanvas(file: GHContent, bytes: ByteArray?) {
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
+    val imageLoader = rememberReadmeImageLoader(LocalContext.current)
+    val model: Any? = bytes?.takeIf { it.isNotEmpty() } ?: file.downloadUrl.takeIf { it.isNotBlank() }
+    var decodeFailed by remember(file.path, model) { mutableStateOf(false) }
     val state = rememberTransformableState { zoomChange, panChange, _ ->
         scale = (scale * zoomChange).coerceIn(0.75f, 6f)
         offset += panChange
     }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
-        if (file.downloadUrl.isBlank()) {
+        if (model == null) {
             Column(
                 Modifier.align(Alignment.Center),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -376,8 +379,11 @@ internal fun ModernImageCanvas(file: GHContent) {
             }
         } else {
             AsyncImage(
-                model = file.downloadUrl,
+                model = model,
+                imageLoader = imageLoader,
                 contentDescription = file.name,
+                onSuccess = { decodeFailed = false },
+                onError = { decodeFailed = true },
                 modifier = Modifier.fillMaxSize().graphicsLayer(
                     scaleX = scale,
                     scaleY = scale,
@@ -385,6 +391,13 @@ internal fun ModernImageCanvas(file: GHContent) {
                     translationY = offset.y
                 ).transformable(state)
             )
+            if (decodeFailed) {
+                Text(
+                    "Image decoder could not render this file",
+                    color = Color.White.copy(alpha = 0.85f),
+                    modifier = Modifier.align(Alignment.Center),
+                )
+            }
         }
 
         Row(
@@ -392,10 +405,44 @@ internal fun ModernImageCanvas(file: GHContent) {
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            MetaPill("IMAGE", Color(0xFF58A6FF))
+            MetaPill(if (file.name.endsWith(".svg", ignoreCase = true)) "SVG" else "IMAGE", Color(0xFF58A6FF))
             Text(file.name, color = Color.White, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Icon(Icons.Rounded.ZoomOutMap, null, tint = Color.White.copy(alpha = 0.85f), modifier = Modifier.size(18.dp))
         }
     }
 }
 
+@Composable
+internal fun ModernJsonPreviewCanvas(text: String, fontSize: Int) {
+    val palette = AiModuleTheme.colors
+    val preview = remember(text) { formatEditorDocument(text, "json", "  ") }
+    Column(Modifier.fillMaxSize().background(palette.background)) {
+        Row(
+            Modifier.fillMaxWidth().background(
+                if (preview.error == null) palette.accent.copy(alpha = 0.10f)
+                else palette.error.copy(alpha = 0.10f),
+            ).padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            MetaPill(if (preview.error == null) "JSON" else "INVALID JSON", if (preview.error == null) palette.accent else palette.error)
+            Text(
+                preview.error ?: "structured preview · 2-space indentation",
+                color = if (preview.error == null) palette.textSecondary else palette.error,
+                fontFamily = JetBrainsMono,
+                fontSize = 11.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        ModernReadCanvas(
+            lines = (if (preview.error == null) preview.text else text).lines(),
+            ext = "json",
+            lineNumbers = true,
+            wrapLines = true,
+            currentHighlightedLine = null,
+            fontSize = fontSize,
+            gutterStates = emptyList(),
+        )
+    }
+}

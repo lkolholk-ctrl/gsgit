@@ -48,14 +48,24 @@ internal object CodeWorkspaceCache {
                 }
                 CodeCacheResult(remote, CodeCacheSource.NETWORK, savedAt)
             }
+        } catch (rejected: CodeFileRejectedException) {
+            throw rejected
         } catch (_: Exception) {
-            read(cacheFile)?.takeIf { it.optString("kind") == "text" }?.let { cached ->
-                CodeCacheResult(
-                    value = cached.optString("content", ""),
-                    source = CodeCacheSource.DISK,
-                    cachedAt = cached.optLong("savedAt", cacheFile.baseFile.lastModified()),
+            val cached = read(cacheFile)?.takeIf { it.optString("kind") == "text" }
+                ?: return@withContext null
+            val bytes = cached.optString("content", "").toByteArray(Charsets.UTF_8)
+            if (bytes.size.toLong() > CODE_TEXT_MAX_BYTES) {
+                cacheFile.delete()
+                throw CodeFileRejectedException(
+                    "Cached file is ${formatCodeFileBytes(bytes.size.toLong())}; safe editor limit is ${formatCodeFileBytes(CODE_TEXT_MAX_BYTES)}.",
+                    bytes.size.toLong(),
                 )
             }
+            CodeCacheResult(
+                value = decodeCodeText(bytes),
+                source = CodeCacheSource.DISK,
+                cachedAt = cached.optLong("savedAt", cacheFile.baseFile.lastModified()),
+            )
         }
     }
 

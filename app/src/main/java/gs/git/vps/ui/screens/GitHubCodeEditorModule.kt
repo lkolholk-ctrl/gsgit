@@ -157,6 +157,7 @@ fun CodeEditorScreen(
     file: GHContent,
     branch: String,
     initialContent: String,
+    previewBytes: ByteArray? = null,
     initialLine: Int? = null,
     readOnly: Boolean = false,
     lite: Boolean = false,
@@ -213,7 +214,16 @@ fun CodeEditorScreen(
     var textState by remember { mutableStateOf(TextFieldValue(initialContent)) }
     var savedContent by remember { mutableStateOf(initialContent) }
     var savedSha by remember { mutableStateOf(file.sha) }
-    var mode by remember { mutableStateOf(GitHubEditorMode.EDIT) }
+    val initialFilePolicy = remember(file.path) { codeFilePolicy(file.name) }
+    var mode by remember(file.path, branch) {
+        mutableStateOf(
+            when {
+                readOnly && initialFilePolicy.previewable -> GitHubEditorMode.PREVIEW
+                readOnly -> GitHubEditorMode.READ
+                else -> GitHubEditorMode.EDIT
+            },
+        )
+    }
     var workspaceHasSavedDraft by remember(file.path, branch) { mutableStateOf(initialHasDraft) }
     var lineNumbers by rememberSaveable(file.path, branch) { mutableStateOf(true) }
     var wrapLines by rememberSaveable(file.path, branch) { mutableStateOf(prefs.getBoolean("editor_word_wrap", false)) }
@@ -279,8 +289,11 @@ fun CodeEditorScreen(
     val density = LocalDensity.current
 
     val ext = remember(currentFile.path) { currentFile.name.substringAfterLast(".", "").lowercase() }
-    val isImage = ext in listOf("png", "jpg", "jpeg", "gif", "webp", "svg", "ico")
+    val isImage = ext in listOf("png", "jpg", "jpeg", "gif", "webp", "bmp", "ico")
     val isMarkdown = ext in listOf("md", "markdown")
+    val isJson = ext == "json"
+    val isSvg = ext == "svg"
+    val supportsPreview = isMarkdown || isJson || isSvg
     val text = textState.text
     val lines = remember(text) { text.lines() }
     val hasChanges = text != savedContent
@@ -1026,7 +1039,6 @@ fun CodeEditorScreen(
                 showSearch = showSearch,
                 showBlame = showBlame,
                 mode = mode,
-                isMarkdown = isMarkdown,
                 fontSize = fontSize,
                 onToggleLineNumbers = { lineNumbers = !lineNumbers },
                 onToggleWrap = { wrapLines = !wrapLines },
@@ -1035,7 +1047,7 @@ fun CodeEditorScreen(
                 onToggleBlame = { showBlame = !showBlame; showMoreMenu = false },
                 onCycleMode = {
                     mode = when (mode) {
-                        GitHubEditorMode.EDIT -> if (isMarkdown) GitHubEditorMode.PREVIEW else GitHubEditorMode.READ
+                        GitHubEditorMode.EDIT -> if (supportsPreview) GitHubEditorMode.PREVIEW else GitHubEditorMode.READ
                         GitHubEditorMode.PREVIEW -> GitHubEditorMode.READ
                         GitHubEditorMode.READ -> GitHubEditorMode.DIFF
                         GitHubEditorMode.DIFF -> GitHubEditorMode.EDIT
@@ -1177,7 +1189,7 @@ fun CodeEditorScreen(
                 matchCount = matches.size,
                 currentMatchNumber = if (matches.isEmpty()) 0 else currentMatchIndex + 1,
                 onSetMode = { mode = it },
-                isMarkdown = isMarkdown,
+                supportsPreview = supportsPreview,
                 hasChanges = hasChanges
             )
             run {
@@ -1347,7 +1359,7 @@ fun CodeEditorScreen(
                 val contentModifier = if (zenMode) Modifier.statusBarsPadding().fillMaxSize() else Modifier.fillMaxSize()
                 Box(contentModifier) {
                     when {
-                        isImage -> ModernImageCanvas(file)
+                        isImage -> ModernImageCanvas(currentFile, previewBytes)
                         isMarkdown && mode == GitHubEditorMode.PREVIEW -> {
                             val mdRepo = remember(repoOwner, repoName, branch) {
                                 GHRepo(name = repoName, fullName = "$repoOwner/$repoName", description = "",
@@ -1365,6 +1377,11 @@ fun CodeEditorScreen(
                                 }
                             )
                         }
+                        isJson && mode == GitHubEditorMode.PREVIEW -> ModernJsonPreviewCanvas(text, fontSize)
+                        isSvg && mode == GitHubEditorMode.PREVIEW -> ModernImageCanvas(
+                            currentFile,
+                            text.toByteArray(Charsets.UTF_8),
+                        )
                         mode == GitHubEditorMode.READ -> ModernReadCanvas(lines, ext, lineNumbers, wrapLines, currentMatch?.line, fontSize, gutterStates)
                         mode == GitHubEditorMode.DIFF -> ModernDiffCanvas(savedContent, text, fontSize)
                         else -> ModernEditCanvas(

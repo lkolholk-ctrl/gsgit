@@ -461,21 +461,6 @@ private fun CodeBrowserFilter(query: String, onChange: (String) -> Unit) {
     )
 }
 
-/**
- * Расширения, которые НЕ открываем в текст-редакторе (бинарники/медиа/шрифты/архивы) — иначе мусор.
- * Гард S5: openCodeFile проверяет это перед открытием. internal — зовётся из RepoModule.
- */
-private val CODE_BINARY_EXTS = setOf(
-    "png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "tiff", "heic", "psd", "ai", "sketch", "fig",
-    "pdf", "zip", "tar", "gz", "tgz", "bz2", "xz", "7z", "rar", "jar", "apk", "aab", "war", "aar",
-    "exe", "dll", "so", "o", "a", "class", "dex", "bin", "dat", "db", "sqlite", "realm", "lock",
-    "mp3", "wav", "flac", "ogg", "m4a", "aac", "opus", "mp4", "mkv", "mov", "avi", "webm", "m4v",
-    "ttf", "otf", "woff", "woff2", "eot", "glb", "gltf", "obj", "fbx", "blend", "wasm",
-)
-
-internal fun isLikelyBinaryFile(name: String): Boolean =
-    name.substringAfterLast('.', "").lowercase() in CODE_BINARY_EXTS
-
 /** Apply the draft as an overlay without mutating the remote directory response. */
 private fun applyCodeChangesToDirectory(
     remote: List<GHContent>,

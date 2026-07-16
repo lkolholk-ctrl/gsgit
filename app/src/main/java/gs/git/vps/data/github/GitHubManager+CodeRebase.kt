@@ -1,8 +1,6 @@
 package gs.git.vps.data.github
 
 import android.content.Context
-import android.util.Base64
-import org.json.JSONObject
 
 internal data class CodeDraftRebaseResult(
     val changes: List<CodeChange>,
@@ -19,16 +17,15 @@ internal suspend fun GitHubManager.getCodeRemoteText(
     branch: String,
     path: String,
 ): String? {
-    val cleanPath = path.trim('/')
-    val response = request(
-        context,
-        "${repoPath(owner, repo, "/contents/${encPath(cleanPath)}")}${refQuery(branch)}",
-        trackErrors = false,
-    )
-    if (response.code == 404) return null
-    if (!response.success) throw IllegalStateException("failed to read $cleanPath (${response.code})")
-    val encoded = JSONObject(response.body).optString("content", "").replace("\n", "")
-    return String(Base64.decode(encoded, Base64.DEFAULT))
+    val remote = getCodeRemoteBytes(
+        context = context,
+        owner = owner,
+        repo = repo,
+        branch = branch,
+        path = path,
+        maxBytes = CODE_TEXT_MAX_BYTES,
+    ) ?: return null
+    return decodeCodeText(remote.bytes)
 }
 
 /** Rebase a local A/M/D/R draft onto the latest branch contents without dropping either side. */

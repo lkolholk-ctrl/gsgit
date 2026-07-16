@@ -189,7 +189,6 @@ internal fun EditorMoreMenu(
     showSearch: Boolean,
     showBlame: Boolean,
     mode: GitHubEditorMode,
-    isMarkdown: Boolean,
     fontSize: Int,
     onToggleLineNumbers: () -> Unit,
     onToggleWrap: () -> Unit,
@@ -545,7 +544,7 @@ internal fun EditorInfoStrip(
     matchCount: Int,
     currentMatchNumber: Int,
     onSetMode: (GitHubEditorMode) -> Unit,
-    isMarkdown: Boolean,
+    supportsPreview: Boolean,
     hasChanges: Boolean
 ) {
     val palette = AiModuleTheme.colors
@@ -559,7 +558,7 @@ internal fun EditorInfoStrip(
     ) {
         ModePill("Edit", mode == GitHubEditorMode.EDIT) { onSetMode(GitHubEditorMode.EDIT) }
         ModePill("Read", mode == GitHubEditorMode.READ) { onSetMode(GitHubEditorMode.READ) }
-        if (isMarkdown) ModePill("Preview", mode == GitHubEditorMode.PREVIEW) { onSetMode(GitHubEditorMode.PREVIEW) }
+        if (supportsPreview) ModePill("Preview", mode == GitHubEditorMode.PREVIEW) { onSetMode(GitHubEditorMode.PREVIEW) }
         ModePill("Diff", mode == GitHubEditorMode.DIFF) { onSetMode(GitHubEditorMode.DIFF) }
         MetaPill("Ln $currentLine", palette.accent)
         MetaPill("Col $currentColumn", palette.textSecondary)
@@ -751,4 +750,3 @@ private fun EditorActionChip(text: String, onClick: () -> Unit) {
         Text(text, color = palette.textPrimary, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
     }
 }
-

@@ -261,6 +261,8 @@ internal fun RepoDetailScreen(
     // Code workspace: current editor file. null = browser is visible.
     var codeEditorFile by rememberSaveable(repo.fullName, stateSaver = NullableGitHubContentSaver) { mutableStateOf<GHContent?>(null) }
     var codeEditorContent by remember { mutableStateOf<String?>(null) }
+    var codeEditorPreviewBytes by remember { mutableStateOf<ByteArray?>(null) }
+    var codeEditorLoadIssue by remember { mutableStateOf<String?>(null) }
     var codeEditorOfflineCache by remember { mutableStateOf(false) }
     var codeDraftLoaded by remember(repo.fullName) { mutableStateOf(false) }
     // 1.0.55: one state-holder owns draft, ancestors, tabs and navigation history.
@@ -287,6 +289,8 @@ internal fun RepoDetailScreen(
                 ?: GHContent(path.substringAfterLast('/'), path, "file", 0L, "", "")
         }
         codeEditorContent = activePath?.let { codeDraft[it]?.draftContentOrNull() }
+        codeEditorPreviewBytes = null
+        codeEditorLoadIssue = null
         codeEditorOfflineCache = false
         codeDraftLoaded = true
         if (loadResult.recovered) {
@@ -332,8 +336,9 @@ internal fun RepoDetailScreen(
     }
     // Открыть файл в Code-редакторе (из браузера/недавних/панели изменений): recents + draft-aware фетч.
     fun openCodeFile(f: GHContent, recordHistory: Boolean = true) {
-        if (isLikelyBinaryFile(f.name)) {
-            Toast.makeText(context, "binary file — can't open in editor", Toast.LENGTH_SHORT).show()
+        val guard = codeFileGuardMessage(f.name, f.size)
+        if (guard != null) {
+            Toast.makeText(context, guard, Toast.LENGTH_LONG).show()
             return
         }
         val previousPath = codeEditorFile?.path
@@ -358,6 +363,8 @@ internal fun RepoDetailScreen(
         CodeDraftStore.saveRecents(context, repo.fullName, codeRecents.map { it.path })  // S4: персист
         codeEditorFile = f
         codeEditorContent = codeDraft[f.path]?.draftContentOrNull()
+        codeEditorPreviewBytes = null
+        codeEditorLoadIssue = null
         codeEditorOfflineCache = false
         persistCodeWorkspace(activePath = f.path)
     }
@@ -371,6 +378,8 @@ internal fun RepoDetailScreen(
             val next = codeTabs.getOrNull(index.coerceAtMost(codeTabs.lastIndex))
             codeEditorFile = next
             codeEditorContent = next?.let { codeDraft[it.path]?.draftContentOrNull() }
+            codeEditorPreviewBytes = null
+            codeEditorLoadIssue = null
         }
         persistCodeWorkspace(activePath = codeEditorFile?.path)
     }
@@ -392,6 +401,8 @@ internal fun RepoDetailScreen(
     fun closeCodeEditorToBrowser() {
         codeEditorFile = null
         codeEditorContent = null
+        codeEditorPreviewBytes = null
+        codeEditorLoadIssue = null
         codeEditorOfflineCache = false
         persistCodeWorkspace(activePath = null)
     }
@@ -1020,31 +1031,76 @@ internal fun RepoDetailScreen(
         val codeContent = codeEditorContent
         LaunchedEffect(codeFile.path, selectedBranch, codeDraftLoaded) {
             if (codeDraftLoaded && codeEditorContent == null) {
-                val change = codeDraft[codeFile.path]
-                val needsRemoteBase = change != null && change !is CodeAdd && codeFile.path !in codeDraftBases
-                val remoteResult = if (change?.draftContentOrNull() == null || needsRemoteBase) {
-                    runCatching {
-                        CodeWorkspaceCache.loadText(
+                codeEditorLoadIssue = null
+                val filePolicy = codeFilePolicy(codeFile.name)
+                if (filePolicy.kind == CodeFileKind.IMAGE) {
+                    try {
+                        val remote = GitHubManager.getCodeRemoteBytes(
                             context = context,
                             owner = repo.owner,
                             repo = repo.name,
                             branch = selectedBranch,
-                            path = change?.contentSourcePath() ?: codeFile.path,
+                            path = codeFile.path,
+                            maxBytes = filePolicy.maxBytes,
+                            knownSha = codeFile.sha.takeIf { it.isNotBlank() },
+                            knownSize = codeFile.size,
                         )
-                    }.getOrNull()
-                } else null
-                val remoteContent = remoteResult?.value
-                codeEditorOfflineCache = remoteResult?.source == CodeCacheSource.DISK
-                if (needsRemoteBase && remoteContent != null) {
-                    codeDraftBases[codeFile.path] = remoteContent
-                    persistCodeDraftBases()
-                }
-                val restoredContent = change?.draftContentOrNull() ?: remoteContent
-                if (restoredContent == null) {
-                    closeCodeEditorToBrowser()
-                    Toast.makeText(context, Strings.error, Toast.LENGTH_SHORT).show()
+                        if (remote == null) {
+                            codeEditorLoadIssue = "The file no longer exists on $selectedBranch."
+                        } else {
+                            codeEditorPreviewBytes = remote.bytes
+                            codeEditorContent = ""
+                            val resolved = codeFile.copy(
+                                size = remote.size,
+                                sha = remote.sha.ifBlank { codeFile.sha },
+                                downloadUrl = remote.downloadUrl.ifBlank { codeFile.downloadUrl },
+                            )
+                            codeEditorFile = resolved
+                            val tabIndex = codeTabs.indexOfFirst { it.path == resolved.path }
+                            if (tabIndex >= 0) codeTabs[tabIndex] = resolved
+                        }
+                    } catch (rejected: CodeFileRejectedException) {
+                        rejected.actualBytes?.let { actual -> codeEditorFile = codeFile.copy(size = actual) }
+                        codeEditorLoadIssue = rejected.message
+                        codeEditorContent = ""
+                    } catch (_: Exception) {
+                        codeEditorLoadIssue = "Preview could not be loaded from GitHub."
+                        codeEditorContent = ""
+                    }
                 } else {
-                    codeEditorContent = restoredContent
+                    val change = codeDraft[codeFile.path]
+                    val needsRemoteBase = change != null && change !is CodeAdd && codeFile.path !in codeDraftBases
+                    try {
+                        val remoteResult = if (change?.draftContentOrNull() == null || needsRemoteBase) {
+                            CodeWorkspaceCache.loadText(
+                                context = context,
+                                owner = repo.owner,
+                                repo = repo.name,
+                                branch = selectedBranch,
+                                path = change?.contentSourcePath() ?: codeFile.path,
+                            )
+                        } else null
+                        val remoteContent = remoteResult?.value
+                        codeEditorOfflineCache = remoteResult?.source == CodeCacheSource.DISK
+                        if (needsRemoteBase && remoteContent != null) {
+                            codeDraftBases[codeFile.path] = remoteContent
+                            persistCodeDraftBases()
+                        }
+                        val restoredContent = change?.draftContentOrNull() ?: remoteContent
+                        if (restoredContent == null) {
+                            codeEditorLoadIssue = "The file no longer exists on $selectedBranch."
+                            codeEditorContent = ""
+                        } else {
+                            codeEditorContent = restoredContent
+                        }
+                    } catch (rejected: CodeFileRejectedException) {
+                        rejected.actualBytes?.let { actual -> codeEditorFile = codeFile.copy(size = actual) }
+                        codeEditorLoadIssue = rejected.message
+                        codeEditorContent = ""
+                    } catch (_: Exception) {
+                        codeEditorLoadIssue = "The file could not be loaded from GitHub or offline cache."
+                        codeEditorContent = ""
+                    }
                 }
             }
         }
@@ -1057,7 +1113,19 @@ internal fun RepoDetailScreen(
             enter = slideInHorizontally(animationSpec = tween(260)) { it } + fadeIn(tween(260)),
             exit = fadeOut(tween(120)),
         ) {
-            if (codeContent == null) {
+            val loadIssue = codeEditorLoadIssue
+            if (loadIssue != null) {
+                CodeFileGuardScreen(
+                    file = codeFile,
+                    message = loadIssue,
+                    onBack = { closeCodeEditorToBrowser() },
+                    onOpenGitHub = {
+                        val webBase = repo.htmlUrl.ifBlank { "${GitHubManager.getWebUrl()}/${repo.fullName}" }
+                        val url = "$webBase/blob/$selectedBranch/${codeFile.path}"
+                        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                    },
+                )
+            } else if (codeContent == null) {
                 AiModuleSurface {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { AiModuleSpinner(label = "loading…") }
                 }
@@ -1069,8 +1137,9 @@ internal fun RepoDetailScreen(
                         file = codeFile,
                         branch = selectedBranch,
                         initialContent = codeContent,
+                        previewBytes = codeEditorPreviewBytes,
                         lite = true,
-                        readOnly = !canWrite,
+                        readOnly = !canWrite || codeFilePolicy(codeFile.name).kind == CodeFileKind.IMAGE,
                         workspaceTabs = codeTabs,
                         workspaceDirtyPaths = codeDraft.keys,
                         canNavigateWorkspaceBack = codeBackHistory.isNotEmpty(),
@@ -1085,10 +1154,10 @@ internal fun RepoDetailScreen(
                         onGlobalSearch = { showCodeGlobalSearch = true },
                         onOpenBlame = { showBlameFor = it },
                         onOpenHistory = { showFileHistoryFor = it },
-                        onDraftChanged = if (canWrite) ({ p, c, keep ->
+                        onDraftChanged = if (canWrite && codeFilePolicy(codeFile.name).kind != CodeFileKind.IMAGE) ({ p, c, keep ->
                             updateCodeDraftFromEditor(p, c, codeDraftBases[p] ?: codeContent, keep)
                         }) else null,
-                        onSaveDraft = if (canWrite) ({ p, c ->
+                        onSaveDraft = if (canWrite && codeFilePolicy(codeFile.name).kind != CodeFileKind.IMAGE) ({ p, c ->
                             updateCodeDraftFromEditor(p, c, codeDraftBases[p] ?: codeContent, keepAsDraft = true)
                         }) else null,
                         onBack = { closeCodeEditorToBrowser() },

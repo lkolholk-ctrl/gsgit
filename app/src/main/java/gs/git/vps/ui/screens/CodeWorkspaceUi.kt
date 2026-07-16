@@ -39,7 +39,9 @@ import gs.git.vps.data.github.CodeChange
 import gs.git.vps.data.github.CodeDelete
 import gs.git.vps.data.github.CodeModify
 import gs.git.vps.data.github.CodeRename
+import gs.git.vps.data.github.CodeFileKind
 import gs.git.vps.data.github.GitHubManager
+import gs.git.vps.data.github.codeFilePolicy
 import gs.git.vps.data.github.getGitCommit
 import gs.git.vps.data.github.getGitRef
 import gs.git.vps.data.github.getGitTree
@@ -196,7 +198,7 @@ internal fun CodeQuickOpenDialog(
     val shown = remember(files, query, preferredPaths) {
         val preferred = preferredPaths.withIndex().associate { it.value to it.index }
         files.asSequence()
-            .filterNot { isLikelyBinaryFile(it.name) }
+            .filterNot { codeFilePolicy(it.name).kind == CodeFileKind.BINARY }
             .filter { query.isBlank() || it.path.contains(query.trim(), ignoreCase = true) }
             .sortedWith(
                 compareBy<GHContent> {
@@ -235,7 +237,7 @@ internal fun CodeQuickOpenDialog(
                     AiModuleSpinner("indexing tree…")
                 }
                 failed && files.isEmpty() -> GitHubMonoEmpty("failed to load repository tree")
-                shown.isEmpty() -> GitHubMonoEmpty("no matching text files")
+                shown.isEmpty() -> GitHubMonoEmpty("no matching openable files")
                 else -> LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
                     items(shown, key = { it.path }) { file ->
                         WorkspaceFileResult(
@@ -248,7 +250,7 @@ internal fun CodeQuickOpenDialog(
             }
             val note = when {
                 truncated -> "GitHub truncated this very large tree · showing available paths"
-                query.isBlank() -> "${files.count { !isLikelyBinaryFile(it.name) }} text files · open tabs first"
+                query.isBlank() -> "${files.count { codeFilePolicy(it.name).kind != CodeFileKind.BINARY }} openable files · previews included"
                 else -> "${shown.size} matches"
             }
             AiModuleText(note, color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 10.sp)
