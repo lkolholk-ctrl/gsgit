@@ -432,7 +432,20 @@ private fun loadRepoTags(context: Context): Map<String, List<String>> {
 }
 
 @Composable
-internal fun ReposScreen(user: GHUser?, onBack: () -> Unit, onMinimize: () -> Unit, onClose: (() -> Unit)? = null, onLogout: () -> Unit, onRepoClick: (GHRepo) -> Unit, onGists: () -> Unit, onSettings: () -> Unit, onNotifications: () -> Unit = {}, onProfile: (String) -> Unit = {}) {
+internal fun ReposScreen(
+    user: GHUser?,
+    onBack: () -> Unit,
+    onMinimize: () -> Unit,
+    onClose: (() -> Unit)? = null,
+    onLogout: () -> Unit,
+    onRepoClick: (GHRepo) -> Unit,
+    onGists: () -> Unit,
+    onSettings: () -> Unit,
+    onNotifications: () -> Unit = {},
+    onProfile: (String) -> Unit = {},
+    initialShowApps: Boolean = false,
+    onInitialShowAppsConsumed: () -> Unit = {},
+) {
     val context = LocalContext.current; val scope = rememberCoroutineScope()
     var repos by remember { mutableStateOf<List<GHRepo>>(emptyList()) }; var loading by remember { mutableStateOf(true) }
     var query by rememberSaveable { mutableStateOf("") }; var showCreate by rememberSaveable { mutableStateOf(false) }
@@ -490,6 +503,13 @@ internal fun ReposScreen(user: GHUser?, onBack: () -> Unit, onMinimize: () -> Un
 
     LaunchedEffect(Unit) {
         repoTags = loadRepoTags(context)
+    }
+
+    LaunchedEffect(initialShowApps) {
+        if (initialShowApps) {
+            showApps = true
+            onInitialShowAppsConsumed()
+        }
     }
 
     LaunchedEffect(user) {

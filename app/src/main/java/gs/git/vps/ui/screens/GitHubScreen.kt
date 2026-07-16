@@ -51,6 +51,8 @@ fun GitHubScreen(
     compact: Boolean = false,
     initialTarget: GitHubNotificationTarget? = null,
     onInitialTargetConsumed: () -> Unit = {},
+    initialOpenApps: Boolean = false,
+    onInitialOpenAppsConsumed: () -> Unit = {},
     onOpenAiAgent: ((repoFullName: String, branch: String?, prompt: String?) -> Unit)? = null
 ) {
     CompositionLocalProvider(LocalGHCompact provides compact) {
@@ -66,11 +68,22 @@ fun GitHubScreen(
             var showNotifications by rememberSaveable { mutableStateOf(false) }
             var showProfile by rememberSaveable { mutableStateOf<String?>(null) }
             var pendingTarget by remember { mutableStateOf(initialTarget) }
+            var pendingAppsOpen by remember { mutableStateOf(initialOpenApps) }
             val saveableStateHolder = rememberSaveableStateHolder()
 
             LaunchedEffect(isLoggedIn) { if (isLoggedIn) user = GitHubManager.getUser(context) }
             LaunchedEffect(initialTarget) {
                 if (initialTarget != null) pendingTarget = initialTarget
+            }
+            LaunchedEffect(initialOpenApps) {
+                if (initialOpenApps) {
+                    selectedRepo = null
+                    showSettings = false
+                    showGists = false
+                    showProfile = null
+                    showNotifications = false
+                    pendingAppsOpen = true
+                }
             }
             LaunchedEffect(isLoggedIn, pendingTarget) {
                 val target = pendingTarget ?: return@LaunchedEffect
@@ -117,7 +130,25 @@ fun GitHubScreen(
                     )
                 }
                 showProfile != null -> saveableStateHolder.SaveableStateProvider("profile:${showProfile!!}") { ProfileScreen(username = showProfile!!, onBack = { showProfile = null }, onRepoClick = { selectedRepo = it }, onProfile = { showProfile = it }) }
-                else -> saveableStateHolder.SaveableStateProvider("home") { ReposScreen(user, onBack, onMinimize, onClose, { GitHubManager.logout(context); isLoggedIn = false; user = null }, { selectedRepo = it }, { showGists = true }, { showSettings = true }, { showNotifications = true }, { showProfile = it }) }
+                else -> saveableStateHolder.SaveableStateProvider("home") {
+                    ReposScreen(
+                        user = user,
+                        onBack = onBack,
+                        onMinimize = onMinimize,
+                        onClose = onClose,
+                        onLogout = { GitHubManager.logout(context); isLoggedIn = false; user = null },
+                        onRepoClick = { selectedRepo = it },
+                        onGists = { showGists = true },
+                        onSettings = { showSettings = true },
+                        onNotifications = { showNotifications = true },
+                        onProfile = { showProfile = it },
+                        initialShowApps = pendingAppsOpen,
+                        onInitialShowAppsConsumed = {
+                            pendingAppsOpen = false
+                            onInitialOpenAppsConsumed()
+                        },
+                    )
+                }
             }
         }
     }

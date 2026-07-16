@@ -51,6 +51,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 
 class MainActivity : FragmentActivity() {
     var deepLinkTarget by mutableStateOf<GitHubNotificationTarget?>(null)
+    var openGitHubAppsRequested by mutableStateOf(false)
     var isAppLocked by mutableStateOf(false)
     private var hasUnlockedSession by mutableStateOf(false)
     private var isBiometricPromptActive = false
@@ -153,6 +154,8 @@ class MainActivity : FragmentActivity() {
                             onBack = {},
                             initialTarget = deepLinkTarget,
                             onInitialTargetConsumed = { deepLinkTarget = null },
+                            initialOpenApps = openGitHubAppsRequested,
+                            onInitialOpenAppsConsumed = { openGitHubAppsRequested = false },
                         )
                     }
                     if (isAppLocked || !hasUnlockedSession) {
@@ -199,6 +202,14 @@ class MainActivity : FragmentActivity() {
 
     private fun handleDeepLink(intent: Intent?) {
         val uri = intent?.data ?: return
+        // This route only navigates to the integrations screen. Query parameters
+        // are deliberately ignored because custom-scheme callbacks can be forged.
+        if (uri.scheme == "gsgit" && uri.host == "integrations" &&
+            uri.pathSegments.firstOrNull() == "github-app"
+        ) {
+            openGitHubAppsRequested = true
+            return
+        }
         // github.com и www.github.com — оба host заявлены в intent-filter; путь дальше
         // парсится одинаково (pathSegments от host не зависит).
         if (uri.host != "github.com" && uri.host != "www.github.com") return

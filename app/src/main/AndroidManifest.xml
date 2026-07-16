@@ -53,6 +53,13 @@
                 <!-- Google часто отдаёт www-вариант; без этого host он уходил в браузер. -->
                 <data android:scheme="https" android:host="www.github.com" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <!-- Navigation-only callback: never trusts authorization data from the URI. -->
+                <data android:scheme="gsgit" android:host="integrations" android:pathPrefix="/github-app" />
+            </intent-filter>
         </activity>
 
         <activity
