@@ -26,10 +26,18 @@ import java.net.URLEncoder
  */
 
 internal suspend fun GitHubManager.getAppInstallations(context: Context, page: Int = 1, perPage: Int = 30): GHAppInstallationsPage {
+    val appToken = GitHubAuth.getValidGitHubAppUserToken(context)
+    if (appToken.isBlank()) {
+        return GHAppInstallationsPage(
+            error = "Connect GsGit App to read its real installation state",
+            code = 401,
+        )
+    }
     val r = request(
         context,
         "/user/installations?per_page=$perPage&page=$page",
-        extraHeaders = mapOf("Accept" to "application/vnd.github+json")
+        extraHeaders = mapOf("Accept" to "application/vnd.github+json"),
+        authToken = appToken,
     )
     if (!r.success) return GHAppInstallationsPage(error = apiErrorMessage(r), code = r.code)
     return try {
@@ -46,10 +54,15 @@ internal suspend fun GitHubManager.getAppInstallations(context: Context, page: I
 }
 
 internal suspend fun GitHubManager.getAppInstallationRepositories(context: Context, installationId: Long, page: Int = 1, perPage: Int = 30): GHAppInstallationReposPage {
+    val appToken = GitHubAuth.getValidGitHubAppUserToken(context)
+    if (appToken.isBlank()) {
+        return GHAppInstallationReposPage(error = "GsGit App connection expired", code = 401)
+    }
     val r = request(
         context,
         "/user/installations/$installationId/repositories?per_page=$perPage&page=$page",
-        extraHeaders = mapOf("Accept" to "application/vnd.github+json")
+        extraHeaders = mapOf("Accept" to "application/vnd.github+json"),
+        authToken = appToken,
     )
     if (!r.success) return GHAppInstallationReposPage(error = apiErrorMessage(r), code = r.code)
     return try {
@@ -66,21 +79,27 @@ internal suspend fun GitHubManager.getAppInstallationRepositories(context: Conte
 }
 
 internal suspend fun GitHubManager.addRepositoryToAppInstallation(context: Context, installationId: Long, repositoryId: Long): GHActionResult {
+    val appToken = GitHubAuth.getValidGitHubAppUserToken(context)
+    if (appToken.isBlank()) return GHActionResult(false, 401, "GsGit App connection expired")
     val r = request(
         context,
         "/user/installations/$installationId/repositories/$repositoryId",
         "PUT",
-        extraHeaders = mapOf("Accept" to "application/vnd.github+json")
+        extraHeaders = mapOf("Accept" to "application/vnd.github+json"),
+        authToken = appToken,
     )
     return GHActionResult(r.code == 204 || r.success, r.code, if (r.success || r.code == 204) "Repository added" else apiErrorMessage(r))
 }
 
 internal suspend fun GitHubManager.removeRepositoryFromAppInstallation(context: Context, installationId: Long, repositoryId: Long): GHActionResult {
+    val appToken = GitHubAuth.getValidGitHubAppUserToken(context)
+    if (appToken.isBlank()) return GHActionResult(false, 401, "GsGit App connection expired")
     val r = request(
         context,
         "/user/installations/$installationId/repositories/$repositoryId",
         "DELETE",
-        extraHeaders = mapOf("Accept" to "application/vnd.github+json")
+        extraHeaders = mapOf("Accept" to "application/vnd.github+json"),
+        authToken = appToken,
     )
     return GHActionResult(r.code == 204 || r.success, r.code, if (r.success || r.code == 204) "Repository removed" else apiErrorMessage(r))
 }

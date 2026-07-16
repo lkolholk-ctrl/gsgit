@@ -39,9 +39,19 @@ internal suspend fun GitHubManager.deleteOAuthAppGrant(clientId: String, clientS
 }
 
 internal suspend fun GitHubManager.initiateDeviceFlow(clientId: String): GHDeviceCode? {
+    return requestDeviceCode(
+        clientId = clientId,
+        scope = "read:user repo write:repo_hook admin:repo_hook copilot",
+    )
+}
+
+internal suspend fun GitHubManager.initiateGsGitAppDeviceFlow(): GHDeviceCode? =
+    requestDeviceCode(clientId = GsGitGitHubApp.CLIENT_ID, scope = null)
+
+private suspend fun GitHubManager.requestDeviceCode(clientId: String, scope: String?): GHDeviceCode? {
     val body = JSONObject().apply {
         put("client_id", clientId)
-        put("scope", "read:user repo write:repo_hook admin:repo_hook copilot")
+        if (!scope.isNullOrBlank()) put("scope", scope)
     }.toString()
     val webUrl = getWebUrl()
     val r = requestBasic("$webUrl/login/device/code", "POST", body, clientId, "")
@@ -59,6 +69,24 @@ internal suspend fun GitHubManager.initiateDeviceFlow(clientId: String): GHDevic
 }
 
 internal suspend fun GitHubManager.pollDeviceToken(clientId: String, deviceCode: String): GHDeviceTokenResult {
+    return requestDeviceToken(clientId, deviceCode)
+}
+
+internal suspend fun GitHubManager.pollGsGitAppDeviceToken(
+    context: android.content.Context,
+    deviceCode: String,
+): GHDeviceTokenResult {
+    val result = requestDeviceToken(GsGitGitHubApp.CLIENT_ID, deviceCode)
+    if (result.token?.isNotBlank() == true) {
+        if (!GitHubAuth.saveGitHubAppTokenResult(context, result)) {
+            return result.copy(token = null, error = "secure_storage_unavailable")
+        }
+        clearEtagCache()
+    }
+    return result
+}
+
+private suspend fun GitHubManager.requestDeviceToken(clientId: String, deviceCode: String): GHDeviceTokenResult {
     val body = JSONObject().apply {
         put("client_id", clientId)
         put("device_code", deviceCode)
@@ -70,7 +98,7 @@ internal suspend fun GitHubManager.pollDeviceToken(clientId: String, deviceCode:
         val j = JSONObject(r.body)
         val error = j.optString("error", "")
         if (error.isBlank()) {
-            GHDeviceTokenResult(token = j.optString("access_token"), error = null)
+            parseDeviceTokenResult(j)
         } else {
             GHDeviceTokenResult(token = null, error = error)
         }
@@ -78,6 +106,38 @@ internal suspend fun GitHubManager.pollDeviceToken(clientId: String, deviceCode:
         GHDeviceTokenResult(token = null, error = "parse_error")
     }
 }
+
+internal suspend fun GitHubManager.refreshGsGitAppUserToken(refreshToken: String): GHDeviceTokenResult {
+    val body = JSONObject().apply {
+        put("client_id", GsGitGitHubApp.CLIENT_ID)
+        put("grant_type", "refresh_token")
+        put("refresh_token", refreshToken)
+    }.toString()
+    val r = requestBasic("${getWebUrl()}/login/oauth/access_token", "POST", body, GsGitGitHubApp.CLIENT_ID, "")
+    return try {
+        val json = JSONObject(r.body)
+        val error = json.optString("error", "")
+        if (error.isBlank() && r.success) parseDeviceTokenResult(json)
+        else GHDeviceTokenResult(token = null, error = error.ifBlank { "http_${r.code}" })
+    } catch (_: Exception) {
+        GHDeviceTokenResult(token = null, error = "parse_error")
+    }
+}
+
+internal fun GitHubManager.getGsGitAppConnection(context: android.content.Context) =
+    GitHubAuth.getGitHubAppConnection(context)
+
+internal fun GitHubManager.disconnectGsGitApp(context: android.content.Context) =
+    GitHubAuth.disconnectGitHubApp(context)
+
+private fun parseDeviceTokenResult(json: JSONObject) = GHDeviceTokenResult(
+    token = json.optString("access_token", "").takeIf { it.isNotBlank() },
+    error = null,
+    expiresIn = json.optInt("expires_in", 0),
+    refreshToken = json.optString("refresh_token", ""),
+    refreshTokenExpiresIn = json.optInt("refresh_token_expires_in", 0),
+    tokenType = json.optString("token_type", "bearer"),
+)
 
 // ─── Парсер (чистый, без IO) ─────────────────────────────────────────────────
 

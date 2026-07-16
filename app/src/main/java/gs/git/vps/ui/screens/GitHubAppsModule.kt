@@ -1,5 +1,8 @@
 package gs.git.vps.ui.screens
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -42,6 +45,8 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import gs.git.vps.data.github.model.GHAppInstallation
 import gs.git.vps.data.github.model.GHAppMetadataResult
+import gs.git.vps.data.github.model.GHDeviceCode
+import gs.git.vps.data.github.model.GHGitHubAppConnection
 import gs.git.vps.data.github.model.GHRepoAppsEvidence
 import gs.git.vps.data.github.*
 import gs.git.vps.data.github.GitHubManager
@@ -54,6 +59,7 @@ import gs.git.vps.ui.theme.JetBrainsMono
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.delay
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import java.util.Locale
@@ -79,6 +85,13 @@ internal fun GitHubAppsScreen(
     var evidence by remember { mutableStateOf<GHRepoAppsEvidence?>(null) }
     var evidenceLoading by remember { mutableStateOf(false) }
     var evidenceRevision by remember { mutableIntStateOf(0) }
+    var appConnectionRevision by remember { mutableIntStateOf(0) }
+    val appConnection = remember(appConnectionRevision) { GitHubManager.getGsGitAppConnection(context) }
+    var deviceCode by remember { mutableStateOf<GHDeviceCode?>(null) }
+    var deviceCodeExpiresAt by remember { mutableStateOf(0L) }
+    var devicePollInterval by remember { mutableIntStateOf(5) }
+    var appAuthBusy by remember { mutableStateOf(false) }
+    var appAuthError by remember { mutableStateOf("") }
 
     fun loadInstallations(reset: Boolean = false) {
         loading = true
@@ -132,10 +145,55 @@ internal fun GitHubAppsScreen(
             }
             loading = false
             evidenceRevision++
+            appConnectionRevision++
         }
     }
 
     LaunchedEffect(Unit) { refreshAll() }
+
+    LaunchedEffect(deviceCode?.deviceCode) {
+        val pendingCode = deviceCode ?: return@LaunchedEffect
+        var intervalSeconds = pendingCode.interval.coerceAtLeast(5)
+        while (System.currentTimeMillis() < deviceCodeExpiresAt) {
+            delay(intervalSeconds * 1000L)
+            appAuthBusy = true
+            val result = GitHubManager.pollGsGitAppDeviceToken(context, pendingCode.deviceCode)
+            appAuthBusy = false
+            when {
+                result.token?.isNotBlank() == true -> {
+                    appAuthError = ""
+                    appConnectionRevision++
+                    refreshAll()
+                    deviceCode = null
+                    Toast.makeText(context, "GsGit App connected", Toast.LENGTH_SHORT).show()
+                    return@LaunchedEffect
+                }
+                result.error == "authorization_pending" -> Unit
+                result.error == "slow_down" -> {
+                    intervalSeconds += 5
+                    devicePollInterval = intervalSeconds
+                }
+                result.error == "access_denied" -> {
+                    appAuthError = "Authorization was cancelled on GitHub"
+                    deviceCode = null
+                    return@LaunchedEffect
+                }
+                result.error == "expired_token" -> {
+                    appAuthError = "The device code expired. Start connection again."
+                    deviceCode = null
+                    return@LaunchedEffect
+                }
+                else -> {
+                    appAuthError = result.error?.replace('_', ' ') ?: "GitHub authorization failed"
+                    deviceCode = null
+                    return@LaunchedEffect
+                }
+            }
+        }
+        appAuthBusy = false
+        appAuthError = "The device code expired. Start connection again."
+        deviceCode = null
+    }
 
     LaunchedEffect(selectedRepoFullName, evidenceRevision) {
         val repo = repos.firstOrNull { it.fullName == selectedRepoFullName }
@@ -157,6 +215,41 @@ internal fun GitHubAppsScreen(
 
     fun install(provider: GitHubAiIntegration) {
         openExternal(provider.installUrl)
+    }
+
+    fun startGsGitAppConnection() {
+        appAuthBusy = true
+        appAuthError = ""
+        scope.launch {
+            val code = GitHubManager.initiateGsGitAppDeviceFlow()
+            appAuthBusy = false
+            if (code == null || code.deviceCode.isBlank() || code.userCode.isBlank()) {
+                appAuthError = "GitHub did not return a device code"
+                return@launch
+            }
+            deviceCode = code
+            devicePollInterval = code.interval.coerceAtLeast(5)
+            deviceCodeExpiresAt = System.currentTimeMillis() + code.expiresIn.coerceAtLeast(1) * 1000L
+            openExternal(code.verificationUri)
+        }
+    }
+
+    fun copyDeviceCode() {
+        val code = deviceCode?.userCode ?: return
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("GitHub device code", code))
+        Toast.makeText(context, "Code copied", Toast.LENGTH_SHORT).show()
+    }
+
+    fun disconnectGsGitApp() {
+        GitHubManager.disconnectGsGitApp(context)
+        deviceCode = null
+        installations = emptyList()
+        totalCount = 0
+        error = "Connect GsGit App to read its real installation state"
+        errorCode = 401
+        appConnectionRevision++
+        Toast.makeText(context, "GsGit App disconnected", Toast.LENGTH_SHORT).show()
     }
 
     fun handleAppsBack() {
@@ -198,6 +291,27 @@ internal fun GitHubAppsScreen(
                     onManageInstallations = { openExternal("https://github.com/settings/installations") },
                 )
             }
+            item {
+                GsGitAppConnectionCard(
+                    connection = appConnection,
+                    deviceCode = deviceCode,
+                    pollInterval = devicePollInterval,
+                    busy = appAuthBusy,
+                    error = appAuthError,
+                    onConnect = ::startGsGitAppConnection,
+                    onCopyCode = ::copyDeviceCode,
+                    onOpenDevicePage = {
+                        openExternal(deviceCode?.verificationUri ?: "https://github.com/login/device")
+                    },
+                    onCancel = {
+                        deviceCode = null
+                        appAuthBusy = false
+                        appAuthError = ""
+                    },
+                    onInstall = { openExternal(GsGitGitHubApp.INSTALL_URL) },
+                    onDisconnect = ::disconnectGsGitApp,
+                )
+            }
             items(officialGitHubAiIntegrations, key = { it.id }) { provider ->
                 val metadata = appMetadata[provider.id]
                 val installation = installations.firstOrNull { it.appSlug == provider.appSlug }
@@ -227,7 +341,7 @@ internal fun GitHubAppsScreen(
             item { GitHubSupportedLinksCard() }
             item {
                 GitHubTerminalSectionLabel(
-                    label = "user installation API · GitHub App user token only",
+                    label = "GsGit App installation API · live account data",
                     color = AiModuleTheme.colors.textSecondary,
                 )
             }
@@ -278,6 +392,156 @@ internal fun GitHubAppsScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun GsGitAppConnectionCard(
+    connection: GHGitHubAppConnection,
+    deviceCode: GHDeviceCode?,
+    pollInterval: Int,
+    busy: Boolean,
+    error: String,
+    onConnect: () -> Unit,
+    onCopyCode: () -> Unit,
+    onOpenDevicePage: () -> Unit,
+    onCancel: () -> Unit,
+    onInstall: () -> Unit,
+    onDisconnect: () -> Unit,
+) {
+    val palette = AiModuleTheme.colors
+    Column(
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(GitHubControlRadius))
+            .border(
+                1.dp,
+                if (connection.connected) palette.accent.copy(alpha = 0.75f) else palette.border,
+                RoundedCornerShape(GitHubControlRadius),
+            )
+            .background(palette.surface)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = "GsGit App authorization",
+                    color = palette.textPrimary,
+                    fontFamily = JetBrainsMono,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = "${GsGitGitHubApp.SLUG} · app ${GsGitGitHubApp.APP_ID}",
+                    color = palette.textMuted,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 10.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            GitHubTerminalPill(
+                if (connection.connected) "connected" else if (deviceCode != null) "pending" else "not connected",
+                if (connection.connected) palette.accent else if (deviceCode != null) palette.warning else palette.textMuted,
+            )
+        }
+
+        when {
+            connection.connected -> {
+                Text(
+                    text = "GitHub App user token is encrypted on this device and refreshed automatically. PAT remains separate for Notifications API compatibility.",
+                    color = palette.textSecondary,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 10.sp,
+                    lineHeight = 14.sp,
+                )
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                ) {
+                    GitHubTerminalPill(connection.accessTokenExpiresAt.appTokenExpiryLabel("access"), palette.accent)
+                    GitHubTerminalPill(connection.refreshTokenExpiresAt.appTokenExpiryLabel("refresh"), palette.textSecondary)
+                }
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    GitHubTerminalButton("manage install ->", onInstall, color = palette.accent)
+                    GitHubTerminalButton("disconnect", onDisconnect, color = palette.error)
+                }
+            }
+            deviceCode != null -> {
+                Text(
+                    text = "Enter this one-time code on GitHub",
+                    color = palette.textSecondary,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 11.sp,
+                )
+                Text(
+                    text = deviceCode.userCode,
+                    color = palette.accent,
+                    fontFamily = JetBrainsMono,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 22.sp,
+                )
+                Text(
+                    text = if (busy) "checking authorization..." else "automatic check every ${pollInterval}s",
+                    color = if (busy) palette.warning else palette.textMuted,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 10.sp,
+                )
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    GitHubTerminalButton("copy code", onCopyCode, color = palette.accent)
+                    GitHubTerminalButton("open GitHub ->", onOpenDevicePage, color = palette.accent)
+                    GitHubTerminalButton("cancel", onCancel, color = palette.textSecondary)
+                }
+            }
+            else -> {
+                Text(
+                    text = "Connect once through GitHub Device Flow. No PAT, Client Secret or private key is requested.",
+                    color = palette.textSecondary,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 10.sp,
+                    lineHeight = 14.sp,
+                )
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    GitHubTerminalButton(
+                        label = if (busy) "starting..." else "connect GsGit App ->",
+                        onClick = onConnect,
+                        color = palette.accent,
+                        enabled = !busy,
+                    )
+                    GitHubTerminalButton("install / select repos", onInstall, color = palette.textSecondary)
+                }
+            }
+        }
+        if (error.isNotBlank()) {
+            Text(
+                text = error,
+                color = palette.error,
+                fontFamily = JetBrainsMono,
+                fontSize = 10.sp,
+                lineHeight = 14.sp,
+            )
+        }
+    }
+}
+
+private fun Long.appTokenExpiryLabel(prefix: String): String {
+    if (this <= 0L) return "$prefix non-expiring"
+    val remainingMinutes = ((this - System.currentTimeMillis()) / 60_000L).coerceAtLeast(0L)
+    return when {
+        remainingMinutes >= 24 * 60 -> "$prefix ${remainingMinutes / (24 * 60)}d"
+        remainingMinutes >= 60 -> "$prefix ${remainingMinutes / 60}h"
+        else -> "$prefix ${remainingMinutes}m"
     }
 }
 
@@ -374,14 +638,19 @@ private fun GitHubSupportedLinksCard() {
 
 @Composable
 private fun GitHubAppsApiNotice(errorCode: Int, error: String) {
+    val missingConnection = errorCode == 401 && error.contains("Connect GsGit App", ignoreCase = true)
     val isTokenMismatch = errorCode == 403 || error.contains("authorized to a GitHub App", ignoreCase = true)
     GitHubInlineTerminalNotice(
         glyph = GhGlyphs.WARN,
-        title = if (isTokenMismatch) "/user/installations unsupported by token" else "installation API unavailable",
-        subtitle = if (isTokenMismatch) {
-            "HTTP $errorCode. GitHub exposes this endpoint only to a GitHub App user access token, and only for installations of the App that issued it. No installed/not-installed claim is made."
-        } else {
-            error.take(180)
+        title = when {
+            missingConnection -> "connect GsGit App above"
+            isTokenMismatch -> "/user/installations rejected the App token"
+            else -> "installation API unavailable"
+        },
+        subtitle = when {
+            missingConnection -> "Device Flow creates the compatible App user token without replacing your PAT."
+            isTokenMismatch -> "HTTP $errorCode. Reconnect GsGit App to issue a fresh token for ${GsGitGitHubApp.SLUG}."
+            else -> error.take(180)
         },
     )
 }

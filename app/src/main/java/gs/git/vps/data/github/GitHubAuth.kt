@@ -3,9 +3,14 @@ package gs.git.vps.data.github
 import android.content.Context
 import android.util.Base64
 import android.util.Log
+import gs.git.vps.data.github.model.GHDeviceTokenResult
+import gs.git.vps.data.github.model.GHGitHubAppConnection
+import gs.git.vps.data.security.GitHubAppTokenSession
 import gs.git.vps.data.security.TokenRepository
 import gs.git.vps.security.NativeSecurity
 import gs.git.vps.security.SecurityGate
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -15,6 +20,8 @@ object GitHubAuth {
     private const val KEY_TOKEN_ENC = "token_enc"
     private const val KEY_API_ERRORS = "api_error_log"
     private const val MAX_API_ERROR_LOG = 30
+    private const val APP_TOKEN_REFRESH_WINDOW_MS = 2 * 60 * 1000L
+    private val appTokenRefreshMutex = Mutex()
 
     fun saveToken(context: Context, token: String): Boolean {
         val security = SecurityGate.decision(context)
@@ -66,8 +73,93 @@ object GitHubAuth {
 
     fun isLoggedIn(context: Context): Boolean = getToken(context).isNotBlank()
 
+    fun getGitHubAppConnection(context: Context): GHGitHubAppConnection {
+        val security = SecurityGate.decision(context)
+        if (!security.allowsSensitiveData) {
+            if (security.shouldWipe) logout(context)
+            return GHGitHubAppConnection(connected = false)
+        }
+        val session = TokenRepository(context).getGitHubAppSession()
+        val now = System.currentTimeMillis()
+        val accessUsable = session.accessToken.isNotBlank() &&
+            (session.accessTokenExpiresAt == 0L || now < session.accessTokenExpiresAt)
+        val refreshUsable = session.refreshToken.isNotBlank() &&
+            (session.refreshTokenExpiresAt == 0L || now < session.refreshTokenExpiresAt)
+        return GHGitHubAppConnection(
+            connected = accessUsable || refreshUsable,
+            accessTokenExpiresAt = session.accessTokenExpiresAt,
+            refreshTokenExpiresAt = session.refreshTokenExpiresAt,
+        )
+    }
+
+    internal fun saveGitHubAppTokenResult(context: Context, result: GHDeviceTokenResult): Boolean {
+        val accessToken = result.token?.trim().orEmpty()
+        if (accessToken.isBlank()) return false
+        val security = SecurityGate.decision(context)
+        if (!security.allowsSensitiveData) {
+            if (security.shouldWipe) logout(context)
+            return false
+        }
+        val now = System.currentTimeMillis()
+        TokenRepository(context).saveGitHubAppSession(
+            GitHubAppTokenSession(
+                accessToken = accessToken,
+                refreshToken = result.refreshToken.trim(),
+                accessTokenExpiresAt = result.expiresIn.takeIf { it > 0 }
+                    ?.let { now + it.toLong() * 1000L } ?: 0L,
+                refreshTokenExpiresAt = result.refreshTokenExpiresIn.takeIf { it > 0 }
+                    ?.let { now + it.toLong() * 1000L } ?: 0L,
+            )
+        )
+        return true
+    }
+
+    internal suspend fun getValidGitHubAppUserToken(context: Context): String =
+        appTokenRefreshMutex.withLock {
+            val security = SecurityGate.decision(context)
+            if (!security.allowsSensitiveData) {
+                if (security.shouldWipe) logout(context)
+                return@withLock ""
+            }
+            val repository = TokenRepository(context)
+            val session = repository.getGitHubAppSession()
+            val now = System.currentTimeMillis()
+            if (session.accessToken.isBlank()) return@withLock ""
+            if (session.accessTokenExpiresAt == 0L ||
+                now + APP_TOKEN_REFRESH_WINDOW_MS < session.accessTokenExpiresAt
+            ) {
+                return@withLock session.accessToken
+            }
+
+            val canRefresh = session.refreshToken.isNotBlank() &&
+                (session.refreshTokenExpiresAt == 0L || now < session.refreshTokenExpiresAt)
+            if (canRefresh) {
+                val refreshed = GitHubManager.refreshGsGitAppUserToken(session.refreshToken)
+                if (refreshed.token?.isNotBlank() == true && saveGitHubAppTokenResult(context, refreshed)) {
+                    GitHubManager.clearEtagCache()
+                    return@withLock refreshed.token.orEmpty()
+                }
+            }
+
+            // A refresh can fail transiently while the current token is still valid.
+            if (session.accessTokenExpiresAt == 0L || now < session.accessTokenExpiresAt) {
+                session.accessToken
+            } else {
+                repository.clearGitHubAppSession()
+                ""
+            }
+        }
+
+    fun disconnectGitHubApp(context: Context) {
+        TokenRepository(context).clearGitHubAppSession()
+        GitHubManager.clearEtagCache()
+    }
+
     fun logout(context: Context) {
-        TokenRepository(context).clearToken()
+        TokenRepository(context).apply {
+            clearToken()
+            clearGitHubAppSession()
+        }
         // `github_prefs` also contains app configuration, the local PIN and PGP settings.
         // Logging out must only remove account-scoped data, never wipe the whole app state.
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)

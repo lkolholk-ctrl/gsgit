@@ -154,12 +154,13 @@ object GitHubManager {
         trackErrors: Boolean = true,
         rateLimitRetries: Int = 1,
         backoffRetries: Int = 3,
+        authToken: String? = null,
     ): ApiResult =
         withContext(Dispatchers.IO) {
             updateApiUrl(context)
             var conn: HttpURLConnection? = null
             try {
-                val token = getToken(context)
+                val token = authToken ?: getToken(context)
                 val prefs = context.getSharedPreferences("github_prefs", Context.MODE_PRIVATE)
                 
                 // Diff whitespace ignore
@@ -239,14 +240,20 @@ object GitHubManager {
                     val waitSec = (resetEpoch * 1000 - System.currentTimeMillis()).coerceIn(1000, 60_000) / 1000
                     Log.w(TAG, "Rate limited, waiting ${waitSec}s for reset")
                     kotlinx.coroutines.delay(waitSec * 1000)
-                    return@withContext request(context, endpoint, method, body, extraHeaders, trackErrors, rateLimitRetries - 1)
+                    return@withContext request(
+                        context, endpoint, method, body, extraHeaders, trackErrors,
+                        rateLimitRetries - 1, backoffRetries, authToken,
+                    )
                 }
 
                 if (code in 500..599 && backoffRetries > 0) {
                     val delayMs = (1000L * (4 - backoffRetries)).coerceIn(1000, 3000)
                     Log.w(TAG, "Server error $code, retrying in ${delayMs}ms ($backoffRetries left)")
                     kotlinx.coroutines.delay(delayMs)
-                    return@withContext request(context, endpoint, method, body, extraHeaders, trackErrors, rateLimitRetries, backoffRetries - 1)
+                    return@withContext request(
+                        context, endpoint, method, body, extraHeaders, trackErrors,
+                        rateLimitRetries, backoffRetries - 1, authToken,
+                    )
                 }
 
                 val result = if (code in 200..299) ApiResult(true, text, code, headers) else ApiResult(false, text, code, headers)
@@ -257,7 +264,10 @@ object GitHubManager {
                     val delayMs = (1000L * (4 - backoffRetries)).coerceIn(1000, 3000)
                     Log.w(TAG, "Network error; retrying in ${delayMs}ms ($backoffRetries left)")
                     kotlinx.coroutines.delay(delayMs)
-                    return@withContext request(context, endpoint, method, body, extraHeaders, trackErrors, rateLimitRetries, backoffRetries - 1)
+                    return@withContext request(
+                        context, endpoint, method, body, extraHeaders, trackErrors,
+                        rateLimitRetries, backoffRetries - 1, authToken,
+                    )
                 }
                 Log.e(TAG, "Request failed")
                 val result = ApiResult(false, e.message ?: "Network error", -1)
@@ -324,7 +334,7 @@ object GitHubManager {
                         setRequestProperty("Accept", "application/vnd.github+json")
                     }
                     setRequestProperty("User-Agent", "GsGit")
-                    setRequestProperty("Authorization", "Basic $auth")
+                    if (password.isNotBlank()) setRequestProperty("Authorization", "Basic $auth")
                     if (body != null) {
                         doOutput = true
                         setRequestProperty("Content-Type", "application/json")

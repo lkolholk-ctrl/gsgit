@@ -31,5 +31,15 @@ data class GHDeviceCode(
 
 data class GHDeviceTokenResult(
     val token: String?,
-    val error: String?
+    val error: String?,
+    val expiresIn: Int = 0,
+    val refreshToken: String = "",
+    val refreshTokenExpiresIn: Int = 0,
+    val tokenType: String = "bearer",
+)
+
+data class GHGitHubAppConnection(
+    val connected: Boolean,
+    val accessTokenExpiresAt: Long = 0L,
+    val refreshTokenExpiresAt: Long = 0L,
 )
