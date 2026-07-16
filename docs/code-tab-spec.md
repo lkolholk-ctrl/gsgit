@@ -1,11 +1,12 @@
 # Code tab — спецификация и состояние реализации
 
-> Статус на 2026-07-16: стадии 0–6 и дорожная карта до Supported Links 1.0.57 реализованы. Версия
+> Статус на 2026-07-16: стадии 0–6 и дорожная карта до GitHub Apps API Truth 1.0.58 реализованы. Версия
 > 1.0.50 добавила типизированное рабочее дерево `A/M/D/R`, 1.0.52 — постоянные вкладки и Quick
 > Open, 1.0.53 — Smart Editor, 1.0.54 — безопасный rebase draft, ветки, PR и blame/history,
 > 1.0.55 — единый state-holder, атомарное состояние с recovery и ограниченный offline-кеш,
-> 1.0.56 — безопасные preview и защита редактора от больших/бинарных файлов, а 1.0.57 —
-> маршрутизацию поддерживаемых ссылок и официальный GitHub App onboarding для AI-провайдеров.
+> 1.0.56 — безопасные preview и защита редактора от больших/бинарных файлов, 1.0.57 —
+> маршрутизацию поддерживаемых ссылок, а 1.0.58 — реальные GitHub Apps API-данные без ложного
+> статуса установки.
 
 ## Концепт
 
@@ -103,6 +104,7 @@
 | 1.0.55 | Надёжность: отдельный state-holder, кеш/офлайн, атомарное хранилище и recovery. |
 | 1.0.56 | Preview: Markdown, изображения, SVG/JSON, large-file и binary guards. |
 | 1.0.57 | Supported links: Android App Links/deep links, GitHub URL и OAuth/callback-маршрутизация. |
+| 1.0.58 | GitHub Apps API Truth: live metadata, token-scoped installations и evidence по репозиториям. |
 
 ## Workspace 1.0.52
 
@@ -206,3 +208,18 @@
   onboarding и объясняется в интерфейсе вместо ложного статуса подключения.
 - Приватный ключ GitHub App и installation token не создаются на Android-устройстве. Завершающий
   callback принадлежит провайдеру App; после возврата GsGit обновляет доступный ему статус.
+
+## GitHub Apps API Truth 1.0.58
+
+- Карточки Codex и Claude получают живые имя, owner, App ID, описание, permissions, events и даты
+  из `GET /apps/{app_slug}`. Этот ответ подтверждает идентичность и возможности App, но не установку.
+- `GET /user/installations` отображается отдельным блоком вместе с HTTP-кодом. Его результат
+  относится только к App, выдавшему текущий GitHub App user access token; `403` PAT не превращается
+  ни в «не установлено», ни в «установлено».
+- Для любого доступного токену репозитория собираются реальные Apps из check-runs последних пяти
+  коммитов, список workflow и все `uses:` из читаемых YAML, а также имена Claude/OpenAI-related
+  Actions Secrets. Значения Secrets GitHub API никогда не возвращает.
+- Для Checks, Workflows и Secrets интерфейс показывает отдельные HTTP-коды и ошибки полномочий.
+  Пустая выборка всегда подписана как отсутствие наблюдаемого evidence, а не отсутствие установки.
+- Если доступен совместимый App user token, сохраняется полный installation flow: selection
+  `all/selected`, permissions, events, timestamps, suspension и управление выбранными репозиториями.

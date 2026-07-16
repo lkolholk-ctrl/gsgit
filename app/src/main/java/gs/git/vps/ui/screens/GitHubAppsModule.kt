@@ -41,6 +41,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import gs.git.vps.data.github.model.GHAppInstallation
+import gs.git.vps.data.github.model.GHAppMetadataResult
+import gs.git.vps.data.github.model.GHRepoAppsEvidence
 import gs.git.vps.data.github.*
 import gs.git.vps.data.github.GitHubManager
 import gs.git.vps.data.github.model.GHRepo
@@ -50,6 +52,8 @@ import gs.git.vps.ui.components.AiModuleText as Text
 import gs.git.vps.ui.theme.AiModuleTheme
 import gs.git.vps.ui.theme.JetBrainsMono
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import java.util.Locale
@@ -68,12 +72,15 @@ internal fun GitHubAppsScreen(
     var error by remember { mutableStateOf("") }
     var errorCode by remember { mutableIntStateOf(0) }
     var selected by remember { mutableStateOf<GHAppInstallation?>(null) }
-    val prefs = remember { context.getSharedPreferences("github_prefs", android.content.Context.MODE_PRIVATE) }
-    var pendingProviderId by rememberSaveable {
-        mutableStateOf(prefs.getString("pending_github_app_provider", "").orEmpty())
-    }
+    var appMetadata by remember { mutableStateOf<Map<String, GHAppMetadataResult>>(emptyMap()) }
+    var catalogLoading by remember { mutableStateOf(true) }
+    var repos by remember { mutableStateOf<List<GHRepo>>(emptyList()) }
+    var selectedRepoFullName by rememberSaveable { mutableStateOf("") }
+    var evidence by remember { mutableStateOf<GHRepoAppsEvidence?>(null) }
+    var evidenceLoading by remember { mutableStateOf(false) }
+    var evidenceRevision by remember { mutableIntStateOf(0) }
 
-    fun load(reset: Boolean = false) {
+    fun loadInstallations(reset: Boolean = false) {
         loading = true
         error = ""
         errorCode = 0
@@ -92,24 +99,54 @@ internal fun GitHubAppsScreen(
         }
     }
 
-    LaunchedEffect(Unit) { load(reset = true) }
-    LaunchedEffect(installations, pendingProviderId) {
-        val pending = officialGitHubAiIntegrations.firstOrNull { it.id == pendingProviderId }
-        if (pending != null && installations.any { it.appSlug == pending.appSlug }) {
-            pendingProviderId = ""
-            prefs.edit().remove("pending_github_app_provider").apply()
+    fun refreshAll() {
+        loading = true
+        catalogLoading = true
+        error = ""
+        errorCode = 0
+        scope.launch {
+            val metadataTasks = officialGitHubAiIntegrations.map { provider ->
+                async { provider.id to GitHubManager.getGitHubAppMetadata(context, provider.appSlug) }
+            }
+            val reposTask = async { GitHubManager.getRepos(context, perPage = 100) }
+            val installationsTask = async { GitHubManager.getAppInstallations(context, page = 1, perPage = 100) }
+
+            appMetadata = metadataTasks.awaitAll().toMap()
+            catalogLoading = false
+
+            repos = reposTask.await().distinctBy { it.fullName }
+            if (selectedRepoFullName.isBlank() || repos.none { it.fullName == selectedRepoFullName }) {
+                selectedRepoFullName = repos.firstOrNull()?.fullName.orEmpty()
+            }
+
+            val result = installationsTask.await()
+            if (result.error.isBlank()) {
+                page = 1
+                totalCount = result.totalCount
+                installations = result.installations
+            } else {
+                error = result.error
+                errorCode = result.code
+                installations = emptyList()
+                totalCount = 0
+            }
+            loading = false
+            evidenceRevision++
         }
     }
 
-    val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner, pendingProviderId) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME && pendingProviderId.isNotBlank()) {
-                load(reset = true)
-            }
+    LaunchedEffect(Unit) { refreshAll() }
+
+    LaunchedEffect(selectedRepoFullName, evidenceRevision) {
+        val repo = repos.firstOrNull { it.fullName == selectedRepoFullName }
+        if (repo == null) {
+            evidence = null
+            evidenceLoading = false
+            return@LaunchedEffect
         }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        evidenceLoading = true
+        evidence = GitHubManager.getRepoAppsEvidence(context, repo)
+        evidenceLoading = false
     }
 
     fun openExternal(url: String) {
@@ -119,8 +156,6 @@ internal fun GitHubAppsScreen(
     }
 
     fun install(provider: GitHubAiIntegration) {
-        pendingProviderId = provider.id
-        prefs.edit().putString("pending_github_app_provider", provider.id).apply()
         openExternal(provider.installUrl)
     }
 
@@ -141,14 +176,13 @@ internal fun GitHubAppsScreen(
         title = "> apps",
         onBack = ::handleAppsBack,
         subtitle = when {
-            loading -> "syncing GitHub Apps..."
-            error.isNotBlank() -> "connectors ready · API sync unavailable"
-            else -> "connectors · $totalCount installations"
+            catalogLoading || loading -> "reading GitHub APIs..."
+            else -> "API facts · ${repos.size} repositories"
         },
         trailing = {
             GitHubTopBarAction(
                 glyph = GhGlyphs.REFRESH,
-                onClick = { load(reset = true) },
+                onClick = { refreshAll() },
                 tint = AiModuleTheme.colors.accent,
                 contentDescription = "refresh apps",
             )
@@ -165,23 +199,35 @@ internal fun GitHubAppsScreen(
                 )
             }
             items(officialGitHubAiIntegrations, key = { it.id }) { provider ->
+                val metadata = appMetadata[provider.id]
                 val installation = installations.firstOrNull { it.appSlug == provider.appSlug }
-                GitHubAiIntegrationCard(
+                GitHubAppCatalogCard(
                     provider = provider,
+                    metadataResult = metadata,
                     installation = installation,
-                    pending = pendingProviderId == provider.id,
-                    onInstall = { install(provider) },
-                    onOpenApp = { openExternal(provider.appUrl) },
-                    onGuide = { openExternal(provider.guideUrl) },
-                    onOpenInstallation = installation?.htmlUrl?.takeIf { it.isNotBlank() }?.let { url ->
-                        { openExternal(url) }
+                    loading = catalogLoading,
+                    onInstall = {
+                        installation?.htmlUrl?.takeIf { it.isNotBlank() }?.let(::openExternal)
+                            ?: install(provider)
                     },
+                    onOpenApp = { openExternal(metadata?.app?.htmlUrl?.ifBlank { provider.appUrl } ?: provider.appUrl) },
+                    onGuide = { openExternal(provider.guideUrl) },
+                )
+            }
+            item {
+                GitHubRepoAppsEvidencePanel(
+                    repos = repos,
+                    selectedRepoFullName = selectedRepoFullName,
+                    evidence = evidence,
+                    loading = evidenceLoading,
+                    onSelectRepo = { selectedRepoFullName = it },
+                    onRefresh = { evidenceRevision++ },
                 )
             }
             item { GitHubSupportedLinksCard() }
             item {
                 GitHubTerminalSectionLabel(
-                    label = "installation API",
+                    label = "user installation API · GitHub App user token only",
                     color = AiModuleTheme.colors.textSecondary,
                 )
             }
@@ -198,27 +244,35 @@ internal fun GitHubAppsScreen(
                     GitHubInlineTerminalNotice(
                         glyph = GhGlyphs.INFO,
                         title = "no readable installations",
-                        subtitle = "Install a connector above, then return and refresh.",
+                        subtitle = "GET /user/installations returned zero installations for the current App user token.",
                     )
                 }
                 else -> {
-                    item { GitHubAppsSummary(installations, totalCount) }
-                items(installations, key = { it.id }) { installation ->
-                    GitHubAppInstallationRow(installation) { selected = installation }
-                    AiModuleHairline()
-                }
-                if (installations.size < totalCount) {
                     item {
-                        Box(Modifier.fillMaxWidth().padding(vertical = 10.dp), contentAlignment = Alignment.Center) {
-                            GitHubTerminalButton(
-                                label = "load more ->",
-                                onClick = {
-                                    page += 1
-                                    load(reset = false)
-                                },
-                                color = AiModuleTheme.colors.accent,
-                                enabled = !loading,
-                            )
+                        GitHubInlineTerminalNotice(
+                            glyph = GhGlyphs.INFO,
+                            title = "token-scoped result",
+                            subtitle = "GitHub returned these installations for the GitHub App that issued the current user access token. This is not a global list of every App installed on the account.",
+                        )
+                    }
+                    item { GitHubAppsSummary(installations, totalCount) }
+                    items(installations, key = { it.id }) { installation ->
+                        GitHubAppInstallationRow(installation) { selected = installation }
+                        AiModuleHairline()
+                    }
+                    if (installations.size < totalCount) {
+                        item {
+                            Box(Modifier.fillMaxWidth().padding(vertical = 10.dp), contentAlignment = Alignment.Center) {
+                                GitHubTerminalButton(
+                                    label = "load more ->",
+                                    onClick = {
+                                        page += 1
+                                        loadInstallations(reset = false)
+                                    },
+                                    color = AiModuleTheme.colors.accent,
+                                    enabled = !loading,
+                                )
+                            }
                         }
                     }
                 }
@@ -240,14 +294,14 @@ private fun GitHubAiIntegrationsIntro(onManageInstallations: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(
-            text = "AI access to GitHub",
+            text = "GitHub Apps · API truth",
             color = palette.accent,
             fontFamily = JetBrainsMono,
             fontWeight = FontWeight.SemiBold,
             fontSize = 14.sp,
         )
         Text(
-            text = "GitHub performs the installation and shows the real choice: all repositories or only selected repositories. GsGit never asks for an App private key.",
+            text = "Live App metadata, token-scoped installations and repository evidence are kept separate. GsGit never converts an empty or denied endpoint into a fake installed/not-installed status.",
             color = palette.textSecondary,
             fontFamily = JetBrainsMono,
             fontSize = 11.sp,
@@ -261,88 +315,6 @@ private fun GitHubAiIntegrationsIntro(onManageInstallations: () -> Unit) {
                 onClick = onManageInstallations,
                 color = palette.accent,
             )
-        }
-    }
-}
-
-@Composable
-private fun GitHubAiIntegrationCard(
-    provider: GitHubAiIntegration,
-    installation: GHAppInstallation?,
-    pending: Boolean,
-    onInstall: () -> Unit,
-    onOpenApp: () -> Unit,
-    onGuide: () -> Unit,
-    onOpenInstallation: (() -> Unit)?,
-) {
-    val palette = AiModuleTheme.colors
-    val installed = installation != null
-    val statusColor = when {
-        installed -> palette.accent
-        pending -> palette.warning
-        else -> palette.textMuted
-    }
-    val status = when {
-        installed && installation.repositorySelection == "all" -> "connected · all repositories"
-        installed && installation.repositorySelection == "selected" -> "connected · selected repositories"
-        installed -> "connected · selection unknown"
-        pending -> "setup opened · check GitHub"
-        else -> "not verified"
-    }
-
-    Column(
-        Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(GitHubControlRadius))
-            .border(1.dp, if (installed) palette.accent.copy(alpha = 0.55f) else palette.border, RoundedCornerShape(GitHubControlRadius))
-            .background(palette.surface)
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(7.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = provider.title,
-                    color = palette.textPrimary,
-                    fontFamily = JetBrainsMono,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 14.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = "github.com/apps/${provider.appSlug}",
-                    color = palette.textMuted,
-                    fontFamily = JetBrainsMono,
-                    fontSize = 10.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            GitHubTerminalPill(status, statusColor)
-        }
-        Text(
-            text = provider.description,
-            color = palette.textSecondary,
-            fontFamily = JetBrainsMono,
-            fontSize = 11.sp,
-        )
-        Text(
-            text = provider.finishHint,
-            color = palette.textMuted,
-            fontFamily = JetBrainsMono,
-            fontSize = 10.sp,
-        )
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            GitHubTerminalButton(
-                label = if (installed) "change repositories ->" else "install / select repos ->",
-                onClick = onOpenInstallation ?: onInstall,
-                color = palette.accent,
-            )
-            GitHubTerminalButton(label = "app", onClick = onOpenApp, color = palette.textSecondary)
-            GitHubTerminalButton(label = "guide", onClick = onGuide, color = palette.textSecondary)
         }
     }
 }
@@ -406,9 +378,9 @@ private fun GitHubAppsApiNotice(errorCode: Int, error: String) {
     val isTokenMismatch = errorCode == 403 || error.contains("authorized to a GitHub App", ignoreCase = true)
     GitHubInlineTerminalNotice(
         glyph = GhGlyphs.WARN,
-        title = if (isTokenMismatch) "installation status not readable by PAT" else "installation API unavailable",
+        title = if (isTokenMismatch) "/user/installations unsupported by token" else "installation API unavailable",
         subtitle = if (isTokenMismatch) {
-            "Your token can still manage its repository. GitHub only returns /user/installations to a compatible GitHub App user token; install and configure connectors with the official buttons above."
+            "HTTP $errorCode. GitHub exposes this endpoint only to a GitHub App user access token, and only for installations of the App that issued it. No installed/not-installed claim is made."
         } else {
             error.take(180)
         },

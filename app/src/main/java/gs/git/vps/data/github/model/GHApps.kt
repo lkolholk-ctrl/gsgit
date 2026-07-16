@@ -38,3 +38,64 @@ data class GHAppInstallation(
     val suspendedAt: String,
     val suspendedBy: String
 )
+
+/** Public metadata returned by GET /apps/{app_slug}. This proves app identity,
+ * owner and declared capabilities; it does not prove an installation. */
+data class GHAppMetadata(
+    val id: Long,
+    val slug: String,
+    val name: String,
+    val ownerLogin: String,
+    val ownerAvatarUrl: String,
+    val description: String,
+    val externalUrl: String,
+    val htmlUrl: String,
+    val permissions: List<Pair<String, String>>,
+    val events: List<String>,
+    val createdAt: String,
+    val updatedAt: String,
+)
+
+data class GHAppMetadataResult(
+    val app: GHAppMetadata? = null,
+    val error: String = "",
+    val code: Int = 0,
+)
+
+/** A GitHub App observed in real check-runs on recent repository commits. */
+data class GHObservedApp(
+    val app: GHAppMetadata,
+    val checkRunCount: Int,
+    val checkNames: List<String>,
+    val lastStatus: String,
+    val lastConclusion: String,
+    val lastSeenAt: String,
+    val lastCommitSha: String,
+)
+
+data class GHWorkflowAppEvidence(
+    val workflowId: Long,
+    val name: String,
+    val path: String,
+    val state: String,
+    val actionReferences: List<String>,
+    val providerIds: List<String>,
+)
+
+/** Evidence is deliberately split by endpoint so an empty result is never
+ * confused with a denied request. */
+data class GHRepoAppsEvidence(
+    val repoFullName: String,
+    val branch: String,
+    val commitsScanned: Int,
+    val observedApps: List<GHObservedApp>,
+    val workflowsTotal: Int,
+    val workflowEvidence: List<GHWorkflowAppEvidence>,
+    val providerSecretNames: List<String>,
+    val checksCode: Int,
+    val workflowsCode: Int,
+    val secretsCode: Int,
+    val checksError: String = "",
+    val workflowsError: String = "",
+    val secretsError: String = "",
+)
