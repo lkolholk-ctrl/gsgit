@@ -278,7 +278,7 @@ private fun GitHubAiIntegrationCard(
     val palette = AiModuleTheme.colors
     val installed = installation != null
     val statusColor = when {
-        installed -> palette.success
+        installed -> palette.accent
         pending -> palette.warning
         else -> palette.textMuted
     }
@@ -293,7 +293,7 @@ private fun GitHubAiIntegrationCard(
     Column(
         Modifier.fillMaxWidth()
             .clip(RoundedCornerShape(GitHubControlRadius))
-            .border(1.dp, if (installed) palette.success.copy(alpha = 0.55f) else palette.border, RoundedCornerShape(GitHubControlRadius))
+            .border(1.dp, if (installed) palette.accent.copy(alpha = 0.55f) else palette.border, RoundedCornerShape(GitHubControlRadius))
             .background(palette.surface)
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(7.dp),
@@ -378,7 +378,7 @@ private fun GitHubSupportedLinksCard() {
                 fontSize = 13.sp,
                 modifier = Modifier.weight(1f),
             )
-            GitHubTerminalPill(status.label, if (status.enabled) palette.success else palette.warning)
+            GitHubTerminalPill(status.label, if (status.enabled) palette.accent else palette.warning)
         }
         Text(status.detail, color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 10.sp)
         Text(
