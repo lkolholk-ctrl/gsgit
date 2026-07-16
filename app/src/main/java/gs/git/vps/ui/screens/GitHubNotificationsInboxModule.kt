@@ -492,10 +492,10 @@ private fun FullNotificationRow(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            NotificationMiniAction("details", palette.accent, onOpenDetail)
-            NotificationMiniAction("open", palette.textSecondary, onOpenSubject)
-            if (notification.unread) NotificationMiniAction("read", palette.accent, onMarkRead)
-            NotificationMiniAction("done", palette.error, onDone)
+            NotificationMiniAction("details", palette.accent, onClick = onOpenDetail)
+            NotificationMiniAction("open", palette.textSecondary, onClick = onOpenSubject)
+            if (notification.unread) NotificationMiniAction("read", palette.accent, onClick = onMarkRead)
+            NotificationMiniAction("done", palette.error, onClick = onDone)
         }
     }
 }
