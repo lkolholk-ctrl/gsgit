@@ -1,12 +1,13 @@
 # Code tab — спецификация и состояние реализации
 
-> Статус на 2026-07-16: стадии 0–6 и дорожная карта до GitHub Notifications 1.0.59 реализованы. Версия
+> Статус на 2026-07-16: стадии 0–6 и дорожная карта до Android FGS hardening 1.0.60 реализованы. Версия
 > 1.0.50 добавила типизированное рабочее дерево `A/M/D/R`, 1.0.52 — постоянные вкладки и Quick
 > Open, 1.0.53 — Smart Editor, 1.0.54 — безопасный rebase draft, ветки, PR и blame/history,
 > 1.0.55 — единый state-holder, атомарное состояние с recovery и ограниченный offline-кеш,
 > 1.0.56 — безопасные preview и защита редактора от больших/бинарных файлов, 1.0.57 —
 > маршрутизацию поддерживаемых ссылок, а 1.0.58 — реальные GitHub Apps API-данные без ложного
-> статуса установки. Версия 1.0.59 завершает Notifications REST inbox.
+> статуса установки. Версия 1.0.59 завершает Notifications REST inbox, 1.0.60 исправляет typed
+> foreground service для скачивания release assets на Android 14+.
 
 ## Концепт
 
@@ -106,6 +107,7 @@
 | 1.0.57 | Supported links: Android App Links/deep links, GitHub URL и OAuth/callback-маршрутизация. |
 | 1.0.58 | GitHub Apps API Truth: live metadata, token-scoped installations и evidence по репозиториям. |
 | 1.0.59 | Notifications API: полный inbox, repository threads, subscriptions и корректный polling. |
+| 1.0.60 | Android FGS hardening: release download запускается с runtime-типом `dataSync`. |
 
 ## Workspace 1.0.52
 
@@ -243,3 +245,12 @@
   failures, дедуплицирует уже показанный набор и выводит Android InboxStyle до пяти свежих тредов.
 - GitHub ограничивает Notifications REST endpoints classic PAT с `notifications` либо `repo` scope;
   fine-grained PAT и GitHub App tokens не поддерживаются самим GitHub, что явно объясняется при 403.
+
+## Android FGS hardening 1.0.60
+
+- `ReleaseDownloadWorker` передаёт `ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC` через
+  трёхаргументный `ForegroundInfo`. Двухаргументный конструктор передавал WorkManager тип `none`,
+  из-за чего Android с target SDK 36 выбрасывал `InvalidForegroundServiceTypeException`.
+- Runtime-тип совпадает с `android:foregroundServiceType="dataSync"` у WorkManager
+  `SystemForegroundService` и разрешениями `FOREGROUND_SERVICE` /
+  `FOREGROUND_SERVICE_DATA_SYNC` в manifest.

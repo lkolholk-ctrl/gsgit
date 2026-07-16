@@ -4,6 +4,7 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.pm.ServiceInfo
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
@@ -76,7 +77,14 @@ class ReleaseDownloadWorker(
     }
 
     private fun createForegroundInfo(notificationId: Int, assetName: String, progress: Int): ForegroundInfo {
-        return ForegroundInfo(notificationId, createNotification(assetName, progress))
+        // WorkManager forwards this value to Service.startForeground(). The
+        // two-argument constructor uses type=0 ("none"), which Android rejects
+        // for targetSdk 34+ even when dataSync is declared in the manifest.
+        return ForegroundInfo(
+            notificationId,
+            createNotification(assetName, progress),
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+        )
     }
 
     private fun createNotification(assetName: String, progress: Int): Notification {
