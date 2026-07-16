@@ -25,6 +25,7 @@ class NotificationSyncWorker(
         const val CHANNEL_ID = "github_sync_channel"
         const val NOTIFICATION_ID = 9500
         private const val KEY_LAST_NOTIFIED_SIGNATURE = "last_notified_signature"
+        private const val KEY_NEXT_API_POLL_AT = "notification_next_api_poll_at"
 
         fun schedule(context: Context, intervalMins: Int) {
             try {
@@ -71,11 +72,24 @@ class NotificationSyncWorker(
 
         if (!GitHubManager.isLoggedIn(context)) return Result.success()
 
-        val notifications = try {
-            GitHubManager.listNotifications(context, all = false, participating = false)
-        } catch (e: Exception) {
-            return Result.retry()
+        val now = System.currentTimeMillis()
+        if (now < prefs.getLong(KEY_NEXT_API_POLL_AT, 0L)) return Result.success()
+
+        val page = GitHubManager.getNotificationsPage(
+            context = context,
+            all = false,
+            participating = false,
+            page = 1,
+            perPage = 50,
+        )
+        prefs.edit().putLong(
+            KEY_NEXT_API_POLL_AT,
+            now + page.pollIntervalSeconds.coerceAtLeast(1) * 1_000L,
+        ).apply()
+        if (page.error.isNotBlank()) {
+            return if (page.code == -1 || page.code >= 500) Result.retry() else Result.success()
         }
+        val notifications = page.notifications
 
         if (notifications.isNotEmpty()) {
             val signature = notifications
@@ -120,9 +134,21 @@ class NotificationSyncWorker(
         )
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setContentTitle("New GitHub Notifications (${notifications.size})")
+            .setContentTitle("GitHub notifications (${notifications.size})")
             .setContentText("Latest from ${latest.repoName}: ${latest.title}")
+            .setStyle(
+                NotificationCompat.InboxStyle()
+                    .setBigContentTitle("${notifications.size} unread GitHub threads")
+                    .also { style ->
+                        notifications.take(5).forEach { item ->
+                            style.addLine("${item.repoName.substringAfter('/')}: ${item.title}")
+                        }
+                        if (notifications.size > 5) style.setSummaryText("+${notifications.size - 5} more")
+                    }
+            )
             .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setNumber(notifications.size)
+            .setCategory(NotificationCompat.CATEGORY_SOCIAL)
             .setAutoCancel(true)
             .setOnlyAlertOnce(true)
             .setContentIntent(pendingIntent)

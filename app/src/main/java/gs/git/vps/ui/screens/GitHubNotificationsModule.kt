@@ -71,7 +71,7 @@ import gs.git.vps.ui.theme.JetBrainsMono
 import kotlinx.coroutines.launch
 
 @Composable
-fun NotificationsScreen(onBack: () -> Unit) {
+private fun LegacyNotificationsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var notifications by remember { mutableStateOf<List<GHNotification>>(emptyList()) }

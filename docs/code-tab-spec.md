@@ -1,12 +1,12 @@
 # Code tab — спецификация и состояние реализации
 
-> Статус на 2026-07-16: стадии 0–6 и дорожная карта до GitHub Apps API Truth 1.0.58 реализованы. Версия
+> Статус на 2026-07-16: стадии 0–6 и дорожная карта до GitHub Notifications 1.0.59 реализованы. Версия
 > 1.0.50 добавила типизированное рабочее дерево `A/M/D/R`, 1.0.52 — постоянные вкладки и Quick
 > Open, 1.0.53 — Smart Editor, 1.0.54 — безопасный rebase draft, ветки, PR и blame/history,
 > 1.0.55 — единый state-holder, атомарное состояние с recovery и ограниченный offline-кеш,
 > 1.0.56 — безопасные preview и защита редактора от больших/бинарных файлов, 1.0.57 —
 > маршрутизацию поддерживаемых ссылок, а 1.0.58 — реальные GitHub Apps API-данные без ложного
-> статуса установки.
+> статуса установки. Версия 1.0.59 завершает Notifications REST inbox.
 
 ## Концепт
 
@@ -105,6 +105,7 @@
 | 1.0.56 | Preview: Markdown, изображения, SVG/JSON, large-file и binary guards. |
 | 1.0.57 | Supported links: Android App Links/deep links, GitHub URL и OAuth/callback-маршрутизация. |
 | 1.0.58 | GitHub Apps API Truth: live metadata, token-scoped installations и evidence по репозиториям. |
+| 1.0.59 | Notifications API: полный inbox, repository threads, subscriptions и корректный polling. |
 
 ## Workspace 1.0.52
 
@@ -223,3 +224,22 @@
   Пустая выборка всегда подписана как отсутствие наблюдаемого evidence, а не отсутствие установки.
 - Если доступен совместимый App user token, сохраняется полный installation flow: selection
   `all/selected`, permissions, events, timestamps, suspension и управление выбранными репозиториями.
+
+## GitHub Notifications 1.0.59
+
+- Inbox использует глобальный `GET /notifications` и repository endpoint с реальными параметрами
+  `all`, `participating`, `since`, `before`, `page` и максимальным `per_page=50`. Пагинация берётся
+  из GitHub `Link`, а пустой ответ больше не скрывает HTTP-ошибку авторизации.
+- Интерфейс показывает фактические subject types и reasons из ответа GitHub, поиск по загруженным
+  тредам, repository scope, временные окна, unread/loaded counters, `X-Poll-Interval`,
+  `Last-Modified`, HTTP status и текущий API rate limit.
+- Полная карточка треда загружается через `GET /notifications/threads/{id}` и показывает subject,
+  latest comment URL, timestamps, reason, read-state и все исходные API URL.
+- Поддержаны все mutation endpoints уведомлений: mark thread read, mark thread done, mark all read,
+  mark repository read, subscribe/ignore/delete thread subscription.
+- В той же карточке читается и меняется repository subscription: watch, ignore repository и
+  unwatch. `404` отсутствующей явной подписки отображается как состояние, а не как фиктивная ошибка.
+- Background worker соблюдает серверный `X-Poll-Interval`, различает transport/server и auth
+  failures, дедуплицирует уже показанный набор и выводит Android InboxStyle до пяти свежих тредов.
+- GitHub ограничивает Notifications REST endpoints classic PAT с `notifications` либо `repo` scope;
+  fine-grained PAT и GitHub App tokens не поддерживаются самим GitHub, что явно объясняется при 403.
