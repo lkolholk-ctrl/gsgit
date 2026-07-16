@@ -261,50 +261,42 @@ internal fun RepoDetailScreen(
     // Code workspace: current editor file. null = browser is visible.
     var codeEditorFile by rememberSaveable(repo.fullName, stateSaver = NullableGitHubContentSaver) { mutableStateOf<GHContent?>(null) }
     var codeEditorContent by remember { mutableStateOf<String?>(null) }
+    var codeEditorOfflineCache by remember { mutableStateOf(false) }
     var codeDraftLoaded by remember(repo.fullName) { mutableStateOf(false) }
-    // Typed A/M/D/R draft, scoped by repository and persisted separately for every branch.
-    val codeDraft = remember(repo.fullName) { mutableStateMapOf<String, CodeChange>() }
-    // Remote ancestor text for three-way conflict resolution (1.0.54), scoped like the draft.
-    val codeDraftBases = remember(repo.fullName) { mutableStateMapOf<String, String>() }
-    // 1.0.52 workspace: lightweight paths are persistent per branch; file contents stay in draft/API.
-    val codeTabs = remember(repo.fullName) { mutableStateListOf<GHContent>() }
-    val codeBackHistory = remember(repo.fullName) { mutableStateListOf<String>() }
-    val codeForwardHistory = remember(repo.fullName) { mutableStateListOf<String>() }
-    fun persistCodeDraft() = CodeDraftStore.save(context, repo.fullName, selectedBranch, codeDraft.toMap())
-    fun persistCodeDraftBases() = CodeDraftBaseStore.save(context, repo.fullName, selectedBranch, codeDraftBases.toMap())
-    fun persistCodeWorkspace(activePath: String? = codeEditorFile?.path) = CodeWorkspaceStore.save(
-        context = context,
-        repoFullName = repo.fullName,
-        branch = selectedBranch,
-        snapshot = CodeWorkspaceSnapshot(
-            openPaths = codeTabs.map { it.path },
-            activePath = activePath,
-            backHistory = codeBackHistory.toList(),
-            forwardHistory = codeForwardHistory.toList(),
-        ),
-    )
+    // 1.0.55: one state-holder owns draft, ancestors, tabs and navigation history.
+    val codeState = rememberCodeWorkspaceStateHolder(context, repo.fullName)
+    val codeDraft = codeState.draft
+    val codeDraftBases = codeState.bases
+    val codeTabs = codeState.tabs
+    val codeBackHistory = codeState.backHistory
+    val codeForwardHistory = codeState.forwardHistory
+    fun persistCodeState(activePath: String? = codeEditorFile?.path) =
+        codeState.persist(selectedBranch, activePath)
+    fun persistCodeDraft() = persistCodeState()
+    fun persistCodeDraftBases() = persistCodeState()
+    fun persistCodeWorkspace(activePath: String? = codeEditorFile?.path) = persistCodeState(activePath)
     // Стадия 6 «прочность»: загрузка/восстановление черновика для текущей (репо, ветка) — переживает
     // рестарт процесса и смену ветки (у каждой ветки свой черновик; старая ветка уже на диске).
     LaunchedEffect(repo.fullName, selectedBranch) {
         codeDraftLoaded = false
-        val loaded = CodeDraftStore.load(context, repo.fullName, selectedBranch)
-        codeDraft.clear(); codeDraft.putAll(loaded)
-        codeDraftBases.clear()
-        codeDraftBases.putAll(CodeDraftBaseStore.load(context, repo.fullName, selectedBranch))
-        val workspace = CodeWorkspaceStore.load(context, repo.fullName, selectedBranch)
-        codeTabs.clear()
-        codeTabs.addAll(workspace.openPaths.map { path ->
-            GHContent(path.substringAfterLast('/'), path, "file", 0L, "", "")
-        })
-        codeBackHistory.clear(); codeBackHistory.addAll(workspace.backHistory)
-        codeForwardHistory.clear(); codeForwardHistory.addAll(workspace.forwardHistory)
+        val loadResult = codeState.loadBranch(selectedBranch)
+        val workspace = loadResult.state.workspace
         val activePath = workspace.activePath
         codeEditorFile = activePath?.let { path ->
             codeTabs.firstOrNull { it.path == path }
                 ?: GHContent(path.substringAfterLast('/'), path, "file", 0L, "", "")
         }
         codeEditorContent = activePath?.let { codeDraft[it]?.draftContentOrNull() }
+        codeEditorOfflineCache = false
         codeDraftLoaded = true
+        if (loadResult.recovered) {
+            Toast.makeText(context, "Code workspace recovered from last good snapshot", Toast.LENGTH_LONG).show()
+        }
+    }
+    LaunchedEffect(codeState.persistenceError) {
+        codeState.persistenceError?.let { error ->
+            Toast.makeText(context, "workspace save error: $error", Toast.LENGTH_LONG).show()
+        }
     }
     var showCodeCommitSheet by remember { mutableStateOf(false) }
     var codeCommitting by remember { mutableStateOf(false) }
@@ -366,6 +358,7 @@ internal fun RepoDetailScreen(
         CodeDraftStore.saveRecents(context, repo.fullName, codeRecents.map { it.path })  // S4: персист
         codeEditorFile = f
         codeEditorContent = codeDraft[f.path]?.draftContentOrNull()
+        codeEditorOfflineCache = false
         persistCodeWorkspace(activePath = f.path)
     }
 
@@ -399,6 +392,7 @@ internal fun RepoDetailScreen(
     fun closeCodeEditorToBrowser() {
         codeEditorFile = null
         codeEditorContent = null
+        codeEditorOfflineCache = false
         persistCodeWorkspace(activePath = null)
     }
 
@@ -420,18 +414,26 @@ internal fun RepoDetailScreen(
         persistCodeDraftBases()
     }
 
-    suspend fun codeTargetExists(path: String, ignorePath: String? = null): Boolean {
+    suspend fun codeTargetExists(path: String, ignorePath: String? = null): Boolean? {
         if (path == ignorePath) return false
         val local = codeDraft[path]
         if (local != null) return local !is CodeDelete
         val parent = path.substringBeforeLast('/', "")
-        return GitHubManager.getRepoContents(context, repo.owner, repo.name, parent, selectedBranch)
+        val directory = CodeWorkspaceCache.loadDirectory(
+            context, repo.owner, repo.name, selectedBranch, parent,
+        ) ?: return null
+        return directory.value
             .any { it.path == path && it.path != ignorePath }
     }
 
     fun createCodeFile(path: String) {
         scope.launch {
-            if (codeTargetExists(path)) {
+            val targetExists = codeTargetExists(path)
+            if (targetExists == null) {
+                Toast.makeText(context, "can't verify path while offline", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            if (targetExists) {
                 Toast.makeText(context, "path already exists", Toast.LENGTH_SHORT).show()
                 return@launch
             }
@@ -446,7 +448,12 @@ internal fun RepoDetailScreen(
 
     fun createCodeFolder(path: String) {
         scope.launch {
-            if (codeTargetExists(path)) {
+            val targetExists = codeTargetExists(path)
+            if (targetExists == null) {
+                Toast.makeText(context, "can't verify folder while offline", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            if (targetExists) {
                 Toast.makeText(context, "folder already exists", Toast.LENGTH_SHORT).show()
                 return@launch
             }
@@ -461,7 +468,12 @@ internal fun RepoDetailScreen(
 
     fun renameOrMoveCodeFile(item: GHContent, targetPath: String) {
         scope.launch {
-            if (codeTargetExists(targetPath, ignorePath = item.path)) {
+            val targetExists = codeTargetExists(targetPath, ignorePath = item.path)
+            if (targetExists == null) {
+                Toast.makeText(context, "can't verify target while offline", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            if (targetExists) {
                 Toast.makeText(context, "target already exists", Toast.LENGTH_SHORT).show()
                 return@launch
             }
@@ -512,7 +524,12 @@ internal fun RepoDetailScreen(
 
     fun duplicateCodeFile(item: GHContent, targetPath: String) {
         scope.launch {
-            if (codeTargetExists(targetPath)) {
+            val targetExists = codeTargetExists(targetPath)
+            if (targetExists == null) {
+                Toast.makeText(context, "can't verify target while offline", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            if (targetExists) {
                 Toast.makeText(context, "target already exists", Toast.LENGTH_SHORT).show()
                 return@launch
             }
@@ -1005,9 +1022,9 @@ internal fun RepoDetailScreen(
             if (codeDraftLoaded && codeEditorContent == null) {
                 val change = codeDraft[codeFile.path]
                 val needsRemoteBase = change != null && change !is CodeAdd && codeFile.path !in codeDraftBases
-                val remoteContent = if (change?.draftContentOrNull() == null || needsRemoteBase) {
+                val remoteResult = if (change?.draftContentOrNull() == null || needsRemoteBase) {
                     runCatching {
-                        GitHubManager.getCodeRemoteText(
+                        CodeWorkspaceCache.loadText(
                             context = context,
                             owner = repo.owner,
                             repo = repo.name,
@@ -1016,6 +1033,8 @@ internal fun RepoDetailScreen(
                         )
                     }.getOrNull()
                 } else null
+                val remoteContent = remoteResult?.value
+                codeEditorOfflineCache = remoteResult?.source == CodeCacheSource.DISK
                 if (needsRemoteBase && remoteContent != null) {
                     codeDraftBases[codeFile.path] = remoteContent
                     persistCodeDraftBases()
@@ -1057,6 +1076,7 @@ internal fun RepoDetailScreen(
                         canNavigateWorkspaceBack = codeBackHistory.isNotEmpty(),
                         canNavigateWorkspaceForward = codeForwardHistory.isNotEmpty(),
                         initialHasDraft = codeDraft.containsKey(codeFile.path),
+                        workspaceOfflineCache = codeEditorOfflineCache,
                         onSelectWorkspaceTab = { openCodeFile(it) },
                         onCloseWorkspaceTab = { closeCodeTab(it) },
                         onWorkspaceBack = { navigateCodeHistory(backward = true) },
@@ -1862,21 +1882,42 @@ internal fun RepoDetailScreen(
                     val created = runCatching {
                         GitHubManager.createBranch(context, repo.owner, repo.name, newBranch, sourceBranch)
                     }.getOrDefault(false)
-                    codeDraftBranchCreating = false
                     if (created) {
-                        CodeDraftStore.save(context, repo.fullName, newBranch, draftSnapshot)
-                        CodeDraftBaseStore.save(context, repo.fullName, newBranch, baseSnapshot)
-                        codeDraft.clear()
-                        codeDraftBases.clear()
-                        CodeDraftStore.save(context, repo.fullName, sourceBranch, emptyMap())
-                        CodeDraftBaseStore.save(context, repo.fullName, sourceBranch, emptyMap())
-                        showCodeDraftBranch = false
+                        val workspaceSnapshot = codeState.snapshot(codeEditorFile?.path)
+                        val transferred = runCatching {
+                            codeState.replaceBranch(
+                                branch = newBranch,
+                                state = workspaceSnapshot.copy(
+                                    draft = draftSnapshot,
+                                    bases = baseSnapshot,
+                                ),
+                            )
+                            codeState.replaceBranch(
+                                branch = sourceBranch,
+                                state = workspaceSnapshot.copy(
+                                    draft = emptyMap(),
+                                    bases = emptyMap(),
+                                ),
+                            )
+                        }.isSuccess
                         branches = (branches + newBranch).distinct().sorted()
-                        selectedBranch = newBranch
-                        Toast.makeText(context, "draft moved to $newBranch", Toast.LENGTH_SHORT).show()
+                        if (transferred) {
+                            codeDraft.clear()
+                            codeDraftBases.clear()
+                            showCodeDraftBranch = false
+                            selectedBranch = newBranch
+                            Toast.makeText(context, "draft moved to $newBranch", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(
+                                context,
+                                "branch created, but local draft stayed on $sourceBranch",
+                                Toast.LENGTH_LONG,
+                            ).show()
+                        }
                     } else {
                         Toast.makeText(context, "failed to create branch", Toast.LENGTH_LONG).show()
                     }
+                    codeDraftBranchCreating = false
                 }
             },
             onDismiss = { if (!codeDraftBranchCreating) showCodeDraftBranch = false },

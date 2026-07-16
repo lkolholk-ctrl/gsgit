@@ -50,13 +50,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import gs.git.vps.data.github.GitHubManager
 import gs.git.vps.data.github.CodeAdd
 import gs.git.vps.data.github.CodeChange
 import gs.git.vps.data.github.CodeDelete
 import gs.git.vps.data.github.CodeRename
+import gs.git.vps.data.github.CodeCacheSource
+import gs.git.vps.data.github.CodeWorkspaceCache
 import gs.git.vps.data.github.CodeChangeKind
-import gs.git.vps.data.github.getRepoContents
 import gs.git.vps.data.github.model.GHContent
 import gs.git.vps.data.github.model.GHRepo
 import gs.git.vps.ui.components.AiModuleText
@@ -132,6 +132,7 @@ internal fun CodeBrowser(
     var items by remember { mutableStateOf<List<GHContent>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var failed by remember { mutableStateOf(false) }
+    var offlineCache by remember { mutableStateOf(false) }
     var reloadNonce by remember { mutableIntStateOf(0) }
     var query by remember(path) { mutableStateOf("") }   // фильтр файлов, сброс при смене папки
     var showCreateDialog by remember { mutableStateOf(false) }
@@ -148,9 +149,15 @@ internal fun CodeBrowser(
 
     LaunchedEffect(repo.fullName, branch, path, reloadNonce, refreshKey) {
         loading = true; failed = false
-        val r = runCatching { GitHubManager.getRepoContents(context, repo.owner, repo.name, path, branch) }.getOrNull()
-        if (r == null) failed = true
-        else items = r.sortedWith(compareBy({ it.type != "dir" }, { it.name.lowercase() }))
+        offlineCache = false
+        val result = CodeWorkspaceCache.loadDirectory(context, repo.owner, repo.name, branch, path)
+        if (result == null) {
+            failed = true
+            offlineCache = false
+        } else {
+            items = result.value
+            offlineCache = result.source == CodeCacheSource.DISK
+        }
         loading = false
     }
 
@@ -177,6 +184,21 @@ internal fun CodeBrowser(
             onNavigatePath = onNavigatePath,
             onCreate = { showCreateDialog = true },
         )
+        if (offlineCache) {
+            Row(
+                Modifier.fillMaxWidth().background(palette.warning.copy(alpha = 0.10f)).padding(horizontal = 14.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                AiModuleText(
+                    "offline cache · changes stay local",
+                    color = palette.warning,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 11.sp,
+                    modifier = Modifier.weight(1f),
+                )
+                GitHubTerminalButton("retry", onClick = { reloadNonce++ }, color = palette.warning)
+            }
+        }
         if (recents.isNotEmpty()) CodeRecentsRow(recents = recents, onOpen = onOpenFile)
         Box(Modifier.fillMaxWidth().height(1.dp).background(palette.border.copy(alpha = 0.12f)))
         if (draftCount > 0) {

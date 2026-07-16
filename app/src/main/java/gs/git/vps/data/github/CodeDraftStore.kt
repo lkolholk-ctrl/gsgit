@@ -23,7 +23,7 @@ internal object CodeDraftStore {
         val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(key(repoFullName, branch), null) ?: return emptyMap()
         return try {
-            decodeDraft(JSONObject(raw))
+            decodeCodeDraft(JSONObject(raw))
         } catch (e: Exception) {
             emptyMap()
         }
@@ -37,12 +37,7 @@ internal object CodeDraftStore {
             prefs.edit().remove(k).apply()
             return
         }
-        val j = JSONObject().apply {
-            put("version", DRAFT_FORMAT_VERSION)
-            put("changes", JSONArray().apply {
-                draft.values.sortedBy { it.path }.forEach { change -> put(encodeChange(change)) }
-            })
-        }
+        val j = encodeCodeDraft(draft)
         val s = j.toString()
         // S6: лимит, чтобы огромный черновик не раздувал SharedPreferences (грузится в память целиком).
         // При превышении не персистим — in-memory черновик сессии остаётся рабочим.
@@ -75,12 +70,12 @@ internal object CodeDraftStore {
             .edit().putString(repoFullName, a.toString()).apply()
     }
 
-    private fun decodeDraft(root: JSONObject): Map<String, CodeChange> {
+    internal fun decodeCodeDraft(root: JSONObject): Map<String, CodeChange> {
         val encoded = root.optJSONArray("changes")
         if (root.optInt("version", 0) >= DRAFT_FORMAT_VERSION && encoded != null) {
             return buildMap {
                 for (i in 0 until encoded.length()) {
-                    decodeChange(encoded.optJSONObject(i) ?: continue)?.let { put(it.path, it) }
+                    decodeCodeChange(encoded.optJSONObject(i) ?: continue)?.let { put(it.path, it) }
                 }
             }
         }
@@ -95,7 +90,14 @@ internal object CodeDraftStore {
         }
     }
 
-    private fun encodeChange(change: CodeChange): JSONObject = JSONObject().apply {
+    internal fun encodeCodeDraft(draft: Map<String, CodeChange>): JSONObject = JSONObject().apply {
+        put("version", DRAFT_FORMAT_VERSION)
+        put("changes", JSONArray().apply {
+            draft.values.sortedBy { it.path }.forEach { change -> put(encodeCodeChange(change)) }
+        })
+    }
+
+    private fun encodeCodeChange(change: CodeChange): JSONObject = JSONObject().apply {
         put("kind", change.kind.name)
         put("path", change.path)
         when (change) {
@@ -105,7 +107,7 @@ internal object CodeDraftStore {
                 putNullable("sourceSha", change.sourceSha)
             }
             is CodeModify -> put("content", change.content)
-            is CodeDelete -> change.restore?.let { put("restore", encodeChange(it)) }
+            is CodeDelete -> change.restore?.let { put("restore", encodeCodeChange(it)) }
             is CodeRename -> {
                 put("oldPath", change.oldPath)
                 putNullable("content", change.content)
@@ -114,7 +116,7 @@ internal object CodeDraftStore {
         }
     }
 
-    private fun decodeChange(j: JSONObject): CodeChange? {
+    private fun decodeCodeChange(j: JSONObject): CodeChange? {
         val path = j.optString("path").trim('/')
         if (path.isBlank()) return null
         return when (runCatching { CodeChangeKind.valueOf(j.optString("kind")) }.getOrNull()) {
@@ -125,7 +127,7 @@ internal object CodeDraftStore {
                 sourceSha = j.nullableString("sourceSha"),
             )
             CodeChangeKind.MODIFY -> CodeModify(path, j.optString("content", ""))
-            CodeChangeKind.DELETE -> CodeDelete(path, j.optJSONObject("restore")?.let(::decodeChange))
+            CodeChangeKind.DELETE -> CodeDelete(path, j.optJSONObject("restore")?.let(::decodeCodeChange))
             CodeChangeKind.RENAME -> {
                 val oldPath = j.optString("oldPath").trim('/')
                 if (oldPath.isBlank()) null else CodeRename(

@@ -165,6 +165,7 @@ fun CodeEditorScreen(
     canNavigateWorkspaceBack: Boolean = false,
     canNavigateWorkspaceForward: Boolean = false,
     initialHasDraft: Boolean = false,
+    workspaceOfflineCache: Boolean = false,
     onSelectWorkspaceTab: ((GHContent) -> Unit)? = null,
     onCloseWorkspaceTab: ((GHContent) -> Unit)? = null,
     onWorkspaceBack: (() -> Unit)? = null,
@@ -842,6 +843,7 @@ fun CodeEditorScreen(
                 file = currentFile,
                 ext = ext,
                 hasChanges = hasChanges,
+                offlineCache = workspaceOfflineCache,
                 tabs = workspaceTabs,
                 dirtyPaths = workspaceDirtyPaths,
                 canGoBack = canNavigateWorkspaceBack,
@@ -1827,6 +1829,7 @@ private fun LiteEditorTopBar(
     file: GHContent,
     ext: String,
     hasChanges: Boolean,
+    offlineCache: Boolean,
     tabs: List<GHContent>,
     dirtyPaths: Set<String>,
     canGoBack: Boolean,
@@ -1878,6 +1881,15 @@ private fun LiteEditorTopBar(
             if (hasChanges) {
                 Text(text = "●", color = colors.warning, fontFamily = JetBrainsMono, fontSize = 11.sp)
                 Spacer(Modifier.width(8.dp))
+            }
+            if (offlineCache) {
+                Text(
+                    text = "cache",
+                    color = colors.warning,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 9.sp,
+                )
+                Spacer(Modifier.width(6.dp))
             }
             onOpenBlame?.let {
                 GitHubTopBarAction(glyph = "B", onClick = it, tint = colors.textSecondary, contentDescription = "blame")
