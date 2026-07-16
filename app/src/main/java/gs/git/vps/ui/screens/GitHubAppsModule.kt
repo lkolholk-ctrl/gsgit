@@ -52,8 +52,10 @@ import gs.git.vps.data.github.*
 import gs.git.vps.data.github.GitHubManager
 import gs.git.vps.data.github.model.GHRepo
 import gs.git.vps.ui.components.AiModuleHairline
+import gs.git.vps.ui.components.AiModuleAlertDialog
 import gs.git.vps.ui.components.AiModuleSpinner
 import gs.git.vps.ui.components.AiModuleText as Text
+import gs.git.vps.ui.components.AiModuleTextAction
 import gs.git.vps.ui.theme.AiModuleTheme
 import gs.git.vps.ui.theme.JetBrainsMono
 import kotlinx.coroutines.launch
@@ -70,6 +72,7 @@ internal fun GitHubAppsScreen(
     onRepoClick: (GHRepo) -> Unit,
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     var page by remember { mutableIntStateOf(1) }
     var totalCount by remember { mutableIntStateOf(0) }
@@ -92,6 +95,15 @@ internal fun GitHubAppsScreen(
     var devicePollInterval by remember { mutableIntStateOf(5) }
     var appAuthBusy by remember { mutableStateOf(false) }
     var appAuthError by remember { mutableStateOf("") }
+    var resumeRevision by remember { mutableIntStateOf(0) }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) resumeRevision++
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     fun loadInstallations(reset: Boolean = false) {
         loading = true
@@ -150,6 +162,10 @@ internal fun GitHubAppsScreen(
     }
 
     LaunchedEffect(Unit) { refreshAll() }
+
+    LaunchedEffect(resumeRevision) {
+        if (resumeRevision > 1) refreshAll()
+    }
 
     LaunchedEffect(deviceCode?.deviceCode) {
         val pendingCode = deviceCode ?: return@LaunchedEffect
@@ -259,6 +275,7 @@ internal fun GitHubAppsScreen(
     selected?.let { installation ->
         GitHubAppInstallationDetailScreen(
             installation = installation,
+            availableRepos = repos,
             onBack = ::handleAppsBack,
             onRepoClick = onRepoClick,
         )
@@ -443,8 +460,8 @@ private fun GsGitAppConnectionCard(
                 )
             }
             GitHubTerminalPill(
-                if (connection.connected) "connected" else if (deviceCode != null) "pending" else "not connected",
-                if (connection.connected) palette.accent else if (deviceCode != null) palette.warning else palette.textMuted,
+                if (deviceCode != null) "pending" else connection.status,
+                if (deviceCode != null) palette.warning else if (connection.connected) palette.accent else palette.textMuted,
             )
         }
 
@@ -463,6 +480,15 @@ private fun GsGitAppConnectionCard(
                 ) {
                     GitHubTerminalPill(connection.accessTokenExpiresAt.appTokenExpiryLabel("access"), palette.accent)
                     GitHubTerminalPill(connection.refreshTokenExpiresAt.appTokenExpiryLabel("refresh"), palette.textSecondary)
+                }
+                if (connection.lastRefreshAt > 0L) {
+                    Text(
+                        text = connection.lastRefreshAt.appTokenRefreshLabel(connection.lastRefreshError),
+                        color = if (connection.lastRefreshError.isBlank()) palette.textMuted else palette.warning,
+                        fontFamily = JetBrainsMono,
+                        fontSize = 9.sp,
+                        lineHeight = 13.sp,
+                    )
                 }
                 Row(
                     Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
@@ -514,7 +540,7 @@ private fun GsGitAppConnectionCard(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     GitHubTerminalButton(
-                        label = if (busy) "starting..." else "connect GsGit App ->",
+                        label = if (busy) "starting..." else if (connection.hasSession) "reconnect GsGit App ->" else "connect GsGit App ->",
                         onClick = onConnect,
                         color = palette.accent,
                         enabled = !busy,
@@ -543,6 +569,17 @@ private fun Long.appTokenExpiryLabel(prefix: String): String {
         remainingMinutes >= 60 -> "$prefix ${remainingMinutes / 60}h"
         else -> "$prefix ${remainingMinutes}m"
     }
+}
+
+private fun Long.appTokenRefreshLabel(error: String): String {
+    val ageMinutes = ((System.currentTimeMillis() - this) / 60_000L).coerceAtLeast(0L)
+    val age = when {
+        ageMinutes >= 24 * 60 -> "${ageMinutes / (24 * 60)}d ago"
+        ageMinutes >= 60 -> "${ageMinutes / 60}h ago"
+        else -> "${ageMinutes}m ago"
+    }
+    return if (error.isBlank()) "last token issue/refresh: $age · ok"
+    else "last refresh: $age · ${error.replace('_', ' ')}"
 }
 
 @Composable
@@ -638,17 +675,21 @@ private fun GitHubSupportedLinksCard() {
 
 @Composable
 private fun GitHubAppsApiNotice(errorCode: Int, error: String) {
-    val missingConnection = errorCode == 401 && error.contains("Connect GsGit App", ignoreCase = true)
+    val missingConnection = errorCode == 401
     val isTokenMismatch = errorCode == 403 || error.contains("authorized to a GitHub App", ignoreCase = true)
     GitHubInlineTerminalNotice(
         glyph = GhGlyphs.WARN,
         title = when {
-            missingConnection -> "connect GsGit App above"
+            missingConnection -> if (error.contains("Reconnect", ignoreCase = true)) "reconnect GsGit App above" else "connect GsGit App above"
             isTokenMismatch -> "/user/installations rejected the App token"
             else -> "installation API unavailable"
         },
         subtitle = when {
-            missingConnection -> "Device Flow creates the compatible App user token without replacing your PAT."
+            missingConnection -> if (error.contains("Reconnect", ignoreCase = true)) {
+                "GitHub rejected the previous App user token. Device Flow will create a fresh session without replacing your PAT."
+            } else {
+                "Device Flow creates the compatible App user token without replacing your PAT."
+            }
             isTokenMismatch -> "HTTP $errorCode. Reconnect GsGit App to issue a fresh token for ${GsGitGitHubApp.SLUG}."
             else -> error.take(180)
         },
@@ -658,6 +699,7 @@ private fun GitHubAppsApiNotice(errorCode: Int, error: String) {
 @Composable
 private fun GitHubAppInstallationDetailScreen(
     installation: GHAppInstallation,
+    availableRepos: List<GHRepo>,
     onBack: () -> Unit,
     onRepoClick: (GHRepo) -> Unit,
 ) {
@@ -668,8 +710,8 @@ private fun GitHubAppInstallationDetailScreen(
     var repos by remember(installation.id) { mutableStateOf<List<GHRepo>>(emptyList()) }
     var loading by remember(installation.id) { mutableStateOf(true) }
     var error by remember(installation.id) { mutableStateOf("") }
-    var repositoryId by remember(installation.id) { mutableStateOf("") }
     var actionInFlight by remember { mutableStateOf(false) }
+    var pendingRemoval by remember { mutableStateOf<GHRepo?>(null) }
 
     fun loadRepos(reset: Boolean = false) {
         loading = true
@@ -699,7 +741,6 @@ private fun GitHubAppInstallationDetailScreen(
             Toast.makeText(context, result.message.take(160), Toast.LENGTH_SHORT).show()
             actionInFlight = false
             if (result.success) {
-                repositoryId = ""
                 loadRepos(reset = true)
             }
         }
@@ -739,20 +780,23 @@ private fun GitHubAppInstallationDetailScreen(
             contentPadding = PaddingValues(top = 8.dp, bottom = 18.dp),
         ) {
             item { GitHubAppInstallationHeader(installation) }
-            item {
-                GitHubAppRepoMutationRow(
-                    repositoryId = repositoryId,
-                    onRepositoryIdChange = { repositoryId = it.filter { ch -> ch.isDigit() } },
-                    enabled = !actionInFlight,
-                    onAdd = {
-                        val id = repositoryId.toLongOrNull()
-                        if (id == null) {
-                            Toast.makeText(context, "Repository id required", Toast.LENGTH_SHORT).show()
-                        } else {
-                            mutateRepository(id, add = true)
-                        }
-                    },
-                )
+            if (installation.repositorySelection == "selected") {
+                item {
+                    GitHubAppRepoAddPicker(
+                        availableRepos = availableRepos,
+                        installedRepos = repos,
+                        enabled = !loading && !actionInFlight,
+                        onAdd = { mutateRepository(it.id, add = true) },
+                    )
+                }
+            } else {
+                item {
+                    GitHubInlineTerminalNotice(
+                        glyph = GhGlyphs.INFO,
+                        title = "all repositories selected",
+                        subtitle = "Repository membership is controlled on GitHub for this installation mode.",
+                    )
+                }
             }
             item {
                 GitHubTerminalSectionLabel(
@@ -789,12 +833,14 @@ private fun GitHubAppInstallationDetailScreen(
                             Box(Modifier.weight(1f)) {
                                 RepoCard(repo, onClick = { onRepoClick(repo) }, showStats = true)
                             }
-                            GitHubTerminalButton(
-                                label = "remove",
-                                onClick = { mutateRepository(repo.id, add = false) },
-                                color = AiModuleTheme.colors.error,
-                                enabled = !actionInFlight && repo.id > 0L,
-                            )
+                            if (installation.repositorySelection == "selected") {
+                                GitHubTerminalButton(
+                                    label = "remove",
+                                    onClick = { pendingRemoval = repo },
+                                    color = AiModuleTheme.colors.error,
+                                    enabled = !actionInFlight && repo.id > 0L,
+                                )
+                            }
                         }
                         AiModuleHairline()
                     }
@@ -816,6 +862,39 @@ private fun GitHubAppInstallationDetailScreen(
                 }
             }
         }
+    }
+
+    pendingRemoval?.let { repo ->
+        AiModuleAlertDialog(
+            onDismissRequest = { pendingRemoval = null },
+            title = "remove repository",
+            content = {
+                Text(
+                    text = "Remove ${repo.fullName} from the GsGit App installation? GsGit will immediately lose App access to this repository.",
+                    color = AiModuleTheme.colors.textSecondary,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                )
+            },
+            confirmButton = {
+                AiModuleTextAction(
+                    label = "remove",
+                    tint = AiModuleTheme.colors.error,
+                    onClick = {
+                        pendingRemoval = null
+                        mutateRepository(repo.id, add = false)
+                    },
+                )
+            },
+            dismissButton = {
+                AiModuleTextAction(
+                    label = "cancel",
+                    tint = AiModuleTheme.colors.textSecondary,
+                    onClick = { pendingRemoval = null },
+                )
+            },
+        )
     }
 }
 
@@ -892,6 +971,7 @@ private fun GitHubAppInstallationRow(installation: GHAppInstallation, onClick: (
 @Composable
 private fun GitHubAppInstallationHeader(installation: GHAppInstallation) {
     val palette = AiModuleTheme.colors
+    val missingPermissions = installation.missingGsGitPermissions()
     Column(
         Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -928,6 +1008,11 @@ private fun GitHubAppInstallationHeader(installation: GHAppInstallation) {
             GitHubTerminalPill("app ${installation.appId}", palette.textSecondary)
             GitHubTerminalPill("updated ${installation.updatedAt.ghAppShortDate()}", palette.textMuted)
             if (installation.suspendedAt.isNotBlank()) GitHubTerminalPill("suspended", palette.error)
+            else GitHubTerminalPill("active", palette.accent)
+            GitHubTerminalPill(
+                if (missingPermissions.isEmpty()) "permissions ok" else "missing ${missingPermissions.size}",
+                if (missingPermissions.isEmpty()) palette.accent else palette.warning,
+            )
         }
         if (installation.permissions.isNotEmpty()) {
             Text(
@@ -949,51 +1034,121 @@ private fun GitHubAppInstallationHeader(installation: GHAppInstallation) {
                 overflow = TextOverflow.Ellipsis,
             )
         }
+        if (missingPermissions.isNotEmpty()) {
+            Text(
+                text = "missing for full GsGit: " + missingPermissions.joinToString(", "),
+                color = palette.warning,
+                fontFamily = JetBrainsMono,
+                fontSize = 10.sp,
+                lineHeight = 14.sp,
+            )
+        }
         AiModuleHairline()
     }
 }
 
 @Composable
-private fun GitHubAppRepoMutationRow(
-    repositoryId: String,
-    onRepositoryIdChange: (String) -> Unit,
+private fun GitHubAppRepoAddPicker(
+    availableRepos: List<GHRepo>,
+    installedRepos: List<GHRepo>,
     enabled: Boolean,
-    onAdd: () -> Unit,
+    onAdd: (GHRepo) -> Unit,
 ) {
     val palette = AiModuleTheme.colors
+    var expanded by remember { mutableStateOf(false) }
+    var query by remember { mutableStateOf("") }
+    val installedIds = installedRepos.map { it.id }.toSet()
+    val addableRepos = availableRepos
+        .asSequence()
+        .filter { it.id > 0L && it.id !in installedIds }
+        .filter { query.isBlank() || it.fullName.contains(query, ignoreCase = true) }
+        .sortedBy { it.fullName.lowercase(Locale.US) }
+        .toList()
     Column(
         Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(
-            text = "add repository by id",
-            color = palette.textMuted,
-            fontFamily = JetBrainsMono,
-            fontSize = 11.sp,
-        )
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Box(Modifier.weight(1f)) {
-                GitHubTerminalTextField(
-                    value = repositoryId,
-                    onValueChange = onRepositoryIdChange,
-                    placeholder = "repository id",
-                    minHeight = 36.dp,
-                    singleLine = true,
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("add repository", color = palette.textPrimary, fontFamily = JetBrainsMono, fontSize = 12.sp)
+                Text(
+                    "${addableRepos.size} available from current account token",
+                    color = palette.textMuted,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 10.sp,
                 )
             }
             GitHubTerminalButton(
-                label = "add",
-                onClick = onAdd,
+                label = if (expanded) "close" else "select ->",
+                onClick = { expanded = !expanded },
                 color = palette.accent,
                 enabled = enabled,
             )
         }
-        Text(
-            text = "endpoint requires compatible GitHub token and admin access",
-            color = palette.textMuted,
-            fontFamily = JetBrainsMono,
-            fontSize = 10.sp,
-        )
+        if (expanded) {
+            Box(Modifier.fillMaxWidth()) {
+                GitHubTerminalTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    placeholder = "search owner/repository",
+                    minHeight = 36.dp,
+                    singleLine = true,
+                )
+            }
+            if (addableRepos.isEmpty()) {
+                Text(
+                    if (query.isBlank()) "No additional repositories available" else "No repository matches this search",
+                    color = palette.textMuted,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 10.sp,
+                )
+            }
+            addableRepos.take(8).forEach { repo ->
+                Row(
+                    Modifier.fillMaxWidth()
+                        .clip(RoundedCornerShape(GitHubControlRadius))
+                        .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            repo.fullName,
+                            color = palette.textPrimary,
+                            fontFamily = JetBrainsMono,
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            listOf(repo.language, if (repo.isPrivate) "private" else "public").filter { it.isNotBlank() }.joinToString(" · "),
+                            color = palette.textMuted,
+                            fontFamily = JetBrainsMono,
+                            fontSize = 9.sp,
+                        )
+                    }
+                    GitHubTerminalButton(
+                        label = "add",
+                        onClick = {
+                            expanded = false
+                            query = ""
+                            onAdd(repo)
+                        },
+                        color = palette.accent,
+                        enabled = enabled,
+                    )
+                }
+            }
+            if (addableRepos.size > 8) {
+                Text(
+                    "Refine search to show ${addableRepos.size - 8} more repositories",
+                    color = palette.textMuted,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 9.sp,
+                )
+            }
+        }
     }
 }
 
@@ -1045,3 +1200,31 @@ private fun GitHubTerminalPill(label: String, color: Color) {
 
 private fun String.ghAppShortDate(): String =
     takeIf { it.length >= 10 }?.take(10) ?: ifBlank { "unknown" }
+
+private val GSGIT_REQUIRED_REPOSITORY_PERMISSIONS = linkedMapOf(
+    "actions" to "write",
+    "actions_variables" to "write",
+    "checks" to "write",
+    "contents" to "write",
+    "deployments" to "write",
+    "environments" to "write",
+    "issues" to "write",
+    "metadata" to "read",
+    "pull_requests" to "write",
+    "secrets" to "write",
+    "statuses" to "write",
+    "workflows" to "write",
+)
+
+private fun GHAppInstallation.missingGsGitPermissions(): List<String> {
+    val actual = permissions.associate { it.first to it.second.lowercase(Locale.US) }
+    return GSGIT_REQUIRED_REPOSITORY_PERMISSIONS.mapNotNull { (name, required) ->
+        val granted = actual[name].orEmpty()
+        val sufficient = when (required) {
+            "read" -> granted == "read" || granted == "write" || granted == "admin"
+            "write" -> granted == "write" || granted == "admin"
+            else -> granted == required
+        }
+        name.takeUnless { sufficient }
+    }
+}

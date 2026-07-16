@@ -85,10 +85,22 @@ object GitHubAuth {
             (session.accessTokenExpiresAt == 0L || now < session.accessTokenExpiresAt)
         val refreshUsable = session.refreshToken.isNotBlank() &&
             (session.refreshTokenExpiresAt == 0L || now < session.refreshTokenExpiresAt)
+        val hasSession = session.accessToken.isNotBlank() || session.refreshToken.isNotBlank()
+        val status = when {
+            !hasSession -> "authorization required"
+            session.lastRefreshError.isNotBlank() && !accessUsable && !refreshUsable -> "reconnect required"
+            !accessUsable && !refreshUsable -> "expired"
+            session.lastRefreshError.isNotBlank() -> "connected · refresh warning"
+            else -> "connected"
+        }
         return GHGitHubAppConnection(
             connected = accessUsable || refreshUsable,
+            hasSession = hasSession,
+            status = status,
             accessTokenExpiresAt = session.accessTokenExpiresAt,
             refreshTokenExpiresAt = session.refreshTokenExpiresAt,
+            lastRefreshAt = session.lastRefreshAt,
+            lastRefreshError = session.lastRefreshError,
         )
     }
 
@@ -109,6 +121,8 @@ object GitHubAuth {
                     ?.let { now + it.toLong() * 1000L } ?: 0L,
                 refreshTokenExpiresAt = result.refreshTokenExpiresIn.takeIf { it > 0 }
                     ?.let { now + it.toLong() * 1000L } ?: 0L,
+                lastRefreshAt = now,
+                lastRefreshError = "",
             )
         )
         return true
@@ -139,6 +153,10 @@ object GitHubAuth {
                     GitHubManager.clearEtagCache()
                     return@withLock refreshed.token.orEmpty()
                 }
+                repository.updateGitHubAppRefreshStatus(
+                    at = System.currentTimeMillis(),
+                    error = refreshed.error.orEmpty().ifBlank { "refresh failed" },
+                )
             }
 
             // A refresh can fail transiently while the current token is still valid.

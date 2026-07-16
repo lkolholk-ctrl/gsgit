@@ -157,6 +157,7 @@ private data class SettingsConfirmation(
 internal fun GitHubSettingsScreen(
     onBack: () -> Unit,
     onLogout: () -> Unit,
+    onOpenApps: () -> Unit,
     onClose: (() -> Unit)? = null
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -270,6 +271,7 @@ internal fun GitHubSettingsScreen(
     var watchedRepos by remember { mutableStateOf<List<GHRepo>>(emptyList()) }
     var repoInvitations by remember { mutableStateOf<List<GHUserRepositoryInvitation>>(emptyList()) }
     var rateLimitSummary by remember { mutableStateOf("Unavailable") }
+    var gsGitAppConnection by remember { mutableStateOf(GitHubManager.getGsGitAppConnection(context)) }
     var showChangeToken by remember { mutableStateOf(false) }
     var showChangeApiUrl by remember { mutableStateOf(false) }
     var showDeviceLogin by remember { mutableStateOf(false) }
@@ -351,7 +353,10 @@ internal fun GitHubSettingsScreen(
                 watchedRepos = GitHubManager.getWatchedRepos(context)
                 repoInvitations = GitHubManager.getUserRepositoryInvitations(context)
             }
-            SettingsSection.DEVELOPER -> rateLimitSummary = GitHubManager.getRateLimitSummaryNative(context)
+            SettingsSection.DEVELOPER -> {
+                rateLimitSummary = GitHubManager.getRateLimitSummaryNative(context)
+                gsGitAppConnection = GitHubManager.getGsGitAppConnection(context)
+            }
             SettingsSection.THEMES -> {}
             SettingsSection.SECURITY -> {}
             SettingsSection.EDITOR -> {}
@@ -985,8 +990,10 @@ internal fun GitHubSettingsScreen(
                         }
                         SettingsSection.DEVELOPER -> SectionCard("Developer") {
                             InfoLine("Token", maskToken(GitHubManager.getToken(context)))
+                            InfoLine("GsGit App", gsGitAppConnection.status)
                             InfoLine("Base URL", GitHubManager.getApiUrl())
                             InfoLine("Rate limit", rateLimitSummary)
+                            ActionRow(Icons.Rounded.Business, "Manage GsGit App") { onOpenApps() }
                             ActionRow(Icons.Rounded.Key, "Change token") { showChangeToken = true }
                             ActionRow(Icons.Rounded.Code, "Custom API Base URL") {
                                 newApiUrl = GitHubManager.getApiUrl()

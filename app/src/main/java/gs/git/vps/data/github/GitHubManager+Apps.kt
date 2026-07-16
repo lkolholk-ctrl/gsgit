@@ -39,6 +39,10 @@ internal suspend fun GitHubManager.getAppInstallations(context: Context, page: I
         extraHeaders = mapOf("Accept" to "application/vnd.github+json"),
         authToken = appToken,
     )
+    if (r.code == 401) {
+        GitHubAuth.disconnectGitHubApp(context)
+        return GHAppInstallationsPage(error = "Reconnect GsGit App: GitHub rejected its user token", code = 401)
+    }
     if (!r.success) return GHAppInstallationsPage(error = apiErrorMessage(r), code = r.code)
     return try {
         val root = JSONObject(r.body)
@@ -64,6 +68,10 @@ internal suspend fun GitHubManager.getAppInstallationRepositories(context: Conte
         extraHeaders = mapOf("Accept" to "application/vnd.github+json"),
         authToken = appToken,
     )
+    if (r.code == 401) {
+        GitHubAuth.disconnectGitHubApp(context)
+        return GHAppInstallationReposPage(error = "Reconnect GsGit App: authorization was rejected", code = 401)
+    }
     if (!r.success) return GHAppInstallationReposPage(error = apiErrorMessage(r), code = r.code)
     return try {
         val root = JSONObject(r.body)
@@ -88,6 +96,7 @@ internal suspend fun GitHubManager.addRepositoryToAppInstallation(context: Conte
         extraHeaders = mapOf("Accept" to "application/vnd.github+json"),
         authToken = appToken,
     )
+    if (r.code == 401) GitHubAuth.disconnectGitHubApp(context)
     return GHActionResult(r.code == 204 || r.success, r.code, if (r.success || r.code == 204) "Repository added" else apiErrorMessage(r))
 }
 
@@ -101,6 +110,7 @@ internal suspend fun GitHubManager.removeRepositoryFromAppInstallation(context: 
         extraHeaders = mapOf("Accept" to "application/vnd.github+json"),
         authToken = appToken,
     )
+    if (r.code == 401) GitHubAuth.disconnectGitHubApp(context)
     return GHActionResult(r.code == 204 || r.success, r.code, if (r.success || r.code == 204) "Repository removed" else apiErrorMessage(r))
 }
 
@@ -318,23 +328,26 @@ private fun parseAppInstallation(j: JSONObject): GHAppInstallation {
     return GHAppInstallation(
         id = j.optLong("id"),
         appId = j.optLong("app_id"),
-        appSlug = j.optString("app_slug", ""),
+        appSlug = j.optNullableString("app_slug"),
         targetId = j.optLong("target_id"),
-        targetType = j.optString("target_type", ""),
+        targetType = j.optNullableString("target_type"),
         targetLogin = account?.optString("login") ?: "",
         targetAvatarUrl = account?.optString("avatar_url") ?: "",
-        repositorySelection = j.optString("repository_selection", ""),
+        repositorySelection = j.optNullableString("repository_selection"),
         permissions = parseStringMap(j.optJSONObject("permissions")),
         events = parseStringArray(j.optJSONArray("events")),
-        singleFileName = j.optString("single_file_name", ""),
+        singleFileName = j.optNullableString("single_file_name"),
         singleFilePaths = parseStringArray(j.optJSONArray("single_file_paths")),
-        htmlUrl = j.optString("html_url", ""),
-        createdAt = j.optString("created_at", ""),
-        updatedAt = j.optString("updated_at", ""),
-        suspendedAt = j.optString("suspended_at", ""),
+        htmlUrl = j.optNullableString("html_url"),
+        createdAt = j.optNullableString("created_at"),
+        updatedAt = j.optNullableString("updated_at"),
+        suspendedAt = j.optNullableString("suspended_at"),
         suspendedBy = suspendedBy?.optString("login") ?: ""
     )
 }
+
+private fun JSONObject.optNullableString(key: String): String =
+    if (isNull(key)) "" else optString(key, "").takeUnless { it.equals("null", ignoreCase = true) }.orEmpty()
 
 private fun parseAppMetadata(j: JSONObject): GHAppMetadata {
     val owner = j.optJSONObject("owner")

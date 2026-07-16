@@ -112,7 +112,17 @@ fun GitHubScreen(
             }
             when {
                 !isLoggedIn -> LoginScreen(onBack, onMinimize, onClose) { GitHubManager.saveToken(context, it); isLoggedIn = true }
-                showSettings -> saveableStateHolder.SaveableStateProvider("settings") { GitHubSettingsScreen(onBack = { showSettings = false }, onLogout = { GitHubManager.logout(context); isLoggedIn = false; user = null; showSettings = false }, onClose = onClose) }
+                showSettings -> saveableStateHolder.SaveableStateProvider("settings") {
+                    GitHubSettingsScreen(
+                        onBack = { showSettings = false },
+                        onLogout = { GitHubManager.logout(context); isLoggedIn = false; user = null; showSettings = false },
+                        onOpenApps = {
+                            showSettings = false
+                            pendingAppsOpen = true
+                        },
+                        onClose = onClose,
+                    )
+                }
                 showGists -> saveableStateHolder.SaveableStateProvider("gists") { GistsScreen({ showGists = false }, onMinimize, onClose) }
                 showNotifications -> saveableStateHolder.SaveableStateProvider("notifications") { NotificationsScreen(onBack = { showNotifications = false }) }
                 selectedRepo != null -> saveableStateHolder.SaveableStateProvider("repo:${selectedRepo!!.fullName}") {

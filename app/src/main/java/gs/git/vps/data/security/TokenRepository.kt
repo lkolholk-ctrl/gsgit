@@ -47,6 +47,8 @@ class TokenRepository(context: Context) {
             .putString(KEY_APP_REFRESH_TOKEN, session.refreshToken)
             .putLong(KEY_APP_ACCESS_EXPIRES_AT, session.accessTokenExpiresAt)
             .putLong(KEY_APP_REFRESH_EXPIRES_AT, session.refreshTokenExpiresAt)
+            .putLong(KEY_APP_LAST_REFRESH_AT, session.lastRefreshAt)
+            .putString(KEY_APP_LAST_REFRESH_ERROR, session.lastRefreshError)
             .apply()
     }
 
@@ -55,7 +57,16 @@ class TokenRepository(context: Context) {
         refreshToken = prefs.getString(KEY_APP_REFRESH_TOKEN, "") ?: "",
         accessTokenExpiresAt = prefs.getLong(KEY_APP_ACCESS_EXPIRES_AT, 0L),
         refreshTokenExpiresAt = prefs.getLong(KEY_APP_REFRESH_EXPIRES_AT, 0L),
+        lastRefreshAt = prefs.getLong(KEY_APP_LAST_REFRESH_AT, 0L),
+        lastRefreshError = prefs.getString(KEY_APP_LAST_REFRESH_ERROR, "") ?: "",
     )
+
+    fun updateGitHubAppRefreshStatus(at: Long, error: String) {
+        prefs.edit()
+            .putLong(KEY_APP_LAST_REFRESH_AT, at)
+            .putString(KEY_APP_LAST_REFRESH_ERROR, error.take(160))
+            .apply()
+    }
 
     fun clearGitHubAppSession() {
         prefs.edit()
@@ -63,6 +74,8 @@ class TokenRepository(context: Context) {
             .remove(KEY_APP_REFRESH_TOKEN)
             .remove(KEY_APP_ACCESS_EXPIRES_AT)
             .remove(KEY_APP_REFRESH_EXPIRES_AT)
+            .remove(KEY_APP_LAST_REFRESH_AT)
+            .remove(KEY_APP_LAST_REFRESH_ERROR)
             .apply()
     }
 
@@ -73,6 +86,8 @@ class TokenRepository(context: Context) {
         private const val KEY_APP_REFRESH_TOKEN = "github_app_refresh_token"
         private const val KEY_APP_ACCESS_EXPIRES_AT = "github_app_access_expires_at"
         private const val KEY_APP_REFRESH_EXPIRES_AT = "github_app_refresh_expires_at"
+        private const val KEY_APP_LAST_REFRESH_AT = "github_app_last_refresh_at"
+        private const val KEY_APP_LAST_REFRESH_ERROR = "github_app_last_refresh_error"
     }
 }
 
@@ -81,4 +96,6 @@ data class GitHubAppTokenSession(
     val refreshToken: String = "",
     val accessTokenExpiresAt: Long = 0L,
     val refreshTokenExpiresAt: Long = 0L,
+    val lastRefreshAt: Long = 0L,
+    val lastRefreshError: String = "",
 )

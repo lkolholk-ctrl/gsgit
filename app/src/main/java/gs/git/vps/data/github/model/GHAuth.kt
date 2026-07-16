@@ -40,6 +40,10 @@ data class GHDeviceTokenResult(
 
 data class GHGitHubAppConnection(
     val connected: Boolean,
+    val hasSession: Boolean = false,
+    val status: String = "authorization required",
     val accessTokenExpiresAt: Long = 0L,
     val refreshTokenExpiresAt: Long = 0L,
+    val lastRefreshAt: Long = 0L,
+    val lastRefreshError: String = "",
 )
