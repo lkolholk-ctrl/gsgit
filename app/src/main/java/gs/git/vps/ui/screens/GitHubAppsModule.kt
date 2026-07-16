@@ -226,6 +226,7 @@ internal fun GitHubAppsScreen(
         }
     }
 }
+}
 
 @Composable
 private fun GitHubAiIntegrationsIntro(onManageInstallations: () -> Unit) {
