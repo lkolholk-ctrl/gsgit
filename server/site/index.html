@@ -53,6 +53,28 @@ img{max-width:100%; height:auto; display:block}
 .scene:nth-child(even)::before{left:22%; top:38%}
 .scene:nth-child(odd)::before{left:78%; top:64%}
 
+/* full-scene generated pixel art (canvas, Kimi-style dithered) */
+.art{position:absolute; inset:0; z-index:0; width:100%; height:100%;
+  image-rendering:pixelated; pointer-events:none}
+@media(max-width:860px){.art{opacity:.55}}
+/* ascii garbage wall */
+.asciiwall{
+  position:absolute; inset:0; z-index:0; overflow:hidden; pointer-events:none;
+  color:rgba(157,177,157,.11); font-size:15px; line-height:1.55; font-weight:700;
+  white-space:pre-wrap; word-break:break-all; text-align:left; padding:70px 12px;
+  user-select:none;
+}
+/* circular arc text around the hero moon */
+.arctext{position:absolute; z-index:1; width:min(72vmin,560px); right:0; top:6%;
+  opacity:.45; pointer-events:none; animation:spinslow 80s linear infinite}
+@keyframes spinslow{to{transform:rotate(360deg)}}
+.arctext text{fill:var(--dim); font-family:inherit; font-size:13.5px; letter-spacing:.42em}
+@media(max-width:860px){.arctext{width:88vmin; right:-10%; top:2%; opacity:.35}}
+/* film sprocket rows around the gallery */
+.holes{height:12px; margin:10px auto 0; max-width:900px;
+  background:repeating-linear-gradient(90deg, rgba(232,240,232,.14) 0 14px, transparent 14px 30px)}
+.holes.b{margin:0 auto 10px}
+
 /* giant ghost word behind each scene */
 .ghost{
   position:absolute; z-index:1; left:50%; top:50%; transform:translate(-50%,-50%);
@@ -359,7 +381,12 @@ h2 b{color:var(--acc)}
 
   <!-- 01 · hero -->
   <section class="scene d2" id="s-hero">
+    <canvas class="art" data-art="hero" aria-hidden="true"></canvas>
     <canvas id="stars" width="192" height="108" aria-hidden="true"></canvas>
+    <svg class="arctext" viewBox="0 0 400 400" aria-hidden="true">
+      <defs><path id="arcp" d="M200,58 a142,142 0 1,1 -0.01,0 z"/></defs>
+      <text><textPath href="#arcp">EVERY EVENT · PUSHED IN SECONDS · NO TOKENS · GITHUB IN YOUR POCKET ·</textPath></text>
+    </svg>
     <div class="hud tl">SYS://GSGIT<br>BUILD.CHANNEL=STABLE</div>
     <div class="hud tr">LAT 52.4°N<br>API.GSGIT.ORG ● ONLINE</div>
     <div class="inner">
@@ -395,6 +422,7 @@ h2 b{color:var(--acc)}
 
   <!-- 02 · token-free -->
   <section class="scene d1">
+    <canvas class="art" data-art="clouds" aria-hidden="true"></canvas>
     <div class="ghost">AUTH</div>
     <div class="hud tl">SCENE 01/06<br>MODULE=DEVICE.FLOW</div>
     <div class="hud br">PAT.COUNT=0<br>STORAGE=HW.ENCRYPTED</div>
@@ -428,6 +456,7 @@ h2 b{color:var(--acc)}
 
   <!-- 03 · pushes -->
   <section class="scene d2">
+    <canvas class="art" data-art="orbit" aria-hidden="true"></canvas>
     <div class="ghost">PUSH</div>
     <div class="hud tr">SCENE 02/06<br>TRANSPORT=WEBHOOK→FCM</div>
     <div class="hud bl">LATENCY≈2000MS<br>POLLING=NEVER</div>
@@ -473,6 +502,7 @@ h2 b{color:var(--acc)}
 
   <!-- 04 · CI -->
   <section class="scene d1">
+    <div class="asciiwall" aria-hidden="true"></div>
     <div class="ghost">CI/CD</div>
     <div class="hud tl">SCENE 03/06<br>MODULE=ACTIONS</div>
     <div class="hud br">REFRESH=10S<br>ARTIFACTS→DOWNLOADS/</div>
@@ -507,6 +537,7 @@ h2 b{color:var(--acc)}
 
   <!-- 05 · everything -->
   <section class="scene d2">
+    <canvas class="art" data-art="field" aria-hidden="true"></canvas>
     <div class="ghost">ALL</div>
     <div class="hud tr">SCENE 04/06<br>COVERAGE=FULL</div>
     <div class="hud bl">SUBSET=FALSE<br>DEEP.LINKS=EVERYWHERE</div>
@@ -532,12 +563,14 @@ h2 b{color:var(--acc)}
 
   <!-- 06 · screens -->
   <section class="scene d1">
+    <canvas class="art" data-art="clouds" aria-hidden="true"></canvas>
     <div class="ghost">UI</div>
     <div class="hud tl">SCENE 05/06<br>THEME=DARK.MONO</div>
     <div class="hud br">RENDER=COMPOSE<br>FPS=NATIVE</div>
     <div class="inner">
       <div class="num-tag rv">05 / screens</div>
       <h2 class="rv">Dark. Monospaced. <b>Fast.</b></h2>
+      <div class="holes rv l2"></div>
       <div class="strip rv l2">
         <figure class="shot"><img src="assets/screen-1.png" alt="Repository list" onerror="ph(this)"><figcaption>repositories</figcaption></figure>
         <figure class="shot"><img src="assets/screen-2.png" alt="Actions run" onerror="ph(this)"><figcaption>actions run</figcaption></figure>
@@ -545,6 +578,7 @@ h2 b{color:var(--acc)}
         <figure class="shot"><img src="assets/screen-4.png" alt="Code editor" onerror="ph(this)"><figcaption>code editor</figcaption></figure>
         <figure class="shot"><img src="assets/screen-5.png" alt="Pull request" onerror="ph(this)"><figcaption>pull requests</figcaption></figure>
       </div>
+      <div class="holes b rv l2"></div>
       <div class="swipe-hint rv l3">← swipe screens →</div>
     </div>
     <div class="next"><span class="chev">▼</span><span>continue</span></div>
@@ -552,6 +586,7 @@ h2 b{color:var(--acc)}
 
   <!-- 07 · trust + download -->
   <section class="scene d2">
+    <canvas class="art" data-art="horizon" aria-hidden="true"></canvas>
     <div class="ghost">FREE</div>
     <div class="hud tr">SCENE 06/06<br>TRACKERS=0 · ADS=0</div>
     <div class="hud bl">SERVER.STORES=2 VALUES<br>COST=0</div>
@@ -631,6 +666,147 @@ document.querySelectorAll('.next').forEach(function(n){
     if(scenes[i+1]) scenes[i+1].scrollIntoView({behavior:'smooth'});
   });
 });
+
+/* ── generated pixel art: dithered moons, clouds, horizons (Kimi-style) ── */
+(function(){
+  var PX=6; /* screen pixels per art pixel */
+  var B=[[0,8,2,10],[12,4,14,6],[3,11,1,9],[15,7,13,5]]; /* bayer 4x4 */
+  var PAL=['#141a14','#222b22','#39463b','#556355','#7b8b7b','#a8b8a8'];
+  function prng(s){ return function(){ s=(s*1664525+1013904223)>>>0; return s/4294967296; }; }
+  function vnoise(r,w,h,cell){
+    var gw=((w/cell)|0)+2, gh=((h/cell)|0)+2, g=new Array(gw*gh);
+    for(var i=0;i<g.length;i++) g[i]=r();
+    return function(x,y){
+      var fx=x/cell, fy=y/cell, ix=fx|0, iy=fy|0, tx=fx-ix, ty=fy-iy;
+      var u=tx*tx*(3-2*tx), v=ty*ty*(3-2*ty);
+      var a=g[iy*gw+ix], b=g[iy*gw+ix+1], c=g[(iy+1)*gw+ix], d=g[(iy+1)*gw+ix+1];
+      return a*(1-u)*(1-v)+b*u*(1-v)+c*(1-u)*v+d*u*v;
+    };
+  }
+  function put(ctx,x,y,v){
+    var t=v*PAL.length-0.5+(B[y&3][x&3]/16-0.5)*1.35, i=Math.round(t);
+    if(i<0) return;
+    if(i>=PAL.length) i=PAL.length-1;
+    ctx.fillStyle=PAL[i]; ctx.fillRect(x,y,1,1);
+  }
+  function stars(ctx,w,h,r,n){
+    for(var i=0;i<n;i++){
+      var x=(r()*w)|0, y=(r()*h)|0, b=r();
+      ctx.fillStyle=b>0.8?PAL[5]:(b>0.5?PAL[3]:PAL[2]);
+      ctx.fillRect(x,y,1,1);
+    }
+  }
+  function cloud(ctx,w,h,r,cx,cy,rx,ry,gain){
+    var n1=vnoise(r,w,h,9), n2=vnoise(r,w,h,4);
+    var x0=Math.max(0,(cx-rx)|0), x1=Math.min(w,(cx+rx)|0);
+    var y0=Math.max(0,(cy-ry)|0), y1=Math.min(h,(cy+ry)|0);
+    for(var y=y0;y<y1;y++) for(var x=x0;x<x1;x++){
+      var dx=(x-cx)/rx, dy=(y-cy)/ry, fal=1-(dx*dx+dy*dy);
+      if(fal<=0) continue;
+      var v=fal*(0.62*n1(x,y)+0.38*n2(x,y))*gain;
+      if(v>0.10) put(ctx,x,y,Math.min(v,0.92));
+    }
+  }
+  function moon(ctx,w,h,r,cx,cy,rad){
+    var n=vnoise(r,w,h,5);
+    var x0=(cx-rad)|0, x1=(cx+rad)|0, y0=(cy-rad)|0, y1=(cy+rad)|0;
+    for(var y=y0;y<y1;y++) for(var x=x0;x<x1;x++){
+      if(x<0||y<0||x>=w||y>=h) continue;
+      var nx=(x-cx)/rad, ny=(y-cy)/rad, d=nx*nx+ny*ny;
+      if(d>1) continue;
+      var nz=Math.sqrt(1-d);
+      var lum=Math.max(0, nx*-0.42+ny*-0.46+nz*0.78);
+      var v=lum*(0.5+0.55*n(x,y));
+      put(ctx,x,y,Math.min(v,0.98));
+    }
+  }
+  function ring(ctx,w,h,r,cx,cy,rx,ry){
+    var steps=Math.max(90,(rx*3)|0);
+    for(var i=0;i<steps;i++){
+      if(i%5>2) continue; /* dashed */
+      var a=i/steps*Math.PI*2;
+      var x=(cx+Math.cos(a)*rx)|0, y=(cy+Math.sin(a)*ry)|0;
+      if(x>=0&&y>=0&&x<w&&y<h){ ctx.fillStyle=PAL[3]; ctx.fillRect(x,y,1,1); }
+    }
+    for(var k=0;k<4;k++){ /* nodes on the orbit */
+      var a2=k/4*Math.PI*2+0.6;
+      var x2=(cx+Math.cos(a2)*rx)|0, y2=(cy+Math.sin(a2)*ry)|0;
+      ctx.fillStyle=PAL[5]; ctx.fillRect(x2-1,y2-1,3,3);
+    }
+  }
+  function horizon(ctx,w,h,r){
+    var R=w*1.15, hcx=w/2, hcy=h+R*0.72, n=vnoise(r,w,h,6);
+    for(var y=0;y<h;y++) for(var x=0;x<w;x++){
+      var dx=x-hcx, dy=y-hcy, dist=Math.sqrt(dx*dx+dy*dy);
+      if(dist>R) continue;
+      var depth=(R-dist)/R;
+      var rim=dist>R-2.5?0.55:0;
+      var v=(0.18+0.85*depth)*(0.35+0.75*n(x,y))+rim;
+      put(ctx,x,y,Math.min(v,0.9));
+    }
+  }
+  function field(ctx,w,h,r){
+    for(var y=(h*0.5)|0;y<h;y++){
+      var p=(y-h*0.5)/(h*0.5);
+      for(var x=0;x<w;x++) if(r()<p*p*0.16){
+        ctx.fillStyle=r()>0.7?PAL[3]:PAL[1]; ctx.fillRect(x,y,1,1);
+      }
+    }
+  }
+  var seeds={hero:7, clouds:23, orbit:41, field:59, horizon:83};
+  function paint(cv){
+    var kind=cv.getAttribute('data-art');
+    var sc=cv.parentElement;
+    var w=Math.max(60,Math.round(sc.clientWidth/PX));
+    var h=Math.max(60,Math.round(sc.clientHeight/PX));
+    cv.width=w; cv.height=h;
+    var ctx=cv.getContext('2d'), r=prng(seeds[kind]||7);
+    if(kind==='hero'){
+      stars(ctx,w,h,r,110);
+      var portrait=h>w*1.3;
+      var mx=portrait?w*0.80:w*0.74, my=portrait?h*0.10:h*0.26;
+      var mr=portrait?w*0.30:Math.min(w,h)*0.30;
+      moon(ctx,w,h,r,mx,my,mr);
+      ring(ctx,w,h,r,mx,my,mr*1.75,mr*0.55);
+      cloud(ctx,w,h,r,w*0.06,h*0.92,w*0.34,h*0.22,1.0);
+      if(!portrait) cloud(ctx,w,h,r,w*0.16,h*0.06,w*0.22,h*0.13,0.8);
+    } else if(kind==='clouds'){
+      stars(ctx,w,h,r,55);
+      cloud(ctx,w,h,r,w*0.94,h*0.10,w*0.30,h*0.20,1.05);
+      cloud(ctx,w,h,r,w*0.04,h*0.55,w*0.20,h*0.16,0.85);
+      cloud(ctx,w,h,r,w*0.10,h*0.96,w*0.36,h*0.18,1.0);
+      cloud(ctx,w,h,r,w*0.88,h*0.88,w*0.22,h*0.14,0.8);
+    } else if(kind==='orbit'){
+      stars(ctx,w,h,r,70);
+      cloud(ctx,w,h,r,w*0.92,h*0.06,w*0.24,h*0.15,0.9);
+      cloud(ctx,w,h,r,w*0.05,h*0.94,w*0.28,h*0.16,0.9);
+      ring(ctx,w,h,r,w*0.5,h*0.5,w*0.46,h*0.13);
+    } else if(kind==='field'){
+      stars(ctx,w,h,r,45);
+      cloud(ctx,w,h,r,w*0.92,h*0.90,w*0.26,h*0.16,0.85);
+      cloud(ctx,w,h,r,w*0.06,h*0.08,w*0.24,h*0.14,0.85);
+      field(ctx,w,h,r);
+    } else if(kind==='horizon'){
+      stars(ctx,w,h,r,120);
+      cloud(ctx,w,h,r,w*0.85,h*0.12,w*0.24,h*0.14,0.8);
+      horizon(ctx,w,h,r);
+    }
+  }
+  var arts=[].slice.call(document.querySelectorAll('canvas.art'));
+  function paintAll(){ arts.forEach(paint); }
+  paintAll();
+  var rt=null;
+  window.addEventListener('resize',function(){ clearTimeout(rt); rt=setTimeout(paintAll,180); });
+
+  /* ascii garbage wall */
+  var wall=document.querySelector('.asciiwall');
+  if(wall){
+    var CH='QZUH9G3*V}<+74]#WX:VDEI=_)U3S+A>2.MRZ@{$&[%!?;-|/\\^~', s='';
+    var wr=prng(131);
+    for(var i=0;i<2600;i++) s+=CH[(wr()*CH.length)|0];
+    wall.textContent=s;
+  }
+})();
 
 /* pixel starfield */
 (function(){
