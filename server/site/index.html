@@ -36,6 +36,16 @@ img{max-width:100%; height:auto; display:block}
 #moonlayer{position:fixed; inset:0; z-index:0; pointer-events:none; overflow:hidden}
 #moonlayer canvas{position:absolute; left:0; top:0; image-rendering:pixelated; will-change:transform; opacity:.85}
 @media(max-width:860px){#moonlayer canvas{opacity:.5}}
+/* vector octocat rocket */
+#rocket{position:absolute; left:0; top:0; width:110px; will-change:transform; opacity:.92; pointer-events:none}
+#rocket svg{width:100%; height:auto; display:block; animation:rbob 2.6s ease-in-out infinite alternate}
+@keyframes rbob{from{transform:translateY(-6px)}to{transform:translateY(6px)}}
+#rocket .fl path{transform-origin:60px 178px; animation:rfl .5s ease-in-out infinite alternate}
+#rocket .fl .f2{animation-duration:.38s}
+#rocket .fl .f3{animation-duration:.29s}
+@keyframes rfl{from{transform:scaleY(.72)}to{transform:scaleY(1.12)}}
+@media(max-width:860px){#rocket{width:74px; opacity:.7}}
+@media (prefers-reduced-motion:reduce){#rocket svg,#rocket .fl path{animation:none}}
 .scene{
   min-height:100svh; scroll-snap-align:start; scroll-snap-stop:always;
   position:relative; display:flex; flex-direction:column;
@@ -856,67 +866,33 @@ document.querySelectorAll('.next').forEach(function(n){
     moonSprite(mB,101,m*0.16,false);
     moonsMove();
   }
-  /* octocat riding a rocket through the middle slides */
-  var mR=document.createElement('canvas'); layer.appendChild(mR);
-  var ROCKET=[
-  '..C.........C..',
-  '..CC.......CC..',
-  '..CCC.....CCC..',
-  '..CCCCCCCCCCC..',
-  '.CCCCCCCCCCCCC.',
-  '.CC8CCCCCCC8CC.',
-  '.CCCCCCCCCCCCC.',
-  '..CCCCCCCCCCC..',
-  '...CCCCCCCCC...',
-  '....CC...CC....',
-  '.......R.......',
-  '......RRR......',
-  '.....RRRRR.....',
-  '....RRRRRRR....',
-  '....RRRRRRR....',
-  '...RRRRRRRRR...',
-  '...RRRWWWRRR...',
-  '...RRWWWWWRR...',
-  '...RRRWWWRRR...',
-  '...RRRRRRRRR...',
-  '...RRRRRRRRR...',
-  '...RRRRRRRRR...',
-  '..FRRRRRRRRRF..',
-  '..FFRRRRRRRFF..',
-  '.FFFRRRRRRRFFF.',
-  '.FFFRRRRRRRFFF.',
-  '.FF.RRRRRRR.FF.',
-  '....RRRRRRR....',
-  '....R.RRR.R....'
-  ];
-  var RCOL={'C':'#cfdccf','8':'#0a0d0a','R':'#93a393','W':'#2ee66b','F':'#5a6b5a'};
-  function drawRocket(fr){
-    var w=15, hh=ROCKET.length+6;
-    mR.width=w; mR.height=hh;
-    var ctx=mR.getContext('2d');
-    ROCKET.forEach(function(row,y){
-      for(var x=0;x<w;x++){ var c=RCOL[row[x]]; if(c){ ctx.fillStyle=c; ctx.fillRect(x,y,1,1); } }
-    });
-    var fy=ROCKET.length;
-    var fl=fr?[[5,10,'#eafff2'],[4,11,'#bfffd4'],[5,10,'#2ee66b'],[6,9,'#2ee66b'],[6,9,'#1a7a3e'],[7,8,'#1a7a3e']]
-             :[[5,10,'#bfffd4'],[5,10,'#2ee66b'],[4,11,'#2ee66b'],[6,9,'#1a7a3e'],[7,8,'#1a7a3e']];
-    fl.forEach(function(f,i){ ctx.fillStyle=f[2]; ctx.fillRect(f[0],fy+i,f[1]-f[0],1); });
-  }
-  var bob=0;
+  /* vector rocket with the octocat mark looking out of the porthole */
+  var OCTO='M12,2A10,10 0 0,0 2,12C2,16.42 4.87,20.17 8.84,21.5C9.34,21.58 9.5,21.27 9.5,21C9.5,20.77 9.5,20.14 9.5,19.31C6.73,19.91 6.14,17.97 6.14,17.97C5.68,16.81 5.03,16.5 5.03,16.5C4.12,15.88 5.1,15.9 5.1,15.9C6.1,15.97 6.63,16.93 6.63,16.93C7.5,18.45 8.97,18 9.54,17.76C9.63,17.11 9.89,16.67 10.17,16.42C7.95,16.17 5.62,15.31 5.62,11.5C5.62,10.39 6,9.5 6.65,8.79C6.55,8.54 6.2,7.5 6.75,6.15C6.75,6.15 7.59,5.88 9.5,7.17C10.29,6.95 11.15,6.84 12,6.84C12.85,6.84 13.71,6.95 14.5,7.17C16.41,5.88 17.25,6.15 17.25,6.15C17.8,7.5 17.45,8.54 17.35,8.79C18,9.5 18.38,10.39 18.38,11.5C18.38,15.32 16.04,16.16 13.81,16.41C14.17,16.72 14.5,17.33 14.5,18.26C14.5,19.6 14.5,20.68 14.5,21C14.5,21.27 14.66,21.59 15.17,21.5C19.14,20.16 22,16.42 22,12A10,10 0 0,0 12,2Z';
+  var mR=document.createElement('div'); mR.id='rocket'; layer.appendChild(mR);
+  mR.innerHTML=
+    '<svg viewBox="0 0 120 240" xmlns="http://www.w3.org/2000/svg">'+
+    '<defs><linearGradient id="hull" x1="0" y1="0" x2="1" y2="0">'+
+    '<stop offset="0" stop-color="#dce6dc"/><stop offset=".55" stop-color="#aebfae"/>'+
+    '<stop offset="1" stop-color="#7b8b7b"/></linearGradient></defs>'+
+    '<g class="fl">'+
+    '<path d="M60 176 C46 198 49 216 60 234 C71 216 74 198 60 176Z" fill="#1a7a3e"/>'+
+    '<path class="f2" d="M60 176 C51 194 53 206 60 220 C67 206 69 194 60 176Z" fill="#2ee66b"/>'+
+    '<path class="f3" d="M60 176 C55 188 56 197 60 206 C64 197 65 188 60 176Z" fill="#bfffd4"/>'+
+    '</g>'+
+    '<path d="M47 126 C31 143 22 162 19 180 C33 171 44 167 51 165 Z" fill="#556355" stroke="#39463b" stroke-width="2"/>'+
+    '<path d="M73 126 C89 143 98 162 101 180 C87 171 76 167 69 165 Z" fill="#556355" stroke="#39463b" stroke-width="2"/>'+
+    '<path d="M60 6 C35 33 30 68 32 106 C33 131 41 152 48 166 L72 166 C79 152 87 131 88 106 C90 68 85 33 60 6 Z" fill="url(#hull)" stroke="#39463b" stroke-width="3"/>'+
+    '<path d="M60 6 C49 18 42 31 38 45 L82 45 C78 31 71 18 60 6 Z" fill="#2ee66b" opacity=".92"/>'+
+    '<circle cx="60" cy="88" r="23" fill="#0c110c" stroke="#39463b" stroke-width="4"/>'+
+    '<g transform="translate(60 88) scale(1.7) translate(-12 -12)"><path fill="#cfdccf" d="'+OCTO+'"/></g>'+
+    '<rect x="46" y="164" width="28" height="12" rx="3" fill="#39463b"/>'+
+    '</svg>';
   function rocketMove(){
     var s=deckEl.scrollTop, vw=innerWidth, vh=innerHeight;
-    var x=vw*0.76-s*0.05, y=vh*1.75-s*0.5+Math.sin(bob)*8;
+    var x=vw*0.76-s*0.05, y=vh*1.75-s*0.5;
     mR.style.transform='translate3d('+x+'px,'+y+'px,0) rotate(-14deg)';
   }
-  function rocketLayout(){
-    var pxr=innerWidth>900?7:5;
-    mR.style.width=(15*pxr)+'px'; mR.style.height=((ROCKET.length+6)*pxr)+'px';
-    drawRocket(0); rocketMove();
-  }
-  if(!window.matchMedia('(prefers-reduced-motion: reduce)').matches){
-    var rfr=0;
-    setInterval(function(){ bob+=0.4; rfr^=1; drawRocket(rfr); rocketMove(); },150);
-  }
+  function rocketLayout(){ rocketMove(); }
 
   moonsLayout(); rocketLayout();
   deckEl.addEventListener('scroll',function(){ requestAnimationFrame(function(){ moonsMove(); rocketMove(); }); },{passive:true});
