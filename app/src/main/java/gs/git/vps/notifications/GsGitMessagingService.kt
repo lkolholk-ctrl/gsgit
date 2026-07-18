@@ -65,6 +65,9 @@ class GsGitMessagingService : FirebaseMessagingService() {
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setSmallIcon(gs.git.vps.R.drawable.ic_stat_gsgit)
+            .setLargeIcon(
+                android.graphics.BitmapFactory.decodeResource(resources, gs.git.vps.R.mipmap.ic_launcher)
+            )
             .setCategory(NotificationCompat.CATEGORY_SOCIAL)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)

@@ -147,6 +147,9 @@ class NotificationSyncWorker(
                     }
             )
             .setSmallIcon(gs.git.vps.R.drawable.ic_stat_gsgit)
+            .setLargeIcon(
+                android.graphics.BitmapFactory.decodeResource(context.resources, gs.git.vps.R.mipmap.ic_launcher)
+            )
             .setNumber(notifications.size)
             .setCategory(NotificationCompat.CATEGORY_SOCIAL)
             .setAutoCancel(true)
