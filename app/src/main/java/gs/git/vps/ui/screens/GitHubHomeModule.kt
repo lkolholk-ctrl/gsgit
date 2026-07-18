@@ -31,7 +31,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -60,10 +59,7 @@ import java.io.File
 // Compact mode — propagates through all sub-screens automatically
 
 @Composable
-internal fun LoginScreen(onBack: () -> Unit, onMinimize: () -> Unit, onClose: (() -> Unit)? = null, onLogin: (String) -> Unit) {
-    var token by remember { mutableStateOf("") }
-    var testing by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf("") }
+internal fun LoginScreen(onBack: () -> Unit, onMinimize: () -> Unit, onClose: (() -> Unit)? = null, onLogin: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val palette = AiModuleTheme.colors
@@ -89,7 +85,7 @@ internal fun LoginScreen(onBack: () -> Unit, onMinimize: () -> Unit, onClose: ((
                 result.token?.isNotBlank() == true -> {
                     appAuthError = ""
                     deviceCode = null
-                    onLogin("")
+                    onLogin()
                     return@LaunchedEffect
                 }
                 result.error == "authorization_pending" -> Unit
@@ -198,7 +194,7 @@ internal fun LoginScreen(onBack: () -> Unit, onMinimize: () -> Unit, onClose: ((
                             .clip(RoundedCornerShape(GitHubControlRadius))
                             .border(1.dp, palette.accent, RoundedCornerShape(GitHubControlRadius))
                             .background(if (!appAuthBusy) palette.accent else palette.surface)
-                            .clickable(enabled = !appAuthBusy && !testing) { startAppSignIn() }
+                            .clickable(enabled = !appAuthBusy) { startAppSignIn() }
                             .padding(vertical = 12.dp),
                         contentAlignment = Alignment.Center,
                     ) {
@@ -269,62 +265,6 @@ internal fun LoginScreen(onBack: () -> Unit, onMinimize: () -> Unit, onClose: ((
                         textAlign = TextAlign.Center,
                     )
                 }
-                Spacer(Modifier.height(20.dp))
-                Text(
-                    "· or use a personal access token ·",
-                    color = palette.textMuted,
-                    fontFamily = JetBrainsMono,
-                    fontSize = 10.sp,
-                )
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    "personal access token",
-                    color = palette.textSecondary,
-                    fontFamily = JetBrainsMono,
-                    fontSize = 11.sp,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(4.dp))
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(GitHubControlRadius))
-                        .border(1.dp, if (error.isNotBlank()) palette.error else palette.border, RoundedCornerShape(GitHubControlRadius))
-                        .background(palette.surface)
-                        .padding(horizontal = 10.dp, vertical = 10.dp),
-                ) {
-                    if (token.isEmpty()) {
-                        Text(
-                            "ghp_…",
-                            color = palette.textMuted,
-                            fontFamily = JetBrainsMono,
-                            fontSize = 13.sp,
-                        )
-                    }
-                    BasicTextField(
-                        value = token,
-                        onValueChange = { token = it; error = "" },
-                        singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
-                        textStyle = androidx.compose.ui.text.TextStyle(
-                            color = palette.textPrimary,
-                            fontFamily = JetBrainsMono,
-                            fontSize = 13.sp,
-                        ),
-                        cursorBrush = androidx.compose.ui.graphics.SolidColor(palette.accent),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-                if (error.isNotBlank()) {
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        error,
-                        color = palette.error,
-                        fontFamily = JetBrainsMono,
-                        fontSize = 11.sp,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
                 if (securityWarning.isNotBlank()) {
                     Spacer(Modifier.height(8.dp))
                     Text(
@@ -336,57 +276,6 @@ internal fun LoginScreen(onBack: () -> Unit, onMinimize: () -> Unit, onClose: ((
                     )
                 }
                 Spacer(Modifier.height(6.dp))
-                Text(
-                    Strings.ghTokenHint,
-                    fontSize = 10.sp,
-                    color = palette.textMuted,
-                    fontFamily = JetBrainsMono,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(20.dp))
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(GitHubControlRadius))
-                        .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
-                        .background(palette.surface)
-                        .clickable(enabled = !testing) {
-                            if (token.isBlank()) {
-                                error = "Token required"
-                                return@clickable
-                            }
-                            testing = true
-                            error = ""
-                            scope.launch {
-                                if (!GitHubManager.saveToken(context, token)) {
-                                    error = SecurityGate.blockedMessage(context)
-                                    testing = false
-                                    return@launch
-                                }
-                                val u = GitHubManager.getUser(context)
-                                if (u != null) onLogin(token)
-                                else {
-                                    error = "Invalid token"
-                                    GitHubManager.logout(context)
-                                }
-                                testing = false
-                            }
-                        }
-                        .padding(vertical = 12.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    if (testing) {
-                        AiModuleSpinner(label = "verifying…")
-                    } else {
-                        Text(
-                            "[ ${Strings.ghSignIn.lowercase()} ]",
-                            color = palette.accent,
-                            fontFamily = JetBrainsMono,
-                            fontWeight = FontWeight.Medium,
-                            fontSize = 13.sp,
-                        )
-                    }
-                }
             }
         }
     }

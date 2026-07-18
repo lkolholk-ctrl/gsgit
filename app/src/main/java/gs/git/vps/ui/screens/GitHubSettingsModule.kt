@@ -101,7 +101,6 @@ import gs.git.vps.data.github.model.GHEmailEntry
 import gs.git.vps.data.github.model.GHFollowerEntry
 import gs.git.vps.data.github.model.GHNotification
 import gs.git.vps.data.github.model.GHOrg
-import gs.git.vps.data.github.model.GHDeviceCode
 import gs.git.vps.data.github.model.GHOrgMembership
 import gs.git.vps.data.github.model.GHWebhook
 import gs.git.vps.data.github.model.GHSocialAccountEntry
@@ -272,10 +271,7 @@ internal fun GitHubSettingsScreen(
     var repoInvitations by remember { mutableStateOf<List<GHUserRepositoryInvitation>>(emptyList()) }
     var rateLimitSummary by remember { mutableStateOf("Unavailable") }
     var gsGitAppConnection by remember { mutableStateOf(GitHubManager.getGsGitAppConnection(context)) }
-    var showChangeToken by remember { mutableStateOf(false) }
     var showChangeApiUrl by remember { mutableStateOf(false) }
-    var showDeviceLogin by remember { mutableStateOf(false) }
-    var newToken by remember { mutableStateOf("") }
     var newApiUrl by remember { mutableStateOf(GitHubManager.getApiUrl()) }
     var emailQuery by remember { mutableStateOf("") }
     var notificationQuery by remember { mutableStateOf("") }
@@ -296,7 +292,6 @@ internal fun GitHubSettingsScreen(
     fun handleBack() {
         when {
             pendingConfirmation != null -> pendingConfirmation = null
-            showChangeToken -> showChangeToken = false
             showChangeApiUrl -> showChangeApiUrl = false
             currentSection == null -> onBack()
             else -> currentSection = null
@@ -989,17 +984,14 @@ internal fun GitHubSettingsScreen(
                             }
                         }
                         SettingsSection.DEVELOPER -> SectionCard("Developer") {
-                            InfoLine("Token", maskToken(GitHubManager.getToken(context)))
                             InfoLine("GsGit App", gsGitAppConnection.status)
                             InfoLine("Base URL", GitHubManager.getApiUrl())
                             InfoLine("Rate limit", rateLimitSummary)
                             ActionRow(Icons.Rounded.Business, "Manage GsGit App") { onOpenApps() }
-                            ActionRow(Icons.Rounded.Key, "Change token") { showChangeToken = true }
                             ActionRow(Icons.Rounded.Code, "Custom API Base URL") {
                                 newApiUrl = GitHubManager.getApiUrl()
                                 showChangeApiUrl = true
                             }
-                            ActionRow(Icons.Rounded.Add, "Device login (recommended for Copilot)") { showDeviceLogin = true }
                             ActionRow(Icons.Rounded.Delete, "Clear GitHub cache") {
                                 confirmAction(
                                     title = "clear github cache",
@@ -1945,38 +1937,6 @@ internal fun GitHubSettingsScreen(
         )
     }
 
-    if (showChangeToken) {
-        AiModuleAlertDialog(
-            onDismissRequest = { showChangeToken = false },
-            title = "change token",
-            content = { CompactField("Personal access token", newToken, password = true) { newToken = it } },
-            confirmButton = {
-                AiModuleTextAction(label = Strings.done.lowercase(), onClick = {
-                    val candidate = newToken.trim()
-                    if (candidate.isBlank()) return@AiModuleTextAction
-                    scope.launch {
-                        val previousToken = GitHubManager.getToken(context)
-                        GitHubManager.saveToken(context, candidate)
-                        val updatedUser = GitHubManager.getUser(context)
-                        if (updatedUser != null) {
-                            user = updatedUser
-                            addLog("Token updated")
-                            newToken = ""
-                            showChangeToken = false
-                            refreshSection(SettingsSection.DEVELOPER)
-                        } else {
-                            GitHubManager.saveToken(context, previousToken)
-                            Toast.makeText(context, "Token validation failed; the previous token was kept", Toast.LENGTH_LONG).show()
-                        }
-                    }
-                })
-            },
-            dismissButton = {
-                AiModuleTextAction(label = Strings.cancel.lowercase(), onClick = { showChangeToken = false }, tint = AiModuleTheme.colors.textSecondary)
-            },
-        )
-    }
-
     if (showChangeApiUrl) {
         AiModuleAlertDialog(
             onDismissRequest = { showChangeApiUrl = false },
@@ -1999,76 +1959,6 @@ internal fun GitHubSettingsScreen(
                 AiModuleTextAction(label = Strings.cancel.lowercase(), onClick = { showChangeApiUrl = false }, tint = AiModuleTheme.colors.textSecondary)
             },
         )
-    }
-
-    if (showDeviceLogin) {
-        var deviceClientId by remember { mutableStateOf("") }
-        var deviceCode by remember { mutableStateOf<GHDeviceCode?>(null) }
-        var devicePolling by remember { mutableStateOf(false) }
-        var deviceError by remember { mutableStateOf<String?>(null) }
-
-        AiModuleAlertDialog(
-            onDismissRequest = { showDeviceLogin = false; deviceCode = null },
-            title = "device login",
-            confirmButton = {
-                if (deviceCode == null) {
-                    AiModuleTextAction(label = "start", enabled = deviceClientId.isNotBlank(), onClick = {
-                        scope.launch {
-                            deviceCode = GitHubManager.initiateDeviceFlow(deviceClientId.trim())
-                            if (deviceCode == null) deviceError = "Failed to start device flow"
-                        }
-                    }, tint = AiModuleTheme.colors.accent)
-                } else {
-                    AiModuleTextAction(label = "poll", enabled = !devicePolling, onClick = {
-                        devicePolling = true
-                        scope.launch {
-                            val result = GitHubManager.pollDeviceToken(deviceClientId.trim(), deviceCode!!.deviceCode)
-                            devicePolling = false
-                            if (result.token != null) {
-                                val previousToken = GitHubManager.getToken(context)
-                                GitHubManager.saveToken(context, result.token)
-                                val updatedUser = GitHubManager.getUser(context)
-                                if (updatedUser != null) {
-                                    user = updatedUser
-                                    showDeviceLogin = false
-                                    deviceCode = null
-                                    addLog("Logged in via device flow")
-                                } else {
-                                    GitHubManager.saveToken(context, previousToken)
-                                    deviceError = "Device token validation failed; the previous token was kept"
-                                }
-                            } else {
-                                deviceError = result.error ?: "pending"
-                            }
-                        }
-                    }, tint = AiModuleTheme.colors.accent)
-                }
-            },
-            dismissButton = {
-                AiModuleTextAction(label = Strings.cancel.lowercase(), onClick = { showDeviceLogin = false; deviceCode = null }, tint = AiModuleTheme.colors.textSecondary)
-            },
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (deviceCode == null) {
-                    Text(
-                        text = "Use a Client ID from your own GitHub OAuth App with Device Flow enabled. The app never impersonates another GitHub client.",
-                        fontSize = 11.sp,
-                        color = AiModuleTheme.colors.textMuted,
-                        lineHeight = 14.sp
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    CompactField("Client ID", deviceClientId) { deviceClientId = it }
-                } else {
-                    Text("Enter this code on GitHub:", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted)
-                    Text(deviceCode!!.userCode, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = AiModuleTheme.colors.accent, fontFamily = JetBrainsMono)
-                    Text("Verification URL:", fontSize = 12.sp, color = AiModuleTheme.colors.textMuted)
-                    Text(deviceCode!!.verificationUri, fontSize = 13.sp, color = AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono)
-                }
-                deviceError?.let {
-                    Text(it, fontSize = 12.sp, color = AiModuleTheme.colors.error, fontFamily = JetBrainsMono)
-                }
-            }
-        }
     }
 
     pendingConfirmation?.let { request ->
@@ -2618,11 +2508,6 @@ private fun InfoLine(label: String, value: String) {
         Text("> ${label.lowercase()}", color = AiModuleTheme.colors.textMuted, fontSize = 11.sp, fontFamily = JetBrainsMono)
         Text(value, color = AiModuleTheme.colors.textPrimary, fontSize = 13.sp, fontFamily = JetBrainsMono)
     }
-}
-
-private fun maskToken(token: String): String {
-    if (token.isBlank()) return "Not set"
-    return if (token.length <= 8) "••••••••" else token.take(4) + "••••••••" + token.takeLast(4)
 }
 
 private fun formatGitHubKilobytes(kb: Long): String = when {

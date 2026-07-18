@@ -111,12 +111,7 @@ fun GitHubScreen(
                 }
             }
             when {
-                !isLoggedIn -> LoginScreen(onBack, onMinimize, onClose) { credential ->
-                    // Device-flow вход через GsGit App сам сохраняет сессию и передаёт
-                    // пустую строку — не перетирать ею PAT-хранилище.
-                    if (credential.isNotBlank()) GitHubManager.saveToken(context, credential)
-                    isLoggedIn = true
-                }
+                !isLoggedIn -> LoginScreen(onBack, onMinimize, onClose) { isLoggedIn = true }
                 showSettings -> saveableStateHolder.SaveableStateProvider("settings") {
                     GitHubSettingsScreen(
                         onBack = { showSettings = false },
