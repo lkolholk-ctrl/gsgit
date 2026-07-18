@@ -14,7 +14,6 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
-import java.io.IOException
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
@@ -97,42 +96,6 @@ object GitHubManager {
             val scopesHeader = r.headers["x-oauth-scopes"] ?: ""
             TokenValidation(true, scopesHeader, j.optString("login", ""), "")
         } catch (e: Exception) { TokenValidation(false, "", "", e.message ?: "parse error") }
-    }
-
-    suspend fun getCopilotToken(context: Context): String {
-        // Copilot-эндпоинты принимают только PAT/OAuth-токен с copilot-scope;
-        // user-token GitHub App сюда не подходит. UI ввода PAT выпилен, поэтому
-        // токен здесь может остаться только от старых установок (legacy-хранилище).
-        val patToken = getToken(context)
-        var res = request(
-            context = context,
-            endpoint = "https://api.github.com/copilot_internal/v2/token",
-            method = "GET",
-            extraHeaders = mapOf(
-                "User-Agent" to "GitHubCopilotChat/0.11.0",
-                "Accept" to "application/json"
-            ),
-            trackErrors = false,
-            authToken = patToken
-        )
-        if (!res.success) {
-            res = request(
-                context = context,
-                endpoint = "https://api.github.com/copilot_user/token",
-                method = "GET",
-                extraHeaders = mapOf(
-                    "User-Agent" to "GitHubCopilotChat/0.11.0",
-                    "Accept" to "application/json"
-                ),
-                trackErrors = false,
-                authToken = patToken
-            )
-        }
-        if (res.success) {
-            return JSONObject(res.body).optString("token", "")
-        } else {
-            throw java.io.IOException("Failed to get Copilot token: HTTP ${res.code}: ${res.body.trim()}")
-        }
     }
 
     fun saveToken(context: Context, token: String): Boolean {

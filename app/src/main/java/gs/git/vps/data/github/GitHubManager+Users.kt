@@ -26,7 +26,7 @@ import java.net.URLEncoder
  *
  * НЕ здесь: searchUsers переехал в домен Orgs-соседний? нет — он в этом файле (поиск пользователей).
  * Активность (getUserReceived/PublicEvents) оставлена в core — домен Events; OAuth/device-flow и
- * validateToken/getCopilotToken — домен Auth.
+ * validateToken — домен Auth.
  */
 
 private const val USERS_TAG = "GH"

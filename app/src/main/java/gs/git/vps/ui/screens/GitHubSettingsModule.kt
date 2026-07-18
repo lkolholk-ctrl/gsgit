@@ -137,7 +137,6 @@ private enum class SettingsSection(val title: String, val subtitle: String) {
     THEMES("Themes", "Custom retro terminal color palettes"),
     SECURITY("Security & Backups", "Biometric lock and secure backup configuration"),
     EDITOR("Editor & Diff", "Font size, word wrap, tab size, whitespaces"),
-    AI_HELPER("AI Settings", "Provider, model, API key, system prompt"),
     NETWORK("Network & Proxy", "HTTP proxy and API endpoint configuration"),
     SYNC("Background Sync", "Notification polling interval and limits")
 }
@@ -196,11 +195,6 @@ internal fun GitHubSettingsScreen(
     var securityPinInput by remember { mutableStateOf("") }
     var securityPgpKeyAlgorithm by remember { mutableStateOf(prefs.getString("security_pgp_key_algorithm", "RSA-4096").orEmpty()) }
     var securityEnvironmentPolicy by remember { mutableStateOf(SecurityGate.policy(context)) }
-
-    // Category 3: GitHub Copilot
-    var copilotModel by remember { mutableStateOf(prefs.getString("copilot_model", "gpt-5.5").orEmpty()) }
-    var copilotRouting by remember { mutableStateOf(prefs.getString("copilot_routing", "Auto").orEmpty()) }
-    var aiSystemPrompt by remember { mutableStateOf(prefs.getString("ai_system_prompt", "You are a professional developer helping to review code, troubleshoot errors, and suggest fixes.").orEmpty()) }
 
     // Category 4: Network & Proxy
     var networkProxyEnabled by remember { mutableStateOf(prefs.getBoolean("network_proxy_enabled", false)) }
@@ -355,7 +349,6 @@ internal fun GitHubSettingsScreen(
             SettingsSection.THEMES -> {}
             SettingsSection.SECURITY -> {}
             SettingsSection.EDITOR -> {}
-            SettingsSection.AI_HELPER -> {}
             SettingsSection.NETWORK -> {}
             SettingsSection.SYNC -> {}
         }
@@ -1525,136 +1518,6 @@ internal fun GitHubSettingsScreen(
                                 }
                             }
                         }
-                        SettingsSection.AI_HELPER -> SectionCard("GitHub Copilot Settings") {
-                            Text(
-                                text = "// active model",
-                                color = AiModuleTheme.colors.textMuted,
-                                fontSize = 11.sp,
-                                fontFamily = JetBrainsMono,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(bottom = 6.dp)
-                            )
-                            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                listOf("gpt-5.5", "gpt-5.4", "gpt-5-mini", "claude-sonnet-4.6", "claude-opus-4.7", "claude-fable-5", "claude-haiku-4.5", "claude-3-5-haiku", "gpt-4o-mini", "mai-code-1", "mai-code-1-flash").forEach { modelName ->
-                                    val isSelected = copilotModel == modelName
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(GitHubControlRadius))
-                                            .background(if (isSelected) AiModuleTheme.colors.accent.copy(alpha = 0.14f) else AiModuleTheme.colors.border)
-                                            .border(1.dp, if (isSelected) AiModuleTheme.colors.accent else Color.Transparent, RoundedCornerShape(GitHubControlRadius))
-                                            .clickable {
-                                                copilotModel = modelName
-                                                prefs.edit().putString("copilot_model", modelName).apply()
-                                                addLog("Copilot model set to $modelName")
-                                            }
-                                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                                    ) {
-                                        Text(modelName, fontSize = 11.sp, color = if (isSelected) AiModuleTheme.colors.accent else AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono)
-                                    }
-                                }
-                            }
-                            
-                            Spacer(Modifier.height(16.dp))
-                            Text(
-                                text = "// plan routing endpoint",
-                                color = AiModuleTheme.colors.textMuted,
-                                fontSize = 11.sp,
-                                fontFamily = JetBrainsMono,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(bottom = 6.dp)
-                            )
-                            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                listOf("Auto", "Individual", "Business", "Enterprise").forEach { routeName ->
-                                    val isSelected = copilotRouting == routeName
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(GitHubControlRadius))
-                                            .background(if (isSelected) AiModuleTheme.colors.accent.copy(alpha = 0.14f) else AiModuleTheme.colors.border)
-                                            .border(1.dp, if (isSelected) AiModuleTheme.colors.accent else Color.Transparent, RoundedCornerShape(GitHubControlRadius))
-                                            .clickable {
-                                                copilotRouting = routeName
-                                                prefs.edit().putString("copilot_routing", routeName).apply()
-                                                addLog("Copilot routing set to $routeName")
-                                            }
-                                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                                    ) {
-                                        Text(routeName, fontSize = 11.sp, color = if (isSelected) AiModuleTheme.colors.accent else AiModuleTheme.colors.textPrimary, fontFamily = JetBrainsMono)
-                                    }
-                                }
-                            }
-                            
-                            Spacer(Modifier.height(16.dp))
-                            var testingState by remember { mutableStateOf<String?>(null) }
-                            val testScope = rememberCoroutineScope()
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                AiModuleTextAction(
-                                    label = "Test Copilot Connection",
-                                    onClick = {
-                                        testingState = "Fetching Copilot Token..."
-                                        testScope.launch {
-                                            try {
-                                                val token = GitHubManager.getCopilotToken(context)
-                                                if (token.isNotBlank()) {
-                                                    testingState = "Token Ok. Testing Chat endpoint..."
-                                                    // Make a simple ping request
-                                                    val routeHost = when (copilotRouting) {
-                                                        "Individual" -> "api.individual.githubcopilot.com"
-                                                        "Business" -> "api.business.githubcopilot.com"
-                                                        "Enterprise" -> "api.enterprise.githubcopilot.com"
-                                                        else -> "api.githubcopilot.com"
-                                                    }
-                                                    val success = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                                                        val url = URL("https://$routeHost/chat/completions")
-                                                        val conn = url.openConnection() as HttpURLConnection
-                                                        try {
-                                                            conn.requestMethod = "POST"
-                                                            conn.connectTimeout = 15_000
-                                                            conn.readTimeout = 15_000
-                                                            conn.setRequestProperty("Authorization", "Bearer $token")
-                                                            conn.setRequestProperty("Content-Type", "application/json")
-                                                            conn.setRequestProperty("User-Agent", "GitHubCopilotChat/0.11.0")
-                                                            conn.doOutput = true
-                                                            val requestBody = JSONObject().apply {
-                                                                put("model", copilotModel)
-                                                                put("messages", JSONArray().apply {
-                                                                    put(JSONObject().apply {
-                                                                        put("role", "user")
-                                                                        put("content", "ping")
-                                                                    })
-                                                                })
-                                                                put("max_tokens", 5)
-                                                            }.toString()
-                                                            conn.outputStream.use { it.write(requestBody.toByteArray()) }
-                                                            val responseCode = conn.responseCode
-                                                            (if (responseCode in 200..299) conn.inputStream else conn.errorStream)
-                                                                ?.close()
-                                                            responseCode in 200..299
-                                                        } finally {
-                                                            conn.disconnect()
-                                                        }
-                                                    }
-                                                    testingState = if (success) "Connection successful! Copilot is active." else "Chat API request failed."
-                                                } else {
-                                                    testingState = "Token request returned empty."
-                                                }
-                                            } catch (e: Exception) {
-                                                testingState = "Error: ${e.message ?: e.javaClass.simpleName}"
-                                            }
-                                        }
-                                    }
-                                )
-                                testingState?.let {
-                                    Spacer(Modifier.width(12.dp))
-                                    Text(it, fontSize = 11.sp, color = if (it.contains("successful")) AiModuleTheme.colors.accent else AiModuleTheme.colors.error, fontFamily = JetBrainsMono)
-                                }
-                            }
-
-                            Spacer(Modifier.height(12.dp))
-                            CompactField("System Instructions", aiSystemPrompt, singleLine = false, minLines = 3) {
-                                aiSystemPrompt = it
-                                prefs.edit().putString("ai_system_prompt", it).apply()
-                            }
-                        }
                         SettingsSection.NETWORK -> SectionCard("Network & Proxy") {
                             Text(
                                 text = "// proxy options",
@@ -2018,7 +1881,6 @@ private fun HomeSettingsMenu(user: GHUser?, onOpen: (SettingsSection) -> Unit) {
         item { MenuRow(Icons.Rounded.Description, SettingsSection.REPOSITORIES, onOpen); AiModuleHairline() }
         item { TerminalSectionHeader("developer") }
         item { MenuRow(Icons.Rounded.Code, SettingsSection.DEVELOPER, onOpen); AiModuleHairline() }
-        item { MenuRow(Icons.Rounded.SmartToy, SettingsSection.AI_HELPER, onOpen); AiModuleHairline() }
         item { MenuRow(Icons.Rounded.Sync, SettingsSection.SYNC, onOpen); AiModuleHairline() }
         item { TerminalSectionHeader("customization") }
         item { MenuRow(Icons.Rounded.Edit, SettingsSection.EDITOR, onOpen); AiModuleHairline() }

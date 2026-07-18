@@ -7,11 +7,8 @@ import org.json.JSONObject
 
 /**
  * Домен Auth слоя GitHub API: управление OAuth-app токенами (check/reset/delete token, delete grant)
- * и OAuth device-flow (initiate/poll). Нарезан по эталону Releases (см. docs/decomposition-log.md).
- * Запросы — через ядровый `requestBasic()` (basic-auth вариант). Сигнатуры вызовов не менялись.
- *
- * Валидация PAT (validateToken/getCopilotToken) оставлена в core — она завязана на вложенный
- * GitHubManager.TokenValidation и базовое token-хранилище.
+ * и device flow GsGit GitHub App — единственный способ входа в приложение.
+ * Запросы — через ядровый `requestBasic()` (basic-auth вариант).
  */
 
 internal suspend fun GitHubManager.checkOAuthAppToken(clientId: String, clientSecret: String, accessToken: String): GHOAuthTokenInfo? {
@@ -38,13 +35,6 @@ internal suspend fun GitHubManager.deleteOAuthAppGrant(clientId: String, clientS
     return requestBasic("/applications/${clientId.trim()}/grant", "DELETE", body, clientId.trim(), clientSecret).let { it.code == 204 || it.success }
 }
 
-internal suspend fun GitHubManager.initiateDeviceFlow(clientId: String): GHDeviceCode? {
-    return requestDeviceCode(
-        clientId = clientId,
-        scope = "read:user repo write:repo_hook admin:repo_hook copilot",
-    )
-}
-
 internal suspend fun GitHubManager.initiateGsGitAppDeviceFlow(): GHDeviceCode? =
     requestDeviceCode(clientId = GsGitGitHubApp.CLIENT_ID, scope = null)
 
@@ -66,10 +56,6 @@ private suspend fun GitHubManager.requestDeviceCode(clientId: String, scope: Str
             interval = j.optInt("interval", 5)
         )
     } catch (e: Exception) { null }
-}
-
-internal suspend fun GitHubManager.pollDeviceToken(clientId: String, deviceCode: String): GHDeviceTokenResult {
-    return requestDeviceToken(clientId, deviceCode)
 }
 
 internal suspend fun GitHubManager.pollGsGitAppDeviceToken(

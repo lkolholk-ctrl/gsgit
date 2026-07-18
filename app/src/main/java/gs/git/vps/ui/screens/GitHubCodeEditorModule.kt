@@ -246,9 +246,6 @@ fun CodeEditorScreen(
     val hasConflictMarkers = remember(textState.text) {
         textState.text.contains("<<<<<<<") && textState.text.contains("=======") && textState.text.contains(">>>>>>>")
     }
-    var showCopilotChat by rememberSaveable(file.path, branch) { mutableStateOf(false) }
-    var copilotInitialPrompt by remember { mutableStateOf<String?>(null) }
-    
     LaunchedEffect(initialLine) {
         if (initialLine != null) {
             val linesList = initialContent.lines()
@@ -882,10 +879,7 @@ fun CodeEditorScreen(
                 onToggleMoreMenu = { showMoreMenu = !showMoreMenu },
                 onSave = onSaveAction,
                 onBack = ::handleEditorBack,
-                onAskAi = {
-                    copilotInitialPrompt = it
-                    showCopilotChat = true
-                }
+                onAskAi = onAskAi
             )
 
             AnimatedVisibility(visible = hasConflictMarkers && !zenMode) {
@@ -1192,7 +1186,7 @@ fun CodeEditorScreen(
                 supportsPreview = supportsPreview,
                 hasChanges = hasChanges
             )
-            run {
+            if (onAskAi != null) {
                 val selectedRange = textState.selection
                 val selectedText = run {
                     val src = textState.text
@@ -1206,10 +1200,7 @@ fun CodeEditorScreen(
                     filePath = file.path,
                     branch = branch,
                     selectedText = selectedText,
-                    onSendPrompt = { prompt ->
-                        copilotInitialPrompt = prompt
-                        showCopilotChat = true
-                    },
+                    onSendPrompt = { prompt -> onAskAi.invoke(prompt) },
                 )
             }
         }
@@ -1618,38 +1609,6 @@ fun CodeEditorScreen(
         }
     }
 
-    AnimatedVisibility(
-            visible = showCopilotChat,
-            enter = slideInHorizontally(initialOffsetX = { it }),
-            exit = slideOutHorizontally(targetOffsetX = { it }),
-            modifier = Modifier.align(Alignment.CenterEnd)
-        ) {
-            CopilotChatPanel(
-                palette = palette,
-                filePath = currentFile.path,
-                branch = branch,
-                selectedText = textState.selection.let { range ->
-                    val src = textState.text
-                    val start = minOf(range.start, range.end).coerceIn(0, src.length)
-                    val end = maxOf(range.start, range.end).coerceIn(0, src.length)
-                    if (end > start) src.substring(start, end) else ""
-                },
-                initialPrompt = copilotInitialPrompt,
-                onClose = { showCopilotChat = false },
-                onApplyCode = { codeSnippet ->
-                    val range = textState.selection
-                    val src = textState.text
-                    val start = minOf(range.start, range.end).coerceIn(0, src.length)
-                    val end = maxOf(range.start, range.end).coerceIn(0, src.length)
-                    val newText = src.substring(0, start) + codeSnippet + src.substring(end)
-                    textState = TextFieldValue(
-                        text = newText,
-                        selection = TextRange(start + codeSnippet.length)
-                    )
-                    showCopilotChat = false
-                }
-            )
-        }
     }
 
     if (showBranchSwitcher) {
@@ -1749,8 +1708,6 @@ fun CodeEditorScreen(
     }
 
     if (showCommitDialog) {
-        var aiSuggesting by remember { mutableStateOf(false) }
-        var aiSuggestError by remember { mutableStateOf<String?>(null) }
         AiModuleAlertDialog(
             onDismissRequest = { showCommitDialog = false },
             title = "commit changes",
@@ -1764,39 +1721,6 @@ fun CodeEditorScreen(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        AiModuleTextAction(
-                            label = if (aiSuggesting) Strings.aiCommitMsgGenerating else Strings.aiCommitMsgGenerate,
-                            enabled = !aiSuggesting,
-                            onClick = {
-                                aiSuggesting = true
-                                aiSuggestError = null
-                                scope.launch {
-                                    try {
-                                        commitMessage = generateCommitMessage(
-                                            context = context,
-                                            path = file.path,
-                                            oldText = savedContent,
-                                            newText = text,
-                                        )
-                                    } catch (e: Exception) {
-                                        aiSuggestError = e.message ?: e.javaClass.simpleName
-                                    } finally {
-                                        aiSuggesting = false
-                                    }
-                                }
-                            },
-                        )
-                        aiSuggestError?.let { err ->
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                err.take(60),
-                                fontSize = 11.sp,
-                                color = AiModuleTheme.colors.error,
-                                fontFamily = JetBrainsMono,
-                            )
-                        }
-                    }
                 }
             },
             confirmButton = {

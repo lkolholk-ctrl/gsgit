@@ -210,8 +210,6 @@ internal fun RepoDetailScreen(
     var showRepoInsights by rememberSaveable(repo.fullName) { mutableStateOf(false) }
     var showGitDataTools by rememberSaveable(repo.fullName) { mutableStateOf(false) }
     var repoReloadNonce by remember { mutableIntStateOf(0) }
-    var showCopilotChat by rememberSaveable(repo.fullName) { mutableStateOf(false) }
-    var copilotPrompt by remember { mutableStateOf<String?>(null) }
     var selectedBranch by rememberSaveable(repo.fullName) { mutableStateOf(repo.defaultBranch) }
     var prevBranchForReflog by remember { mutableStateOf(selectedBranch) }
     LaunchedEffect(selectedBranch) {
@@ -922,8 +920,7 @@ internal fun RepoDetailScreen(
             repo = repo,
             runId = selectedRunId!!,
             onSuggestFix = { prompt ->
-                copilotPrompt = prompt
-                showCopilotChat = true
+                onOpenAiAgent?.invoke(repo.fullName, selectedBranch, prompt)
             },
             onBack = { selectedRunId = null },
             onNavigateToCode = navigateToCode
@@ -974,8 +971,7 @@ internal fun RepoDetailScreen(
                 showActionsTroubleshoot = false
             },
             onSuggestFix = { prompt ->
-                copilotPrompt = prompt
-                showCopilotChat = true
+                onOpenAiAgent?.invoke(repo.fullName, selectedBranch, prompt)
             }
         )
         return
@@ -1421,15 +1417,14 @@ internal fun RepoDetailScreen(
             subtitle = if (currentPath.isNotBlank()) "${repo.fullName} \u00B7 $currentPath" else repo.fullName,
             onBack = ::handleRepoBack,
             trailing = {
-                GitHubTopBarAction(
-                    glyph = GhGlyphs.AI,
-                    onClick = {
-                        copilotPrompt = null
-                        showCopilotChat = true
-                    },
-                    tint = palette.accent,
-                    contentDescription = "copilot chat",
-                )
+                if (onOpenAiAgent != null) {
+                    GitHubTopBarAction(
+                        glyph = GhGlyphs.AI,
+                        onClick = { onOpenAiAgent.invoke(repo.fullName, selectedBranch, null) },
+                        tint = palette.accent,
+                        contentDescription = "ai agent",
+                    )
+                }
                 GitHubTopBarAction(
                     glyph = GhGlyphs.REFRESH,
                     onClick = { repoReloadNonce++ },
@@ -1886,27 +1881,6 @@ internal fun RepoDetailScreen(
             modifier = Modifier.align(Alignment.BottomCenter),
         )
 
-        AnimatedVisibility(
-            visible = showCopilotChat,
-            enter = slideInHorizontally(initialOffsetX = { it }),
-            exit = slideOutHorizontally(targetOffsetX = { it }),
-            modifier = Modifier.align(Alignment.CenterEnd)
-        ) {
-            CopilotChatPanel(
-                palette = palette,
-                filePath = if (currentPath.isNotBlank()) currentPath else "repository root",
-                branch = selectedBranch,
-                selectedText = "",
-                initialPrompt = copilotPrompt,
-                onClose = { showCopilotChat = false },
-                onApplyCode = { codeSnippet ->
-                    val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                    cm.setPrimaryClip(android.content.ClipData.newPlainText("Copilot Code", codeSnippet))
-                    Toast.makeText(context, "Code copied to clipboard", Toast.LENGTH_SHORT).show()
-                    showCopilotChat = false
-                }
-            )
-        }
     }
     if (showUpload) UploadDialog(repo, currentPath, selectedBranch, { showUpload = false }) { showUpload = false; scope.launch { contents = GitHubManager.getRepoContents(context, repo.owner, repo.name, currentPath, selectedBranch) } }
     if (showCreateFile) CreateFileDialog(repo, currentPath, selectedBranch, { showCreateFile = false }) { showCreateFile = false; scope.launch { contents = GitHubManager.getRepoContents(context, repo.owner, repo.name, currentPath, selectedBranch) } }
