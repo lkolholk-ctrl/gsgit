@@ -10,8 +10,8 @@
            app_id      → App ID андроид-приложения (вид 1:123456789:android:abc...)
            api_key     → Web API Key
            sender_id   → Project number (Sender ID) -->
-    <string name="gsgit_firebase_project_id" translatable="false"></string>
-    <string name="gsgit_firebase_app_id" translatable="false"></string>
-    <string name="gsgit_firebase_api_key" translatable="false"></string>
-    <string name="gsgit_firebase_sender_id" translatable="false"></string>
+    <string name="gsgit_firebase_project_id" translatable="false">gsgit-1ee97</string>
+    <string name="gsgit_firebase_app_id" translatable="false">1:430173163630:android:6490484feca54fbefd567f</string>
+    <string name="gsgit_firebase_api_key" translatable="false">AIzaSyCmdrL9ERi7_-b6-EljtVX_An1OiguytrU</string>
+    <string name="gsgit_firebase_sender_id" translatable="false">430173163630</string>
 </resources>
