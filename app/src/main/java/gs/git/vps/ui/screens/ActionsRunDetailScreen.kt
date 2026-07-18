@@ -288,6 +288,19 @@ internal fun WorkflowRunDetailScreen(
 
     LaunchedEffect(runId) { refreshAll(refreshSection = false) }
 
+    // Живой экран: пока ран активен и экран открыт — тихо перезапрашиваем статус
+    // и джобы каждые 10 секунд (ETag-кэш ядра делает неизменившиеся ответы почти
+    // бесплатными). Закрытие экрана отменяет цикл; завершение рана — усыпляет его,
+    // но не убивает (ран могут перезапустить re-run'ом прямо с этого экрана).
+    LaunchedEffect(runId) {
+        while (true) {
+            kotlinx.coroutines.delay(10_000)
+            if (run?.let { isRunActive(it) } == true && !refreshing) {
+                refreshAll(refreshSection = false)
+            }
+        }
+    }
+
     LaunchedEffect(Unit) {
         kernelErrorCatalog = KernelErrorPatterns.load(context)
     }
