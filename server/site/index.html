@@ -285,6 +285,41 @@ h2 b{color:var(--acc)}
 .scene.live .rv.l2{transition-delay:.12s}
 .scene.live .rv.l3{transition-delay:.24s}
 .scene.live .rv.l4{transition-delay:.36s}
+/* landscape phones / short viewports: compact everything to fit the slide */
+@media (max-height:560px){
+  .scene{padding:52px 18px 56px}
+  h1{font-size:clamp(34px,8vh,64px)}
+  h2{font-size:clamp(20px,6vh,32px); margin-bottom:10px}
+  .lead{font-size:13px}
+  .k{margin-bottom:8px}
+  .num-tag{margin-bottom:6px}
+  .pts{gap:6px; margin-top:14px}
+  .pts li{font-size:12.5px}
+  .marq,.hud{display:none}
+  .ghost{font-size:clamp(100px,40vh,220px)}
+  .stats{margin-top:18px}
+  .stats div{padding:8px 6px}
+  .cta{margin-top:18px}
+  .btn{padding:10px 20px; font-size:13px}
+  .sub{margin-top:10px}
+  #cd{margin-top:14px; padding:10px}
+  #cd .cell{min-width:56px; padding:6px 4px}
+  #cd .num{font-size:20px}
+  .panel{font-size:12px}
+  .panel .body{padding:12px 14px; gap:6px}
+  .code-big{font-size:20px; padding:8px 6px}
+  .next{bottom:8px}
+  .shot{flex-basis:min(30vw,170px)}
+}
+/* landscape with enough width: keep text+panel side by side */
+@media (max-height:560px) and (min-width:640px){
+  .cols{grid-template-columns:1fr 1fr; gap:24px; text-align:left}
+  .cols .lead{margin:0}
+  .cols .pts{margin:14px 0 0}
+  .cols .panel{margin:0}
+  .strip{padding-top:12px}
+}
+
 /* fill tall viewports: scale content up instead of leaving voids */
 @media (min-width:1500px) and (min-height:940px){
   .scene .inner{zoom:1.12}
