@@ -804,19 +804,21 @@ internal fun WorkflowRunDetailScreen(
                             ) {
                                 Text("▸ artifacts", fontSize = 16.sp, fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold, color = TextPrimary)
                                 GitHubTerminalButton(
-                                    label = if (downloadingAllArtifacts) "⠋ downloading" else "↓ download all",
-                                    enabled = !downloadingAllArtifacts && artifacts.any { !it.expired },
+                                    label = "↓ download all",
+                                    enabled = artifacts.any { !it.expired },
                                     onClick = {
-                                        downloadingAllArtifacts = true
-                                        scope.launch {
-                                            var count = 0
-                                            artifacts.filter { !it.expired }.forEach { artifact ->
-                                                val dest = DownloadStorage.file(context, safeArtifactZipName(artifact))
-                                                if (GitHubManager.downloadArtifact(context, repo.owner, repo.name, artifact.id, dest)) count++
-                                            }
-                                            downloadingAllArtifacts = false
-                                            Toast.makeText(context, "${Strings.done}: $count/${artifacts.count { !it.expired }}", Toast.LENGTH_SHORT).show()
+                                        val active = artifacts.filter { !it.expired }
+                                        active.forEach { artifact ->
+                                            gs.git.vps.workers.ArtifactDownloadWorker.enqueue(
+                                                context = context,
+                                                owner = repo.owner,
+                                                repo = repo.name,
+                                                artifactId = artifact.id,
+                                                artifactName = artifact.name,
+                                                sizeBytes = artifact.sizeInBytes,
+                                            )
                                         }
+                                        Toast.makeText(context, "Downloading ${active.size} artifact(s) — see notifications", Toast.LENGTH_SHORT).show()
                                     },
                                     color = Blue,
                                 )
@@ -851,13 +853,15 @@ internal fun WorkflowRunDetailScreen(
                                         Toast.makeText(context, Strings.done, Toast.LENGTH_SHORT).show()
                                     },
                                     onDownload = {
-                                        downloading = artifact.id
-                                        scope.launch {
-                                            val dest = DownloadStorage.file(context, safeArtifactZipName(artifact))
-                                            val ok = GitHubManager.downloadArtifact(context, repo.owner, repo.name, artifact.id, dest)
-                                            Toast.makeText(context, if (ok) "${Strings.done}: ${dest.name}" else Strings.error, Toast.LENGTH_SHORT).show()
-                                            downloading = null
-                                        }
+                                        gs.git.vps.workers.ArtifactDownloadWorker.enqueue(
+                                            context = context,
+                                            owner = repo.owner,
+                                            repo = repo.name,
+                                            artifactId = artifact.id,
+                                            artifactName = artifact.name,
+                                            sizeBytes = artifact.sizeInBytes,
+                                        )
+                                        Toast.makeText(context, "Downloading ${artifact.name} — see notification", Toast.LENGTH_SHORT).show()
                                     },
                                     onDelete = {
                                         deletingArtifactId = artifact.id

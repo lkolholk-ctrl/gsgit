@@ -92,6 +92,9 @@ class GsGitMessagingService : FirebaseMessagingService() {
                 PushChannel("gsgit_pulls", "Pull requests", high),
                 PushChannel("gsgit_comments", "Comments", high),
                 PushChannel("gsgit_ci", "CI & deployments", normal),
+                // Выключен по умолчанию (IMPORTANCE_NONE): кто хочет видеть старты
+                // ранов — включает тумблер в системных настройках уведомлений.
+                PushChannel("gsgit_ci_starts", "CI starts", NotificationManager.IMPORTANCE_NONE),
                 PushChannel("gsgit_commits", "Commits & branches", normal),
                 PushChannel("gsgit_releases", "Releases", normal),
                 PushChannel("gsgit_discussions", "Discussions", normal),
@@ -107,6 +110,7 @@ class GsGitMessagingService : FirebaseMessagingService() {
                 "pull_request", "pull_request_review" -> "gsgit_pulls"
                 "issue_comment", "discussion_comment" -> "gsgit_comments"
                 "workflow_run", "check_suite", "deployment_status" -> "gsgit_ci"
+                "ci_start" -> "gsgit_ci_starts"
                 "push", "create", "delete" -> "gsgit_commits"
                 "release" -> "gsgit_releases"
                 "discussion" -> "gsgit_discussions"

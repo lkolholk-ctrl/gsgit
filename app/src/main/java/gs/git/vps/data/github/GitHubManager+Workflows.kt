@@ -3,7 +3,9 @@ package gs.git.vps.data.github
 import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.coroutineContext
 import gs.git.vps.data.github.model.GHActionResult
 import gs.git.vps.data.github.model.GHActionsUsage
 import gs.git.vps.data.github.model.GHArtifact
@@ -374,6 +376,57 @@ internal suspend fun GitHubManager.getRunArtifacts(context: Context, owner: Stri
     if (!r.success) return emptyList()
     return parseArtifacts(r.body)
 }
+
+/** Скачивание артефакта с прогрессом и поддержкой отмены (для ArtifactDownloadWorker). */
+internal suspend fun GitHubManager.downloadArtifactWithProgress(
+    context: Context,
+    owner: String,
+    repo: String,
+    artifactId: Long,
+    expectedSize: Long,
+    destFile: java.io.File,
+    onProgress: (bytesDownloaded: Long, totalBytes: Long) -> Unit,
+): Boolean =
+    withContext(Dispatchers.IO) {
+        try {
+            updateApiUrl(context)
+            val token = GitHubAuth.resolveApiToken(context)
+            val url = "${getApiUrl()}/repos/$owner/$repo/actions/artifacts/$artifactId/zip"
+            val conn = openDownloadConnection(
+                url = url,
+                token = token,
+                accept = "application/vnd.github.v3+json",
+                connectTimeoutMs = 15_000,
+                readTimeoutMs = 60_000,
+            ) ?: return@withContext false
+            val code = conn.responseCode
+            if (code !in 200..299) { conn.disconnect(); return@withContext false }
+            destFile.parentFile?.mkdirs()
+            val totalBytes = if (conn.contentLengthLong > 0) conn.contentLengthLong else expectedSize
+            conn.inputStream.use { input ->
+                destFile.outputStream().use { out ->
+                    val buffer = ByteArray(8192)
+                    var read: Int
+                    var downloaded = 0L
+                    while (input.read(buffer).also { read = it } != -1) {
+                        coroutineContext.ensureActive() // отмена из WorkManager
+                        out.write(buffer, 0, read)
+                        downloaded += read
+                        onProgress(downloaded, totalBytes)
+                    }
+                }
+            }
+            conn.disconnect()
+            true
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            destFile.delete() // не оставляем огрызок
+            throw e
+        } catch (e: Exception) {
+            Log.e(ACTIONS_TAG, "Download artifact with progress failed")
+            destFile.delete()
+            false
+        }
+    }
 
 internal suspend fun GitHubManager.downloadArtifact(context: Context, owner: String, repo: String, artifactId: Long, destFile: java.io.File): Boolean =
     withContext(Dispatchers.IO) {

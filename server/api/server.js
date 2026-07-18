@@ -226,8 +226,17 @@ function describeEvent(event, p) {
       };
     }
     case 'workflow_run': {
-      if (p.action !== 'completed') return null;
       const run = p.workflow_run || {};
+      // Старты ранов — отдельный тип ci_start: клиент кладёт его в канал
+      // «CI starts», выключенный по умолчанию (opt-in в настройках уведомлений).
+      if (p.action === 'in_progress') {
+        return {
+          type: 'ci_start',
+          title: `${repo} · ${run.head_branch}`,
+          body: `▶️ workflow «${run.name}» started (run #${run.run_number})`,
+        };
+      }
+      if (p.action !== 'completed') return null;
       const mark = run.conclusion === 'success' ? '✅' : run.conclusion === 'failure' ? '❌' : '▫️';
       return {
         title: `${repo} · ${run.head_branch}`,
@@ -309,7 +318,7 @@ async function handleWebhook(event, payload) {
   let delivered = 0;
   for (const token of tokens) {
     const ok = await sendPush(token, {
-      type: event,
+      type: note.type || event,
       title: note.title,
       body: note.body,
       repo: payload.repository?.full_name || '',

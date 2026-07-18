@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Доступ FileProvider только к папке загрузок приложения (Downloads/GsGit). -->
+<paths>
+    <external-files-path name="gsgit_downloads" path="Download/" />
+</paths>

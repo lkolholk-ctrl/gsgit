@@ -36,6 +36,17 @@
             android:foregroundServiceType="dataSync"
             tools:node="merge" />
 
+        <!-- Открытие/шаринг скачанных файлов (артефакты, ассеты) из нотификаций. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/gsgit_provider_paths" />
+        </provider>
+
         <service
             android:name=".notifications.GsGitMessagingService"
             android:exported="false">
