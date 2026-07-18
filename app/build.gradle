@@ -165,6 +165,10 @@ dependencies {
     // Background notifications polling
     implementation 'androidx.work:work-runtime-ktx:2.9.0'
 
+    // Моментальные пуши (api.gsgit.org -> FCM). Без google-services плагина:
+    // FirebaseApp инициализируется вручную из res/values/gsgit_push.xml (см. GsGitPush).
+    implementation 'com.google.firebase:firebase-messaging:24.1.0'
+
     // Biometrics and Fragment for BiometricPrompt
     implementation 'androidx.biometric:biometric:1.1.0'
     implementation 'androidx.fragment:fragment-ktx:1.8.5'

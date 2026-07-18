@@ -2,6 +2,7 @@ package gs.git.vps
 
 import android.app.Application
 import gs.git.vps.logging.CrashHandler
+import gs.git.vps.notifications.GsGitPush
 import gs.git.vps.security.BackupManager
 import gs.git.vps.security.SecurityGate
 
@@ -19,6 +20,7 @@ class App : Application() {
         Thread {
             SecurityGate.initialize(this)
             BackupManager.runMaintenance(this)
+            GsGitPush.ensureInit(this)
         }.start()
     }
 }

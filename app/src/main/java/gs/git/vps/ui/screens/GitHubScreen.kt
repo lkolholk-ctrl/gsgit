@@ -70,7 +70,14 @@ fun GitHubScreen(
             var pendingAppsOpen by remember { mutableStateOf(initialOpenApps) }
             val saveableStateHolder = rememberSaveableStateHolder()
 
-            LaunchedEffect(isLoggedIn) { if (isLoggedIn) user = GitHubManager.getUser(context) }
+            LaunchedEffect(isLoggedIn) {
+                if (isLoggedIn) {
+                    user = GitHubManager.getUser(context)
+                    // Моментальные пуши: регистрируем устройство на api.gsgit.org
+                    // (тихий no-op, пока Firebase-конфиг не заполнен).
+                    gs.git.vps.notifications.GsGitPush.registerAsync(context)
+                }
+            }
             LaunchedEffect(initialTarget) {
                 if (initialTarget != null) pendingTarget = initialTarget
             }
@@ -114,7 +121,13 @@ fun GitHubScreen(
                 showSettings -> saveableStateHolder.SaveableStateProvider("settings") {
                     GitHubSettingsScreen(
                         onBack = { showSettings = false },
-                        onLogout = { GitHubManager.logout(context); isLoggedIn = false; user = null; showSettings = false },
+                        onLogout = {
+                            gs.git.vps.notifications.GsGitPush.unregisterAsync(context)
+                            GitHubManager.logout(context)
+                            isLoggedIn = false
+                            user = null
+                            showSettings = false
+                        },
                         onOpenApps = {
                             showSettings = false
                             pendingAppsOpen = true

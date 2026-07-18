@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Бэкенд моментальных пушей (server/ в корне репозитория). -->
+    <string name="gsgit_push_api_base" translatable="false">https://api.gsgit.org</string>
+
+    <!-- Значения из Firebase Console → Project settings → General.
+         Пока пустые — моментальные пуши выключены, приложение работает как раньше
+         (fallback-поллинг NotificationSyncWorker). Заполнить:
+           project_id  → Project ID
+           app_id      → App ID андроид-приложения (вид 1:123456789:android:abc...)
+           api_key     → Web API Key
+           sender_id   → Project number (Sender ID) -->
+    <string name="gsgit_firebase_project_id" translatable="false"></string>
+    <string name="gsgit_firebase_app_id" translatable="false"></string>
+    <string name="gsgit_firebase_api_key" translatable="false"></string>
+    <string name="gsgit_firebase_sender_id" translatable="false"></string>
+</resources>
