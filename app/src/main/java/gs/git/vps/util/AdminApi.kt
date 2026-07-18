@@ -32,6 +32,16 @@ object AdminApi {
     /** Текущий конфиг с сервера (публичный GET, ключ не нужен). */
     suspend fun fetchConfig(context: Context): AppUpdate.Config? = AppUpdate.fetch(context)
 
+    /**
+     * Проверка, что сохранённый ключ настоящий (сервер принял пустое обновление
+     * конфига). Используется для владельческого байпаса гейтов техработ/обновлений —
+     * иначе включённый maintenance запер бы и саму админку.
+     */
+    suspend fun validateKey(context: Context): Boolean {
+        if (savedKey(context).isBlank()) return false
+        return post(context, "/admin/appconfig", "{}") != null
+    }
+
     /** Сохранить конфиг. true = сервер принял (значит и ключ верный). */
     suspend fun saveConfig(
         context: Context,
