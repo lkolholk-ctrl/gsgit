@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Монохромный слой адаптивной иконки (темизация Android 13+):
+     силуэт октокота, вписанный в безопасную зону 108dp-холста. -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/ic_stat_gsgit"
+    android:inset="26%" />
