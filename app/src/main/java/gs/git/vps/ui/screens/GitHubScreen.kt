@@ -70,6 +70,21 @@ fun GitHubScreen(
             var pendingAppsOpen by remember { mutableStateOf(initialOpenApps) }
             val saveableStateHolder = rememberSaveableStateHolder()
 
+            // Рантайм-конфиг с gsgit.org/app.json: техработы + принудительное/мягкое обновление.
+            // Проверка — на каждом запуске; молчим, если обновлений нет или конфиг недоступен.
+            var appConfig by remember { mutableStateOf<gs.git.vps.util.AppUpdate.Config?>(null) }
+            var updateDismissed by remember { mutableStateOf(false) }
+            LaunchedEffect(Unit) {
+                appConfig = gs.git.vps.util.AppUpdate.fetch(context)
+            }
+            val currentVersion = gs.git.vps.BuildConfig.VERSION_NAME
+            val forceUpdate = appConfig?.let {
+                gs.git.vps.util.AppUpdate.isOlder(currentVersion, it.minVersion)
+            } == true
+            val softUpdate = !forceUpdate && appConfig?.let {
+                gs.git.vps.util.AppUpdate.isOlder(currentVersion, it.latestVersion)
+            } == true
+
             LaunchedEffect(isLoggedIn) {
                 if (isLoggedIn) {
                     user = GitHubManager.getUser(context)
@@ -169,6 +184,98 @@ fun GitHubScreen(
                             onInitialOpenAppsConsumed()
                         },
                     )
+                }
+            }
+
+            // ── Плашка техработ (сверху, не блокирует) ──
+            val maintenanceText = appConfig?.maintenance.orEmpty()
+            if (maintenanceText.isNotBlank()) {
+                androidx.compose.ui.window.Popup(alignment = Alignment.TopCenter) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFF3A2E10))
+                            .statusBarsPadding()
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        gs.git.vps.ui.components.AiModuleText(
+                            text = "!",
+                            color = Color(0xFFFF9500),
+                            fontFamily = JetBrainsMono,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                        )
+                        gs.git.vps.ui.components.AiModuleText(
+                            text = maintenanceText,
+                            color = Color(0xFFFFD9A0),
+                            fontFamily = JetBrainsMono,
+                            fontSize = 12.sp,
+                        )
+                    }
+                }
+            }
+
+            // ── Обновления: блокирующий диалог (minVersion) или мягкий (latestVersion) ──
+            val cfg = appConfig
+            if (cfg != null && (forceUpdate || (softUpdate && !updateDismissed))) {
+                gs.git.vps.ui.components.AiModuleAlertDialog(
+                    onDismissRequest = { if (!forceUpdate) updateDismissed = true },
+                    title = if (forceUpdate) "update required" else "update available",
+                    properties = androidx.compose.ui.window.DialogProperties(
+                        dismissOnBackPress = !forceUpdate,
+                        dismissOnClickOutside = !forceUpdate,
+                    ),
+                    confirmButton = {
+                        gs.git.vps.ui.components.AiModuleTextAction(
+                            label = "update",
+                            onClick = {
+                                context.startActivity(
+                                    android.content.Intent(
+                                        android.content.Intent.ACTION_VIEW,
+                                        android.net.Uri.parse(cfg.downloadUrl),
+                                    )
+                                )
+                            },
+                            tint = AiModuleTheme.colors.accent,
+                        )
+                    },
+                    dismissButton = if (forceUpdate) null else {
+                        {
+                            gs.git.vps.ui.components.AiModuleTextAction(
+                                label = "later",
+                                onClick = { updateDismissed = true },
+                                tint = AiModuleTheme.colors.textSecondary,
+                            )
+                        }
+                    },
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        gs.git.vps.ui.components.AiModuleText(
+                            text = "v$currentVersion -> v${cfg.latestVersion}",
+                            color = AiModuleTheme.colors.accent,
+                            fontFamily = JetBrainsMono,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                        )
+                        if (forceUpdate) {
+                            gs.git.vps.ui.components.AiModuleText(
+                                text = "This version is no longer supported. Update to continue.",
+                                color = AiModuleTheme.colors.textPrimary,
+                                fontFamily = JetBrainsMono,
+                                fontSize = 12.sp,
+                            )
+                        }
+                        if (cfg.changelog.isNotBlank()) {
+                            gs.git.vps.ui.components.AiModuleText(
+                                text = cfg.changelog,
+                                color = AiModuleTheme.colors.textSecondary,
+                                fontFamily = JetBrainsMono,
+                                fontSize = 12.sp,
+                            )
+                        }
+                    }
                 }
             }
         }
