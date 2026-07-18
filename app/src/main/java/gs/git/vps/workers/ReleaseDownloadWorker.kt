@@ -68,8 +68,16 @@ class ReleaseDownloadWorker(
         }
 
         if (success) {
+            // Публикуем в системные Загрузки без диалогов; приватную копию убираем.
+            val mime = when {
+                assetName.endsWith(".apk", true) -> "application/vnd.android.package-archive"
+                assetName.endsWith(".zip", true) -> "application/zip"
+                else -> "application/octet-stream"
+            }
+            val publicUri = DownloadStorage.publishToDownloads(applicationContext, destFile, mime)
+            if (publicUri != null) destFile.delete()
             showCompletedNotification(notificationId, assetName)
-            return Result.success(workDataOf("dest_path" to destFile.absolutePath))
+            return Result.success(workDataOf("dest_path" to (publicUri?.toString() ?: destFile.absolutePath)))
         } else {
             showFailedNotification(notificationId, assetName)
             return Result.failure()
@@ -103,7 +111,7 @@ class ReleaseDownloadWorker(
 
     private fun showCompletedNotification(notificationId: Int, assetName: String) {
         val title = "Download completed"
-        val text = "Saved $assetName to GsGit downloads"
+        val text = "Saved $assetName to Downloads/GsGit"
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(text)

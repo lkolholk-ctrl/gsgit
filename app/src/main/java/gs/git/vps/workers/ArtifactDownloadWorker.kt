@@ -116,24 +116,29 @@ class ArtifactDownloadWorker(
         }
 
         var extractedCount = 0
-        var extractDir: File? = null
         if (unzip) {
-            extractDir = File(DownloadStorage.directory(applicationContext), name.removeSuffix(".zip"))
+            val extractDir = File(DownloadStorage.directory(applicationContext), name.removeSuffix(".zip"))
             extractedCount = runCatching { extractZip(destZip, extractDir) }.getOrDefault(0)
         }
 
+        // Публикуем zip в СИСТЕМНЫЕ Загрузки (Download/GsGit) — молча, без пикеров,
+        // как это делает браузер. Приватную копию после успеха удаляем.
+        val publicUri = DownloadStorage.publishToDownloads(applicationContext, destZip, "application/zip")
+        if (publicUri != null) destZip.delete()
+
+        val where = "Downloads/GsGit/${destZip.name}"
         val text = if (extractedCount > 0) {
-            "Extracted $extractedCount file(s) to Downloads/GsGit/${extractDir?.name}"
+            "Saved to $where · $extractedCount file(s) extracted"
         } else {
-            "Saved ${destZip.name} to Downloads/GsGit"
+            "Saved to $where"
         }
         notificationManager.notify(notificationId + 1, finalNotification(
             title = "Artifact downloaded",
             text = text,
             icon = android.R.drawable.stat_sys_download_done,
-            contentIntent = openZipIntent(destZip),
+            contentIntent = openIntent(publicUri, destZip),
         ))
-        return Result.success(workDataOf("zip_path" to destZip.absolutePath))
+        return Result.success(workDataOf("zip_path" to (publicUri?.toString() ?: destZip.absolutePath)))
     }
 
     /** Распаковка с защитой от zip-slip. Возвращает число извлечённых файлов. */
@@ -162,9 +167,10 @@ class ArtifactDownloadWorker(
         return count
     }
 
-    private fun openZipIntent(zip: File): PendingIntent? = runCatching {
-        val uri = FileProvider.getUriForFile(
-            applicationContext, "${applicationContext.packageName}.fileprovider", zip,
+    /** Тап по финальной нотификации: открыть опубликованный файл из системных Загрузок. */
+    private fun openIntent(publicUri: android.net.Uri?, fallbackZip: File): PendingIntent? = runCatching {
+        val uri = publicUri ?: FileProvider.getUriForFile(
+            applicationContext, "${applicationContext.packageName}.fileprovider", fallbackZip,
         )
         val view = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, "application/zip")
@@ -172,8 +178,8 @@ class ArtifactDownloadWorker(
         }
         PendingIntent.getActivity(
             applicationContext,
-            zip.hashCode(),
-            Intent.createChooser(view, zip.name),
+            fallbackZip.hashCode(),
+            view,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
     }.getOrNull()
