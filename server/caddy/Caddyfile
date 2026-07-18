@@ -2,8 +2,15 @@
 # Поменяй домены здесь, если зона будет другой.
 
 gsgit.org {
-	root * /srv/site
-	file_server
+	# Опциональный сниппет личного XHTTP-узла (генерит xray-setup.sh).
+	# Пока файла нет — import ничего не подключает, сайт работает как обычно.
+	import /etc/caddy/conf.d/*.caddy
+
+	# Всё остальное — статический сайт.
+	handle {
+		root * /srv/site
+		file_server
+	}
 }
 
 api.gsgit.org {

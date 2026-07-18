@@ -1,2 +1,7 @@
 data/
 .env
+
+# Личный XHTTP-узел: секреты и сгенерённые конфиги не коммитим.
+xray/config.json
+xray/secrets.env
+caddy/conf.d/*.caddy

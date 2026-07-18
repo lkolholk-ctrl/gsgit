@@ -7,6 +7,7 @@ services:
       - "443:443"
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy/conf.d:/etc/caddy/conf.d:ro
       - ./site:/srv/site:ro
       - caddy_data:/data
       - caddy_config:/config
@@ -23,6 +24,18 @@ services:
     restart: unless-stopped
     volumes:
       - kuma_data:/app/data
+
+  # Личный XHTTP-узел за Caddy. Слушает только внутри docker-сети (порт наружу
+  # НЕ публикуется) — снаружи дверь одна: 443 через Caddy по секретному пути.
+  # Конфиг генерит xray-setup.sh; профиль опционален — без него сайт/пуши не
+  # трогаются вообще.
+  xray:
+    image: ghcr.io/xtls/xray-core:latest
+    restart: unless-stopped
+    profiles: ["xray"]
+    volumes:
+      - ./xray/config.json:/etc/xray/config.json:ro
+    command: ["run", "-c", "/etc/xray/config.json"]
 
 volumes:
   caddy_data:
