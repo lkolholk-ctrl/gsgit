@@ -101,7 +101,8 @@ object GitHubManager {
 
     suspend fun getCopilotToken(context: Context): String {
         // Copilot-эндпоинты принимают только PAT/OAuth-токен с copilot-scope;
-        // user-token GitHub App сюда не подходит — всегда шлём PAT.
+        // user-token GitHub App сюда не подходит. UI ввода PAT выпилен, поэтому
+        // токен здесь может остаться только от старых установок (legacy-хранилище).
         val patToken = getToken(context)
         var res = request(
             context = context,
