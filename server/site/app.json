@@ -1,8 +1,0 @@
-{
-  "maintenanceSoon": "",
-  "maintenance": "",
-  "latestVersion": "1.0.78",
-  "minVersion": "1.0.0",
-  "changelog": "+ in-app update checks and maintenance notices\n+ quiet hours with digest, review reminders, weekly summary\n+ About screen: version, updates, website and status\n* project creation fixed (Projects V2)\n* input fields rise above the keyboard\n* repo content no longer hides under the bottom bar",
-  "downloadUrl": "https://github.com/lkolholk-ctrl/gsgit/releases/latest"
-}

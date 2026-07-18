@@ -23,7 +23,8 @@ import java.net.URL
 object AppUpdate {
 
     private const val TAG = "AppUpdate"
-    private const val CONFIG_URL = "https://gsgit.org/app.json"
+    // Конфиг живёт на API (правится из встроенной админки), а не статикой на сайте.
+    private const val CONFIG_URL = "https://api.gsgit.org/appconfig"
 
     data class Config(
         val maintenanceSoon: String,

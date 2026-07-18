@@ -122,6 +122,20 @@ if (!ADMIN_KEY) {
 }
 console.log(`[admin] announce key: ${ADMIN_KEY.slice(0, 6)}… (полный — в ${ADMIN_KEY_FILE})`);
 
+// ─── Конфиг приложения (техработы/обновления) — правится из админки в самом GsGit ───
+
+const APPCONFIG_FILE = process.env.APPCONFIG_FILE || path.join(DATA_DIR, 'appconfig.json');
+const APPCONFIG_FIELDS = ['maintenanceSoon', 'maintenance', 'latestVersion', 'minVersion', 'changelog', 'downloadUrl'];
+let appConfig = Object.assign({
+  maintenanceSoon: '',
+  maintenance: '',
+  latestVersion: '',
+  minVersion: '',
+  changelog: '',
+  downloadUrl: 'https://github.com/lkolholk-ctrl/gsgit/releases/latest',
+}, loadJson(APPCONFIG_FILE, {}));
+function saveAppConfig() { saveJson(APPCONFIG_FILE, appConfig); }
+
 // ─── Мини-клиент HTTPS (без зависимостей) ────────────────────────────────────
 
 function request(url, options, body) {
@@ -593,6 +607,28 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'GET' && url.pathname === '/healthz') {
       return send(res, 200, { ok: true, devices: Object.keys(devices).length });
+    }
+
+    // Публичный конфиг приложения: техработы, версии, чейнджлог.
+    if (req.method === 'GET' && url.pathname === '/appconfig') {
+      return send(res, 200, appConfig);
+    }
+
+    // Правка конфига из встроенной админки GsGit (X-Admin-Key).
+    if (req.method === 'POST' && url.pathname === '/admin/appconfig') {
+      const given = String(req.headers['x-admin-key'] || '');
+      if (!given || given !== ADMIN_KEY) return send(res, 401, { error: 'bad admin key' });
+      const raw = await readBody(req);
+      let body;
+      try { body = JSON.parse(raw.toString('utf8')); } catch (_) {
+        return send(res, 400, { error: 'bad json' });
+      }
+      for (const f of APPCONFIG_FIELDS) {
+        if (typeof body[f] === 'string') appConfig[f] = body[f];
+      }
+      saveAppConfig();
+      console.log('[admin] appconfig updated');
+      return send(res, 200, appConfig);
     }
 
     if (req.method === 'POST' && url.pathname === '/webhook') {
