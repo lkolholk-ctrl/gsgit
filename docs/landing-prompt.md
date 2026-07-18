@@ -73,9 +73,9 @@ Links to use:
 ## Hard technical requirements
 
 - Each page is **one self-contained HTML file**: all CSS and JS inline. No
-  CDNs, no external requests of any kind, no web fonts, no build tools, no
-  frameworks. Font stack: `"JetBrains Mono", ui-monospace, "Cascadia Mono",
-  monospace`.
+  CDNs, no external requests of any kind, no build tools, no frameworks.
+  Fonts: system fonts or anything you can embed inline — just no network
+  fetches.
 - Mobile-first and fully responsive from 360 px up to desktop; the page body
   must never scroll horizontally.
 - Fast and lightweight: vanilla JS only where genuinely needed (anchor
@@ -88,16 +88,19 @@ Links to use:
   display the images as-is.** Until the files exist the layout must degrade
   gracefully to neat labeled placeholders without breaking.
 
-## Style
+## Design
 
-Match the app: dark terminal look — near-black background, monospace type,
-restrained neon-green accent, thin 1px borders, soft glassmorphism cards.
-Terminal-flavored headings are welcome (`> gsgit`, `$ ./download`). Keep it
-strict and confident — this is a tool for developers, restraint builds trust.
-Do not use the GitHub logo or the Octocat as the product logo; the product is
-represented by the text mark "GsGit" and terminal glyphs.
+The design, layout, typography, color system, motion and overall art
+direction are **entirely your call — you decide what looks best**. For
+context only: the app itself has a dark terminal aesthetic (near-black,
+monospace, subtle green accents, light glassmorphism) — you may echo it,
+reinterpret it, or take the landing somewhere stronger if you believe it
+sells the product better. The audience is developers.
 
-## index.html structure
+One legal constraint: do not use the GitHub logo or the Octocat as the
+product logo; the product is represented by the text mark "GsGit".
+
+## index.html content (structure is a suggestion — presentation is yours)
 
 1. **Hero**: product name, a short punchy tagline about GitHub in your pocket
    with events pushed to you in seconds (improve on this), two buttons —
