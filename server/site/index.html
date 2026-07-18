@@ -36,19 +36,14 @@ img{max-width:100%; height:auto; display:block}
 #moonlayer{position:fixed; inset:0; z-index:0; pointer-events:none; overflow:hidden}
 #moonlayer canvas{position:absolute; left:0; top:0; image-rendering:pixelated; will-change:transform; opacity:.85}
 @media(max-width:860px){#moonlayer canvas{opacity:.5}}
-/* vector octocat rocket */
+/* software-3D octocat rocket */
 #rocket{position:absolute; left:0; top:0; width:110px; will-change:transform; opacity:.92; pointer-events:none}
-#rocket svg{width:100%; height:auto; display:block; animation:rbob 2.6s ease-in-out infinite alternate}
+#rocket canvas{width:100%; height:auto; display:block; image-rendering:pixelated;
+  animation:rbob 2.6s ease-in-out infinite alternate}
 @keyframes rbob{from{transform:translateY(-6px)}to{transform:translateY(6px)}}
-#rocket .fl path{transform-origin:60px 178px; animation:rfl .5s ease-in-out infinite alternate}
-#rocket .fl .f2{animation-duration:.38s}
-#rocket .fl .f3{animation-duration:.29s}
-@keyframes rfl{from{transform:scaleY(.72)}to{transform:scaleY(1.12)}}
 @media(max-width:860px){#rocket{width:74px; opacity:.7}}
-#rocket .fl{opacity:1; transition:opacity .7s ease}
-#rocket.landed .fl{opacity:0}
-#rocket.landed svg{animation:none}
-@media (prefers-reduced-motion:reduce){#rocket svg,#rocket .fl path{animation:none}}
+#rocket.landed canvas{animation:none}
+@media (prefers-reduced-motion:reduce){#rocket canvas{animation:none}}
 .scene{
   min-height:100svh; scroll-snap-align:start; scroll-snap-stop:always;
   position:relative; display:flex; flex-direction:column;
@@ -751,12 +746,14 @@ document.querySelectorAll('.next').forEach(function(n){
       return a*(1-u)*(1-v)+b*u*(1-v)+c*(1-u)*v+d*u*v;
     };
   }
-  function put(ctx,x,y,v){
-    var t=v*PAL.length-0.5+(B[y&3][x&3]/16-0.5)*1.35, i=Math.round(t);
+  var PALG=['#123c22','#175c31','#1a7a3e','#27c05a','#2ee66b','#a4ffc6'];
+  function putP(ctx,x,y,v,pal){
+    var t=v*pal.length-0.5+(B[y&3][x&3]/16-0.5)*1.35, i=Math.round(t);
     if(i<0) return;
-    if(i>=PAL.length) i=PAL.length-1;
-    ctx.fillStyle=PAL[i]; ctx.fillRect(x,y,1,1);
+    if(i>=pal.length) i=pal.length-1;
+    ctx.fillStyle=pal[i]; ctx.fillRect(x,y,1,1);
   }
+  function put(ctx,x,y,v){ putP(ctx,x,y,v,PAL); }
   function stars(ctx,w,h,r,n){
     for(var i=0;i<n;i++){
       var x=(r()*w)|0, y=(r()*h)|0, b=r();
@@ -917,24 +914,74 @@ document.querySelectorAll('.next').forEach(function(n){
   /* vector rocket with the octocat mark looking out of the porthole */
   var OCTO='M12,2A10,10 0 0,0 2,12C2,16.42 4.87,20.17 8.84,21.5C9.34,21.58 9.5,21.27 9.5,21C9.5,20.77 9.5,20.14 9.5,19.31C6.73,19.91 6.14,17.97 6.14,17.97C5.68,16.81 5.03,16.5 5.03,16.5C4.12,15.88 5.1,15.9 5.1,15.9C6.1,15.97 6.63,16.93 6.63,16.93C7.5,18.45 8.97,18 9.54,17.76C9.63,17.11 9.89,16.67 10.17,16.42C7.95,16.17 5.62,15.31 5.62,11.5C5.62,10.39 6,9.5 6.65,8.79C6.55,8.54 6.2,7.5 6.75,6.15C6.75,6.15 7.59,5.88 9.5,7.17C10.29,6.95 11.15,6.84 12,6.84C12.85,6.84 13.71,6.95 14.5,7.17C16.41,5.88 17.25,6.15 17.25,6.15C17.8,7.5 17.45,8.54 17.35,8.79C18,9.5 18.38,10.39 18.38,11.5C18.38,15.32 16.04,16.16 13.81,16.41C14.17,16.72 14.5,17.33 14.5,18.26C14.5,19.6 14.5,20.68 14.5,21C14.5,21.27 14.66,21.59 15.17,21.5C19.14,20.16 22,16.42 22,12A10,10 0 0,0 12,2Z';
   var mR=document.createElement('div'); mR.id='rocket'; layer.appendChild(mR);
-  mR.innerHTML=
-    '<svg viewBox="0 0 120 240" xmlns="http://www.w3.org/2000/svg">'+
-    '<defs><linearGradient id="hull" x1="0" y1="0" x2="1" y2="0">'+
-    '<stop offset="0" stop-color="#dce6dc"/><stop offset=".55" stop-color="#aebfae"/>'+
-    '<stop offset="1" stop-color="#7b8b7b"/></linearGradient></defs>'+
-    '<g class="fl">'+
-    '<path d="M60 176 C46 198 49 216 60 234 C71 216 74 198 60 176Z" fill="#1a7a3e"/>'+
-    '<path class="f2" d="M60 176 C51 194 53 206 60 220 C67 206 69 194 60 176Z" fill="#2ee66b"/>'+
-    '<path class="f3" d="M60 176 C55 188 56 197 60 206 C64 197 65 188 60 176Z" fill="#bfffd4"/>'+
-    '</g>'+
-    '<path d="M47 126 C31 143 22 162 19 180 C33 171 44 167 51 165 Z" fill="#556355" stroke="#39463b" stroke-width="2"/>'+
-    '<path d="M73 126 C89 143 98 162 101 180 C87 171 76 167 69 165 Z" fill="#556355" stroke="#39463b" stroke-width="2"/>'+
-    '<path d="M60 6 C35 33 30 68 32 106 C33 131 41 152 48 166 L72 166 C79 152 87 131 88 106 C90 68 85 33 60 6 Z" fill="url(#hull)" stroke="#39463b" stroke-width="3"/>'+
-    '<path d="M60 6 C49 18 42 31 38 45 L82 45 C78 31 71 18 60 6 Z" fill="#2ee66b" opacity=".92"/>'+
-    '<circle cx="60" cy="88" r="23" fill="#0c110c" stroke="#39463b" stroke-width="4"/>'+
-    '<g transform="translate(60 88) scale(1.7) translate(-12 -12)"><path fill="#cfdccf" d="'+OCTO+'"/></g>'+
-    '<rect x="46" y="164" width="28" height="12" rx="3" fill="#39463b"/>'+
-    '</svg>';
+  var rcv=document.createElement('canvas'); rcv.width=36; rcv.height=64; mR.appendChild(rcv);
+  var octoP=new Path2D(OCTO), texR=vn3(57,8), rkT=0, rkFlame=1;
+  function prof(y){ /* body-of-revolution profile: radius per row */
+    if(y<2) return 0;
+    if(y<16) return 9*Math.pow((y-2)/14,0.72);
+    if(y<44) return 9;
+    if(y<48) return 9-(y-44)*0.8;
+    if(y<52) return 4;
+    return 0;
+  }
+  function finPass(ctx,front){ /* three fins revolving around the hull */
+    for(var k=0;k<3;k++){
+      var a=rkT*2+k*2.0944, c=Math.cos(a), z=Math.sin(a);
+      if(front?z<0:z>=0) continue;
+      var bx=18+8*c, tx=18+16*c;
+      ctx.fillStyle=z>0?PAL[4]:PAL[2];
+      ctx.beginPath(); ctx.moveTo(bx,36); ctx.lineTo(tx,52); ctx.lineTo(bx,52);
+      ctx.closePath(); ctx.fill();
+    }
+  }
+  function drawR(){
+    var ctx=rcv.getContext('2d');
+    ctx.clearRect(0,0,36,64);
+    finPass(ctx,false);
+    var ct=Math.cos(rkT), st=Math.sin(rkT);
+    for(var y=2;y<52;y++){
+      var R=prof(y); if(R<1) continue;
+      var slope=(prof(y+1)-prof(y-1))*0.5;
+      for(var x=-9;x<=9;x++){
+        var nx=x/R; if(nx<-1||nx>1) continue;
+        var nz=Math.sqrt(1-nx*nx), ny=-slope;
+        var inv=1/Math.sqrt(nx*nx+ny*ny+nz*nz);
+        var lum=Math.max(0,(nx*-0.45+ny*-0.5+nz*0.74)*inv);
+        var rx=nx*ct+nz*st, rz=nz*ct-nx*st; /* hull texture spins */
+        var tex=texR((rx+2)*2.2,y*0.12,(rz+2)*2.2);
+        putP(ctx,18+x,y,Math.min(lum*(0.55+0.4*tex),0.98), y<15?PALG:PAL);
+      }
+    }
+    /* porthole with the octocat looking out */
+    ctx.fillStyle='#0a0f0a';
+    ctx.beginPath(); ctx.arc(18,25,7,0,6.2832); ctx.fill();
+    ctx.strokeStyle='#39463b'; ctx.lineWidth=1.4; ctx.stroke();
+    ctx.save(); ctx.translate(12,19); ctx.scale(0.5,0.5);
+    ctx.fillStyle='#cfdccf'; ctx.fill(octoP); ctx.restore();
+    finPass(ctx,true);
+    /* dithered exhaust, flickers every frame, dies on touchdown */
+    if(rkFlame>0.03){
+      var L=Math.round(11*rkFlame*(0.75+0.5*Math.random()));
+      for(var i=0;i<L;i++){
+        var w=Math.max(1,Math.round(3.5*(1-i/L)+Math.random()));
+        for(var fx=-w;fx<=w;fx++){
+          var v=(1-i/L)-Math.abs(fx)/(w+1)*0.45+Math.random()*0.25;
+          if(v>0.08) putP(ctx,18+fx,52+i,Math.min(v,0.95),PALG);
+        }
+      }
+    }
+  }
+  drawR();
+  if(!window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+    setInterval(function(){
+      var rc=mR.getBoundingClientRect();
+      if(rc.bottom<0||rc.top>innerHeight) return;
+      var landed=mR.classList.contains('landed');
+      if(!landed) rkT+=0.035;
+      rkFlame+=((landed?0:1)-rkFlame)*0.12;
+      drawR();
+    },40);
+  }
   function rocketMove(){
     var s=deckEl.scrollTop, vw=innerWidth, vh=innerHeight;
     var sEnd=Math.max(vh,deckEl.scrollHeight-deckEl.clientHeight);
@@ -949,7 +996,7 @@ document.querySelectorAll('.next').forEach(function(n){
       /* descend and touch down on the horizon planet of the last slide */
       var p=Math.min(1,(s-s1)/(sEnd-s1)), pe=1-Math.pow(1-p,2);
       var x0=vw*0.76-s1*0.05, xL=vw*0.70;
-      var yL=vh-vw*0.301-hpx*0.73; /* nozzle resting on the dithered surface */
+      var yL=vh-vw*0.301-hpx*0.81; /* nozzle resting on the dithered surface */
       x=x0*(1-p)+xL*p;
       y=(-hpx)*(1-pe)+yL*pe;
       rot=-14*(1-p);
