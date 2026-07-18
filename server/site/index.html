@@ -11,7 +11,7 @@
 <meta property="og:url" content="https://gsgit.org/">
 <style>
 :root{
-  --bg:#050605; --bg2:#0a0c0a; --ink:#e8f0e8; --dim:#9db19d; --mut:#5a6b5a;
+  --bg:#050605; --bg2:#0a0c0a; --ink:#eef4ee; --dim:#bccbbc; --mut:#849684;
   --acc:#2ee66b; --line:#1c241c; --card:#0c0f0c; --red:#ff5f56; --yel:#ffbd2e;
 }
 *{margin:0;padding:0;box-sizing:border-box}
@@ -29,7 +29,9 @@ img{max-width:100%; height:auto; display:block}
 /* ── deck: fullscreen snap slides ───────────────────────────── */
 #deck{
   height:100svh; overflow-y:auto; overflow-x:hidden;
-  scroll-snap-type:y mandatory; scroll-behavior:smooth;
+  /* proximity вместо mandatory: слайды «прилипают» только когда ты рядом с границей,
+     а свободный скролл не борется с магнитом (фидбек: принудительный снап мешал читать). */
+  scroll-snap-type:y proximity; scroll-behavior:smooth;
   position:relative; z-index:1;
 }
 /* two free-floating moons parallax through the deck */
@@ -45,7 +47,7 @@ img{max-width:100%; height:auto; display:block}
 #rocket.landed canvas{animation:none}
 @media (prefers-reduced-motion:reduce){#rocket canvas{animation:none}}
 .scene{
-  min-height:100svh; scroll-snap-align:start; scroll-snap-stop:always;
+  min-height:100svh; scroll-snap-align:start;
   position:relative; display:flex; flex-direction:column;
   align-items:center; justify-content:center;
   padding:80px 22px 92px; text-align:center; overflow:hidden;
@@ -79,7 +81,7 @@ img{max-width:100%; height:auto; display:block}
 }
 /* circular arc text around the hero moon */
 .arctext{position:absolute; z-index:1; width:min(72vmin,560px); right:0; top:6%;
-  opacity:.45; pointer-events:none; animation:spinslow 80s linear infinite}
+  opacity:.3; pointer-events:none; animation:spinslow 80s linear infinite}
 @keyframes spinslow{to{transform:rotate(360deg)}}
 .arctext text{fill:var(--dim); font-family:inherit; font-size:13.5px; letter-spacing:.42em}
 @media(max-width:860px){.arctext{width:88vmin; right:-10%; top:2%; opacity:.35}}
@@ -92,14 +94,14 @@ img{max-width:100%; height:auto; display:block}
 .ghost{
   position:absolute; z-index:1; left:50%; top:50%; transform:translate(-50%,-50%);
   font-weight:800; font-size:clamp(120px,26vw,340px); line-height:1; white-space:nowrap;
-  color:transparent; -webkit-text-stroke:1.5px rgba(46,230,107,.10);
+  color:transparent; -webkit-text-stroke:1.5px rgba(46,230,107,.07);
   letter-spacing:.02em; pointer-events:none; user-select:none;
   opacity:0; transition:opacity 1s ease .1s;
 }
 .scene.live .ghost{opacity:1}
 
 /* HUD corner ticks */
-.hud{position:absolute; z-index:1; font-size:10px; color:var(--mut); letter-spacing:.14em; opacity:.7; pointer-events:none}
+.hud{position:absolute; z-index:1; font-size:10px; color:var(--mut); letter-spacing:.14em; opacity:.45; pointer-events:none}
 .hud.tl{top:64px; left:20px} .hud.tr{top:64px; right:20px; text-align:right}
 .hud.bl{bottom:64px; left:20px} .hud.br{bottom:64px; right:20px; text-align:right}
 @media(max-width:700px){.hud{display:none}}
@@ -156,7 +158,7 @@ h1{font-size:clamp(52px,12vw,120px); font-weight:800; line-height:1.0; letter-sp
 h1 b{color:var(--acc)}
 h2{font-size:clamp(28px,6vw,54px); font-weight:800; line-height:1.12; margin-bottom:16px}
 h2 b{color:var(--acc)}
-.lead{color:var(--dim); font-size:clamp(14px,2.6vw,17px); max-width:620px; margin:0 auto}
+.lead{color:var(--dim); font-size:clamp(15px,2.7vw,18px); line-height:1.65; max-width:620px; margin:0 auto}
 .cursor{display:inline-block; width:.55em; height:1.05em; background:var(--acc);
   vertical-align:text-bottom; margin-left:6px; animation:blink 1.1s steps(1) infinite}
 @keyframes blink{50%{opacity:0}}
@@ -224,7 +226,7 @@ h2 b{color:var(--acc)}
 /* feature scenes */
 .num-tag{color:var(--mut); font-size:13px; letter-spacing:.2em; margin-bottom:10px}
 .pts{list-style:none; margin:24px 0 0; max-width:560px; text-align:left; display:grid; gap:10px}
-.pts li{padding-left:24px; position:relative; color:var(--dim); font-size:14px}
+.pts li{padding-left:24px; position:relative; color:var(--dim); font-size:14.5px; line-height:1.6}
 .pts li::before{content:"▸"; position:absolute; left:0; color:var(--acc)}
 .pts li b{color:var(--ink)}
 @media(max-width:860px){.pts{margin:24px auto 0}}
@@ -325,21 +327,7 @@ h2 b{color:var(--acc)}
 /* slow parallax drift of the pixel art */
 .art{animation:drift 26s ease-in-out infinite alternate}
 @keyframes drift{from{transform:translate3d(0,-6px,0)}to{transform:translate3d(0,10px,0)}}
-/* CRT sweep line over everything */
-body::after{
-  content:""; position:fixed; left:0; right:0; top:-15%; height:90px; z-index:40; pointer-events:none;
-  background:linear-gradient(180deg,transparent,rgba(46,230,107,.05),transparent);
-  animation:sweep 9s linear infinite;
-}
-@keyframes sweep{from{top:-15%}to{top:110%}}
-/* ghost word glitch-jitters now and then */
-.scene.live .ghost{animation:ghostjit 6s steps(2) infinite}
-@keyframes ghostjit{
-  0%,90%{transform:translate(-50%,-50%)}
-  92%{transform:translate(calc(-50% + 4px),calc(-50% - 3px)) skewX(2deg)}
-  95%{transform:translate(calc(-50% - 4px),calc(-50% + 2px))}
-  97%,100%{transform:translate(-50%,-50%)}
-}
+/* CRT-полосу и глитч призрачных слов убрали по фидбеку — меньше шума, легче читать */
 /* staggered cascades: list points, capability cells, notifications */
 .pts li,.grid div{opacity:0; transform:translateY(10px); transition:opacity .5s ease,transform .5s ease}
 .scene.live .pts li,.scene.live .grid div{opacity:1; transform:none}
