@@ -1,0 +1,15 @@
+# TLS-сертификаты Caddy выпускает и продлевает сам (Let's Encrypt).
+# Поменяй домены здесь, если зона будет другой.
+
+gsgit.org {
+	# Пока лендинга нет — отдаём заглушку и ссылку на GitHub.
+	respond "GsGit — Android GitHub client. https://github.com/lkolholk-ctrl/gsgit" 200
+}
+
+api.gsgit.org {
+	reverse_proxy api:8080
+}
+
+status.gsgit.org {
+	reverse_proxy kuma:3001
+}
