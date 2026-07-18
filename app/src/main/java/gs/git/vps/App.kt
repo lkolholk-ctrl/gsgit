@@ -21,6 +21,7 @@ class App : Application() {
             SecurityGate.initialize(this)
             BackupManager.runMaintenance(this)
             GsGitPush.ensureInit(this)
+            gs.git.vps.notifications.GsGitMessagingService.ensureChannels(this)
         }.start()
     }
 }

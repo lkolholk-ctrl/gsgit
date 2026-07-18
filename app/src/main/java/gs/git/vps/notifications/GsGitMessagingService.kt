@@ -17,8 +17,12 @@ import gs.git.vps.MainActivity
 /**
  * Приём моментальных пушей с api.gsgit.org (data-сообщения FCM:
  * type/title/body/repo/url — формирует server/api/server.js).
- * Тап по нотификации открывает MainActivity с github-ссылкой —
- * тот же роутинг, что у NotificationSyncWorker.
+ *
+ * Каждый тип события идёт в свой notification channel, поэтому пользователь
+ * может выключать категории по отдельности в системных настройках уведомлений
+ * (Settings → Apps → GsGit → Notifications). Названия каналов — английские.
+ * Тап по нотификации открывает MainActivity с github-ссылкой — тот же роутинг,
+ * что у NotificationSyncWorker.
  */
 class GsGitMessagingService : FirebaseMessagingService() {
 
@@ -32,21 +36,18 @@ class GsGitMessagingService : FirebaseMessagingService() {
         val title = data["title"].orEmpty().ifBlank { data["repo"].orEmpty() }
         val body = data["body"].orEmpty()
         if (title.isBlank() && body.isBlank()) return
-        showNotification(title.ifBlank { "GitHub" }, body, data["url"].orEmpty())
+        val channel = channelFor(data["type"].orEmpty())
+        showNotification(channel, title.ifBlank { "GitHub" }, body, data["url"].orEmpty())
     }
 
-    private fun showNotification(title: String, body: String, url: String) {
+    private fun showNotification(channel: PushChannel, title: String, body: String, url: String) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) !=
             PackageManager.PERMISSION_GRANTED
         ) return
 
+        ensureChannels(this)
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            manager.createNotificationChannel(
-                NotificationChannel(CHANNEL_ID, "GitHub instant push", NotificationManager.IMPORTANCE_HIGH)
-            )
-        }
 
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
@@ -59,7 +60,7 @@ class GsGitMessagingService : FirebaseMessagingService() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+        val notification = NotificationCompat.Builder(this, channel.id)
             .setContentTitle(title)
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
@@ -74,7 +75,58 @@ class GsGitMessagingService : FirebaseMessagingService() {
         manager.notify((url.ifBlank { title + body }).hashCode(), notification)
     }
 
+    /** Категория пуша: id канала + английское имя + важность. */
+    data class PushChannel(val id: String, val name: String, val importance: Int)
+
     companion object {
-        const val CHANNEL_ID = "gsgit_instant_push"
+        private const val LEGACY_CHANNEL_ID = "gsgit_instant_push"
+
+        private val CHANNELS: List<PushChannel> by lazy {
+            val high = NotificationManager.IMPORTANCE_HIGH
+            val normal = NotificationManager.IMPORTANCE_DEFAULT
+            listOf(
+                PushChannel("gsgit_issues", "Issues", high),
+                PushChannel("gsgit_pulls", "Pull requests", high),
+                PushChannel("gsgit_comments", "Comments", high),
+                PushChannel("gsgit_ci", "CI & deployments", normal),
+                PushChannel("gsgit_commits", "Commits & branches", normal),
+                PushChannel("gsgit_releases", "Releases", normal),
+                PushChannel("gsgit_discussions", "Discussions", normal),
+                PushChannel("gsgit_social", "Stars, forks & members", normal),
+                PushChannel("gsgit_security", "Account security", high),
+                PushChannel("gsgit_other", "Other GitHub events", normal),
+            )
+        }
+
+        fun channelFor(type: String): PushChannel {
+            val id = when (type) {
+                "issues" -> "gsgit_issues"
+                "pull_request", "pull_request_review" -> "gsgit_pulls"
+                "issue_comment", "discussion_comment" -> "gsgit_comments"
+                "workflow_run", "check_suite", "deployment_status" -> "gsgit_ci"
+                "push", "create", "delete" -> "gsgit_commits"
+                "release" -> "gsgit_releases"
+                "discussion" -> "gsgit_discussions"
+                "star", "watch", "fork", "member" -> "gsgit_social"
+                "security" -> "gsgit_security"
+                else -> "gsgit_other"
+            }
+            return CHANNELS.first { it.id == id }
+        }
+
+        /**
+         * Создаёт все каналы разом, чтобы полный список тумблеров был виден в
+         * системных настройках сразу, а не по мере прихода событий. Идемпотентно;
+         * зовётся из App.onCreate и перед показом нотификации.
+         */
+        fun ensureChannels(context: Context) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            CHANNELS.forEach { c ->
+                manager.createNotificationChannel(NotificationChannel(c.id, c.name, c.importance))
+            }
+            // Старый единый канал больше не используется — убираем из настроек.
+            manager.deleteNotificationChannel(LEGACY_CHANNEL_ID)
+        }
     }
 }
