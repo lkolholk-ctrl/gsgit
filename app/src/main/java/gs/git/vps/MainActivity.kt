@@ -57,6 +57,25 @@ class MainActivity : FragmentActivity() {
     private var isBiometricPromptActive = false
     private var lastPauseTime = 0L
 
+    // Android 13+: без рантайм-разрешения POST_NOTIFICATIONS система молча
+    // глотает и пуши, и уведомления фонового воркера. Спрашиваем при входе;
+    // после выдачи сразу перерегистрируемся на пуш-бэкенде.
+    private val notificationsPermissionLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) gs.git.vps.notifications.GsGitPush.registerAsync(this)
+    }
+
+    private fun requestNotificationsPermissionIfNeeded() {
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            androidx.core.content.ContextCompat.checkSelfPermission(
+                this, android.Manifest.permission.POST_NOTIFICATIONS
+            ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationsPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
     private fun completeUnlock() {
         hasUnlockedSession = true
         isAppLocked = false
@@ -121,6 +140,8 @@ class MainActivity : FragmentActivity() {
             isAppLocked = true
             triggerBiometricUnlock()
         }
+
+        requestNotificationsPermissionIfNeeded()
 
         handleDeepLink(intent)
 
