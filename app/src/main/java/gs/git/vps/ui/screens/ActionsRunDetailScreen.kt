@@ -179,7 +179,6 @@ import java.util.TimeZone
 internal fun WorkflowRunDetailScreen(
     repo: GHRepo,
     runId: Long,
-    onSuggestFix: ((prompt: String) -> Unit)? = null,
     onBack: () -> Unit,
     onNavigateToCode: ((path: String, line: Int) -> Unit)? = null,
 ) {
@@ -424,33 +423,6 @@ internal fun WorkflowRunDetailScreen(
                     tint = palette.warning,
                     contentDescription = "rerun failed jobs",
                 )
-                if (onSuggestFix != null && run?.conclusion == "failure") {
-                    AiModuleGlyphAction(
-                        glyph = GhGlyphs.AI,
-                        onClick = {
-                            val r = run
-                            val firstFailed = jobs.firstOrNull { it.conclusion == "failure" }
-                            val prompt = buildString {
-                                append(Strings.aiAgentSuggestFixPrompt)
-                                append("\n\n")
-                                append("Workflow: ").append(r?.name ?: "?").append('\n')
-                                append("Run: #").append(r?.runNumber ?: runId).append('\n')
-                                if (firstFailed != null) {
-                                    append("Failed job: ").append(firstFailed.name).append('\n')
-                                }
-                                r?.branch?.takeIf { it.isNotBlank() }?.let {
-                                    append("Branch: ").append(it).append('\n')
-                                }
-                                r?.htmlUrl?.takeIf { it.isNotBlank() }?.let {
-                                    append("URL: ").append(it).append('\n')
-                                }
-                            }
-                            onSuggestFix(prompt)
-                        },
-                        tint = palette.accent,
-                        contentDescription = "ai suggest fix",
-                    )
-                }
                 if (run != null && isRunActive(run!!)) {
                     AiModuleGlyphAction(
                         glyph = GhGlyphs.CLOSE,

@@ -166,7 +166,6 @@ internal fun RepoDetailScreen(
     onClose: (() -> Unit)? = null,
     initialTarget: GitHubNotificationTarget? = null,
     onInitialTargetConsumed: () -> Unit = {},
-    onOpenAiAgent: ((repoFullName: String, branch: String?, prompt: String?) -> Unit)? = null
 ) {
     val context = LocalContext.current; val scope = rememberCoroutineScope()
     val colors = AiModuleTheme.colors
@@ -913,15 +912,9 @@ internal fun RepoDetailScreen(
         return
     }
     if (selectedRunId != null) {
-        // B — wire onOpenAiAgent through so the run-detail screen can
-        // ask the AI Agent to look at a failed run. Composable receiver
-        // is responsible for opening the agent on a prefilled prompt.
         WorkflowRunDetailScreen(
             repo = repo,
             runId = selectedRunId!!,
-            onSuggestFix = { prompt ->
-                onOpenAiAgent?.invoke(repo.fullName, selectedBranch, prompt)
-            },
             onBack = { selectedRunId = null },
             onNavigateToCode = navigateToCode
         )
@@ -970,9 +963,6 @@ internal fun RepoDetailScreen(
                 selectedRunId = it
                 showActionsTroubleshoot = false
             },
-            onSuggestFix = { prompt ->
-                onOpenAiAgent?.invoke(repo.fullName, selectedBranch, prompt)
-            }
         )
         return
     }
@@ -1181,12 +1171,6 @@ internal fun RepoDetailScreen(
                 editorInitialLine = null
                 scope.launch { contents = GitHubManager.getRepoContents(context, repo.owner, repo.name, currentPath, selectedBranch) }
             },
-            onAskAi = onOpenAiAgent?.let { open ->
-                { customPrompt ->
-                    val prompt = customPrompt ?: "Look at the file `${safeEditingFile.path}` on branch `$selectedBranch` and explain what it does."
-                    open(repo.fullName, selectedBranch, prompt)
-                }
-            }
         )
         return
     }
@@ -1417,14 +1401,6 @@ internal fun RepoDetailScreen(
             subtitle = if (currentPath.isNotBlank()) "${repo.fullName} \u00B7 $currentPath" else repo.fullName,
             onBack = ::handleRepoBack,
             trailing = {
-                if (onOpenAiAgent != null) {
-                    GitHubTopBarAction(
-                        glyph = GhGlyphs.AI,
-                        onClick = { onOpenAiAgent.invoke(repo.fullName, selectedBranch, null) },
-                        tint = palette.accent,
-                        contentDescription = "ai agent",
-                    )
-                }
                 GitHubTopBarAction(
                     glyph = GhGlyphs.REFRESH,
                     onClick = { repoReloadNonce++ },

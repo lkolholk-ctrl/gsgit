@@ -144,7 +144,6 @@ internal fun GitHubEditorTopBar(
     onToggleMoreMenu: () -> Unit,
     onSave: () -> Unit,
     onBack: () -> Unit,
-    onAskAi: ((prompt: String?) -> Unit)? = null
 ) {
     val palette = AiModuleTheme.colors
     GitHubPageBar(
@@ -152,14 +151,6 @@ internal fun GitHubEditorTopBar(
         subtitle = subtitle,
         onBack = onBack,
         trailing = {
-            if (onAskAi != null) {
-                AiModuleGlyphAction(
-                    glyph = GhGlyphs.AI,
-                    onClick = { onAskAi(null) },
-                    tint = palette.accent,
-                    contentDescription = "ask ai",
-                )
-            }
             if (!isImage) {
                 if (hasChanges) {
                     AiModuleGlyphAction(

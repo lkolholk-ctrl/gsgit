@@ -144,7 +144,7 @@ import okhttp3.OkHttpClient
 import org.json.JSONObject
 
 /**
- * Pull-requests репо-модуля: PullsTab, PullRequestDetailScreen, карточки/бейджи, AI-summary,
+ * Pull-requests репо-модуля: PullsTab, PullRequestDetailScreen, карточки/бейджи,
  * все Pull*-диалоги (edit/reviewers/review-history/merge/files/...).
  * Вынесено из GitHubRepoModule.kt (Фаза 1, чистое перемещение).
  */
@@ -278,12 +278,6 @@ internal fun PullRequestDetailScreen(
     var showReviews by remember { mutableStateOf(false) }
     var showMerge by remember { mutableStateOf(false) }
     var merging by remember { mutableStateOf(false) }
-    // One-shot AI summary state. Populated by the chip in the action
-    // row below; nulled out when the dialog is dismissed.
-    var aiSummary by remember { mutableStateOf<String?>(null) }
-    var aiSummaryLoading by remember { mutableStateOf(false) }
-    var aiSummaryError by remember { mutableStateOf<String?>(null) }
-    var aiSummaryShown by remember { mutableStateOf(false) }
 
     suspend fun refreshPull() {
         loading = true
@@ -309,7 +303,6 @@ internal fun PullRequestDetailScreen(
             showReviewers -> showReviewers = false
             showReviews -> showReviews = false
             showMerge -> showMerge = false
-            aiSummaryShown -> aiSummaryShown = false
             else -> onBack()
         }
     }
@@ -423,32 +416,6 @@ internal fun PullRequestDetailScreen(
             item {
                 val canWrite = repo.canWrite()
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    GitHubTerminalButton(
-                        label = if (aiSummaryLoading) "loading summary" else "ai summary",
-                        color = Blue,
-                        enabled = !aiSummaryLoading,
-                        onClick = {
-                            if (aiSummaryLoading) return@GitHubTerminalButton
-                            aiSummaryShown = true
-                            aiSummaryError = null
-                            if (aiSummary == null) {
-                                aiSummaryLoading = true
-                                scope.launch {
-                                    try {
-                                        aiSummary = generatePullRequestSummary(
-                                            context = context,
-                                            pr = current,
-                                            files = files,
-                                        )
-                                    } catch (e: Exception) {
-                                        aiSummaryError = e.message ?: e.javaClass.simpleName
-                                    } finally {
-                                        aiSummaryLoading = false
-                                    }
-                                }
-                            }
-                        },
-                    )
                     if (canWrite) GitHubTerminalButton("edit", onClick = { showEdit = true }, color = TextSecondary)
                     GitHubTerminalButton("files", onClick = { onOpenFiles(pullNumber) }, color = Blue)
                     if (canWrite) GitHubTerminalButton("review", onClick = { showReview = true }, color = Blue)
@@ -662,133 +629,6 @@ internal fun PullRequestDetailScreen(
             }
         )
     }
-    if (aiSummaryShown) {
-        AiPullSummaryDialog(
-            loading = aiSummaryLoading,
-            summary = aiSummary,
-            error = aiSummaryError,
-            onRegenerate = {
-                if (current == null) return@AiPullSummaryDialog
-                aiSummaryLoading = true
-                aiSummary = null
-                aiSummaryError = null
-                scope.launch {
-                    try {
-                        aiSummary = generatePullRequestSummary(
-                            context = context,
-                            pr = current,
-                            files = files,
-                        )
-                    } catch (e: Exception) {
-                        aiSummaryError = e.message ?: e.javaClass.simpleName
-                    } finally {
-                        aiSummaryLoading = false
-                    }
-                }
-            },
-            onDismiss = { aiSummaryShown = false },
-        )
-    }
-}
-
-/**
- * One-shot prompt builder for the "AI summary" chip on the PR detail
- * screen. Sends the PR's title / description / head & base / commit
- * count / changed-file list (with patches truncated for long diffs)
- * to the picked model and asks for a concise three-bullet TL;DR.
- */
-private suspend fun generatePullRequestSummary(
-    context: Context,
-    pr: GHPullRequest,
-    files: List<GHPullFile>,
-): String {
-    val payload = buildString {
-        appendLine("Title: ${pr.title}")
-        appendLine("State: ${pr.state}${if (pr.draft) " (draft)" else ""}${if (pr.merged) " (merged)" else ""}")
-        appendLine("Author: ${pr.author}")
-        appendLine("Branches: ${pr.head} -> ${pr.base}")
-        appendLine("Stats: ${pr.commits} commits, +${pr.additions}/-${pr.deletions}, ${pr.changedFiles} files")
-        if (pr.body.isNotBlank()) {
-            appendLine()
-            appendLine("Description:")
-            appendLine(pr.body.take(2000))
-        }
-        if (files.isNotEmpty()) {
-            appendLine()
-            appendLine("Changed files (${files.size}):")
-            // 12 files * 600 char patch = ~7k tokens of context max.
-            // Beyond that the model can't keep it all in mind anyway.
-            files.take(12).forEach { f ->
-                append("- ${f.filename}  (+${f.additions} -${f.deletions})")
-                if (f.patch.isNotBlank()) {
-                    appendLine()
-                    appendLine(f.patch.take(600))
-                } else {
-                    appendLine()
-                }
-            }
-            if (files.size > 12) appendLine("[…${files.size - 12} more files omitted]")
-        }
-    }
-    val systemPrompt =
-        "You are a code-review assistant. Given the metadata and diff of a GitHub pull request, " +
-        "produce a concise summary that helps a reviewer decide whether to approve. " +
-        "Use 3-5 short bullet points. First bullet is the one-line intent. " +
-        "Mention notable risks or test gaps if visible from the diff. Plain text, no markdown headers."
-    return ""
-}
-
-@Composable
-private fun AiPullSummaryDialog(
-    loading: Boolean,
-    summary: String?,
-    error: String?,
-    onRegenerate: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val palette = AiModuleTheme.colors
-    AiModuleAlertDialog(
-        onDismissRequest = onDismiss,
-        title = Strings.aiSummary,
-        content = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                AiModuleGlyph(GhGlyphs.AI, Modifier.size(18.dp), tint = palette.accent, fontSize = 13.sp)
-                Spacer(Modifier.width(8.dp))
-                Box(
-                    Modifier
-                        .heightIn(min = 80.dp, max = 360.dp)
-                        .weight(1f)
-                        .verticalScroll(rememberScrollState())
-                ) {
-                    when {
-                        loading -> Row(verticalAlignment = Alignment.CenterVertically) {
-                            AiModuleSpinner()
-                            Spacer(Modifier.width(10.dp))
-                            AiModuleText(Strings.aiSummaryLoading, fontSize = 13.sp, color = palette.textSecondary)
-                        }
-                        error != null -> AiModuleText(
-                            error,
-                            fontSize = 13.sp,
-                            color = palette.error,
-                        )
-                        summary != null -> AiModuleText(
-                            summary,
-                            fontSize = 13.sp,
-                            color = palette.textPrimary,
-                            lineHeight = 18.sp,
-                        )
-                        else -> AiModuleText(Strings.aiSummaryEmpty, fontSize = 13.sp, color = palette.textSecondary)
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            AiModuleTextAction(label = Strings.close.lowercase(), onClick = onDismiss)
-        },
-        dismissButton = {
-            AiModuleTextAction(label = Strings.aiSummaryRegenerate.lowercase(), onClick = onRegenerate, enabled = !loading)
-        },
-    )
 }
 
 @Composable

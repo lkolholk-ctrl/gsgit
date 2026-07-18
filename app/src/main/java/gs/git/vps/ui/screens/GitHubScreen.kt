@@ -53,7 +53,6 @@ fun GitHubScreen(
     onInitialTargetConsumed: () -> Unit = {},
     initialOpenApps: Boolean = false,
     onInitialOpenAppsConsumed: () -> Unit = {},
-    onOpenAiAgent: ((repoFullName: String, branch: String?, prompt: String?) -> Unit)? = null
 ) {
     CompositionLocalProvider(LocalGHCompact provides compact) {
         AiModuleSurface {
@@ -136,7 +135,6 @@ fun GitHubScreen(
                             pendingTarget = null
                             onInitialTargetConsumed()
                         },
-                        onOpenAiAgent = onOpenAiAgent
                     )
                 }
                 showProfile != null -> saveableStateHolder.SaveableStateProvider("profile:${showProfile!!}") { ProfileScreen(username = showProfile!!, onBack = { showProfile = null }, onRepoClick = { selectedRepo = it }, onProfile = { showProfile = it }) }

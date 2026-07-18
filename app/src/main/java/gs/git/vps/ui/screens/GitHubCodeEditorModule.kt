@@ -178,7 +178,6 @@ fun CodeEditorScreen(
     onDraftChanged: ((path: String, content: String, changedFromInitial: Boolean) -> Unit)? = null,
     onSaveDraft: ((path: String, content: String) -> Unit)? = null,
     onBack: () -> Unit,
-    onAskAi: ((prompt: String?) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -879,7 +878,6 @@ fun CodeEditorScreen(
                 onToggleMoreMenu = { showMoreMenu = !showMoreMenu },
                 onSave = onSaveAction,
                 onBack = ::handleEditorBack,
-                onAskAi = onAskAi
             )
 
             AnimatedVisibility(visible = hasConflictMarkers && !zenMode) {
@@ -1186,23 +1184,6 @@ fun CodeEditorScreen(
                 supportsPreview = supportsPreview,
                 hasChanges = hasChanges
             )
-            if (onAskAi != null) {
-                val selectedRange = textState.selection
-                val selectedText = run {
-                    val src = textState.text
-                    val start = minOf(selectedRange.start, selectedRange.end)
-                        .coerceIn(0, src.length)
-                    val end = maxOf(selectedRange.start, selectedRange.end)
-                        .coerceIn(0, src.length)
-                    if (end > start) src.substring(start, end) else ""
-                }
-                AiQuickActionsRow(
-                    filePath = file.path,
-                    branch = branch,
-                    selectedText = selectedText,
-                    onSendPrompt = { prompt -> onAskAi.invoke(prompt) },
-                )
-            }
         }
 
         AnimatedVisibility(showSearch && !isImage && !zenMode) {

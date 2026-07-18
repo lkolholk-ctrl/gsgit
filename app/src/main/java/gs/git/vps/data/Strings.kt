@@ -29,12 +29,6 @@ object Strings {
     val ghAddComment = "Add comment"
     val ghNoComments = "No comments yet"
 
-    // AI Summary
-    val aiSummary = "AI Summary"
-    val aiSummaryLoading = "Generating summary…"
-    val aiSummaryEmpty = "No summary available"
-    val aiSummaryRegenerate = "Regenerate"
-
     // Actions
     val ghNoWorkflows = "No workflows found"
     val ghRerun = "Re-run"
@@ -69,16 +63,6 @@ object Strings {
     val ghFromBranch = "From branch"
     val ghPickBranch = "Pick branch"
 
-    // AI Agent prompts
-    val aiAgentSuggestFixPrompt = "Suggest a fix for this issue"
-    val aiAgentSendSelectionPromptPrefix = "Explain this code:"
-    val aiAgentSendSelectionChip = "Send to AI"
-    val aiAgentQuickExplain = "Explain"
-    val aiAgentQuickFixLint = "Fix lint"
-    val aiAgentQuickRefactor = "Refactor"
-    val aiAgentQuickAddTests = "Add tests"
-    val aiAgentQuickGenerateDocs = "Generate docs"
-
     // Actions failure / share strings
     val actions_copy_failure_summary = "Copy failure summary"
     val actions_share = "Share"
@@ -86,8 +70,4 @@ object Strings {
     val actions_share_failure_subject = "GitHub Actions Failure"
     val actions_share_failure_summary = "Summary"
     val actions_kernel_patterns_info = "Kernel patterns"
-
-    // AI Commit
-    val aiCommitMsgGenerate = "Generate commit message"
-    val aiCommitMsgGenerating = "Generating…"
 }
