@@ -70,18 +70,26 @@ fun GitHubScreen(
             var pendingAppsOpen by remember { mutableStateOf(initialOpenApps) }
             val saveableStateHolder = rememberSaveableStateHolder()
 
-            // Рантайм-конфиг с gsgit.org/app.json: техработы + принудительное/мягкое обновление.
-            // Проверка — на каждом запуске; молчим, если обновлений нет или конфиг недоступен.
+            // Рантайм-конфиг с gsgit.org/app.json: техработы + принудительное/мягкое обновление
+            // (модель Supercell). Проверка на каждом запуске; заблокированное состояние
+            // перепроверяется раз в минуту — гейт снимается сам, без перезапуска приложения.
             var appConfig by remember { mutableStateOf<gs.git.vps.util.AppUpdate.Config?>(null) }
             var updateDismissed by remember { mutableStateOf(false) }
-            LaunchedEffect(Unit) {
-                appConfig = gs.git.vps.util.AppUpdate.fetch(context)
-            }
             val currentVersion = gs.git.vps.BuildConfig.VERSION_NAME
-            val forceUpdate = appConfig?.let {
+            LaunchedEffect(Unit) {
+                while (true) {
+                    appConfig = gs.git.vps.util.AppUpdate.fetch(context) ?: appConfig
+                    val blocked = appConfig?.let {
+                        it.maintenance.isNotBlank() || gs.git.vps.util.AppUpdate.isOlder(currentVersion, it.minVersion)
+                    } == true
+                    kotlinx.coroutines.delay(if (blocked) 60_000L else 30L * 60_000L)
+                }
+            }
+            val maintenanceNow = appConfig?.maintenance.orEmpty()
+            val forceUpdate = maintenanceNow.isBlank() && appConfig?.let {
                 gs.git.vps.util.AppUpdate.isOlder(currentVersion, it.minVersion)
             } == true
-            val softUpdate = !forceUpdate && appConfig?.let {
+            val softUpdate = maintenanceNow.isBlank() && !forceUpdate && appConfig?.let {
                 gs.git.vps.util.AppUpdate.isOlder(currentVersion, it.latestVersion)
             } == true
 
@@ -187,9 +195,9 @@ fun GitHubScreen(
                 }
             }
 
-            // ── Плашка техработ (сверху, не блокирует) ──
-            val maintenanceText = appConfig?.maintenance.orEmpty()
-            if (maintenanceText.isNotBlank()) {
+            // ── «Скоро техработы» — верхняя плашка, не блокирует ──
+            val maintenanceSoonText = appConfig?.maintenanceSoon.orEmpty()
+            if (maintenanceSoonText.isNotBlank() && maintenanceNow.isBlank() && !forceUpdate) {
                 androidx.compose.ui.window.Popup(alignment = Alignment.TopCenter) {
                     Row(
                         Modifier
@@ -208,7 +216,7 @@ fun GitHubScreen(
                             fontSize = 13.sp,
                         )
                         gs.git.vps.ui.components.AiModuleText(
-                            text = maintenanceText,
+                            text = maintenanceSoonText,
                             color = Color(0xFFFFD9A0),
                             fontFamily = JetBrainsMono,
                             fontSize = 12.sp,
@@ -217,16 +225,43 @@ fun GitHubScreen(
                 }
             }
 
-            // ── Обновления: блокирующий диалог (minVersion) или мягкий (latestVersion) ──
             val cfg = appConfig
-            if (cfg != null && (forceUpdate || (softUpdate && !updateDismissed))) {
+            // ── Техперерыв: полноэкранная блокировка (Supercell-style) ──
+            if (maintenanceNow.isNotBlank()) {
+                AppGateScreen(
+                    title = "scheduled maintenance",
+                    message = maintenanceNow,
+                    changelog = "",
+                    buttonLabel = null,
+                    onButton = null,
+                    showStatusLink = true,
+                    footnote = "checking every minute - the app unlocks itself",
+                )
+            }
+            // ── Принудительное обновление: фуллскрин «что нового» + одна кнопка ──
+            else if (forceUpdate && cfg != null) {
+                AppGateScreen(
+                    title = "update required",
+                    message = "v$currentVersion is no longer supported.\nUpdate to v${cfg.latestVersion} to continue.",
+                    changelog = cfg.changelog,
+                    buttonLabel = "update now",
+                    onButton = {
+                        context.startActivity(
+                            android.content.Intent(
+                                android.content.Intent.ACTION_VIEW,
+                                android.net.Uri.parse(cfg.downloadUrl),
+                            )
+                        )
+                    },
+                    showStatusLink = false,
+                    footnote = null,
+                )
+            }
+            // ── Мягкое обновление: диалог с чейнджлогом, можно отложить ──
+            else if (softUpdate && !updateDismissed && cfg != null) {
                 gs.git.vps.ui.components.AiModuleAlertDialog(
-                    onDismissRequest = { if (!forceUpdate) updateDismissed = true },
-                    title = if (forceUpdate) "update required" else "update available",
-                    properties = androidx.compose.ui.window.DialogProperties(
-                        dismissOnBackPress = !forceUpdate,
-                        dismissOnClickOutside = !forceUpdate,
-                    ),
+                    onDismissRequest = { updateDismissed = true },
+                    title = "update available",
                     confirmButton = {
                         gs.git.vps.ui.components.AiModuleTextAction(
                             label = "update",
@@ -241,14 +276,12 @@ fun GitHubScreen(
                             tint = AiModuleTheme.colors.accent,
                         )
                     },
-                    dismissButton = if (forceUpdate) null else {
-                        {
-                            gs.git.vps.ui.components.AiModuleTextAction(
-                                label = "later",
-                                onClick = { updateDismissed = true },
-                                tint = AiModuleTheme.colors.textSecondary,
-                            )
-                        }
+                    dismissButton = {
+                        gs.git.vps.ui.components.AiModuleTextAction(
+                            label = "later",
+                            onClick = { updateDismissed = true },
+                            tint = AiModuleTheme.colors.textSecondary,
+                        )
                     },
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -259,14 +292,6 @@ fun GitHubScreen(
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp,
                         )
-                        if (forceUpdate) {
-                            gs.git.vps.ui.components.AiModuleText(
-                                text = "This version is no longer supported. Update to continue.",
-                                color = AiModuleTheme.colors.textPrimary,
-                                fontFamily = JetBrainsMono,
-                                fontSize = 12.sp,
-                            )
-                        }
                         if (cfg.changelog.isNotBlank()) {
                             gs.git.vps.ui.components.AiModuleText(
                                 text = cfg.changelog,
@@ -278,6 +303,134 @@ fun GitHubScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * Полноэкранный гейт (техперерыв / принудительное обновление): перекрывает весь
+ * контент, съедает тапы и кнопку «назад», показывает заголовок, сообщение,
+ * чейнджлог и максимум одну кнопку действия — модель Supercell.
+ */
+@Composable
+private fun AppGateScreen(
+    title: String,
+    message: String,
+    changelog: String,
+    buttonLabel: String?,
+    onButton: (() -> Unit)?,
+    showStatusLink: Boolean,
+    footnote: String?,
+) {
+    val colors = AiModuleTheme.colors
+    val context = LocalContext.current
+    BackHandler(enabled = true) {}
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(colors.background)
+            .clickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication = null,
+            ) {}
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .padding(28.dp)
+            .verticalScroll(rememberScrollState()),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        gs.git.vps.ui.components.AiModuleText(
+            text = ">_",
+            color = colors.accent,
+            fontFamily = JetBrainsMono,
+            fontWeight = FontWeight.Bold,
+            fontSize = 40.sp,
+        )
+        Spacer(Modifier.height(16.dp))
+        gs.git.vps.ui.components.AiModuleText(
+            text = title,
+            color = colors.textPrimary,
+            fontFamily = JetBrainsMono,
+            fontWeight = FontWeight.Bold,
+            fontSize = 19.sp,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(10.dp))
+        gs.git.vps.ui.components.AiModuleText(
+            text = message,
+            color = colors.textSecondary,
+            fontFamily = JetBrainsMono,
+            fontSize = 13.sp,
+            textAlign = TextAlign.Center,
+        )
+        if (changelog.isNotBlank()) {
+            Spacer(Modifier.height(18.dp))
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(colors.surface)
+                    .border(1.dp, colors.border, RoundedCornerShape(10.dp))
+                    .padding(14.dp),
+            ) {
+                gs.git.vps.ui.components.AiModuleText(
+                    text = "// what's new",
+                    color = colors.textMuted,
+                    fontFamily = JetBrainsMono,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.sp,
+                )
+                Spacer(Modifier.height(8.dp))
+                gs.git.vps.ui.components.AiModuleText(
+                    text = changelog,
+                    color = colors.textSecondary,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 12.sp,
+                )
+            }
+        }
+        if (buttonLabel != null && onButton != null) {
+            Spacer(Modifier.height(24.dp))
+            gs.git.vps.ui.components.AiModuleText(
+                text = "[ $buttonLabel ]",
+                color = colors.accent,
+                fontFamily = JetBrainsMono,
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(onClick = onButton)
+                    .border(1.dp, colors.accent, RoundedCornerShape(8.dp))
+                    .padding(horizontal = 22.dp, vertical = 12.dp),
+            )
+        }
+        if (showStatusLink) {
+            Spacer(Modifier.height(18.dp))
+            gs.git.vps.ui.components.AiModuleText(
+                text = "status.gsgit.org",
+                color = colors.accent,
+                fontFamily = JetBrainsMono,
+                fontSize = 12.sp,
+                modifier = Modifier.clickable {
+                    context.startActivity(
+                        android.content.Intent(
+                            android.content.Intent.ACTION_VIEW,
+                            android.net.Uri.parse("https://status.gsgit.org"),
+                        )
+                    )
+                },
+            )
+        }
+        if (footnote != null) {
+            Spacer(Modifier.height(14.dp))
+            gs.git.vps.ui.components.AiModuleText(
+                text = footnote,
+                color = colors.textMuted,
+                fontFamily = JetBrainsMono,
+                fontSize = 11.sp,
+                textAlign = TextAlign.Center,
+            )
         }
     }
 }

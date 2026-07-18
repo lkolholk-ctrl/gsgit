@@ -11,7 +11,8 @@ import java.net.URL
 /**
  * Рантайм-конфиг приложения с gsgit.org/app.json — управляется правкой файла
  * на сервере, без пересборки приложения:
- *   maintenance   — текст плашки техработ ("" = плашки нет)
+ *   maintenanceSoon — предупреждение «скоро техработы» (верхняя плашка, не блокирует)
+ *   maintenance   — техперерыв прямо сейчас: полноэкранная блокировка входа ("" = нет)
  *   latestVersion — актуальная версия: старее неё → мягкий диалог «доступно обновление»
  *   minVersion    — минимально допустимая: старее неё → блокирующий диалог без входа
  *   changelog     — что добавлено/исправлено (показывается в диалоге обновления)
@@ -25,6 +26,7 @@ object AppUpdate {
     private const val CONFIG_URL = "https://gsgit.org/app.json"
 
     data class Config(
+        val maintenanceSoon: String,
         val maintenance: String,
         val latestVersion: String,
         val minVersion: String,
@@ -44,6 +46,7 @@ object AppUpdate {
             if (conn.responseCode !in 200..299) return@withContext null
             val json = JSONObject(conn.inputStream.bufferedReader().readText())
             Config(
+                maintenanceSoon = json.optString("maintenanceSoon", ""),
                 maintenance = json.optString("maintenance", ""),
                 latestVersion = json.optString("latestVersion", ""),
                 minVersion = json.optString("minVersion", ""),
