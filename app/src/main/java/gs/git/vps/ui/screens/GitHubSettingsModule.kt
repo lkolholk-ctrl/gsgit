@@ -222,7 +222,13 @@ internal fun GitHubSettingsScreen(
     var quietStartH by remember { mutableStateOf(GsGitPush.quietStart(context)) }
     var quietEndH by remember { mutableStateOf(GsGitPush.quietEnd(context)) }
 
-    // Category 8: Server Admin (встроенная админка — техработы/гейты/анонсы)
+    // Category 8: Server Admin (встроенная админка — техработы/гейты/анонсы).
+    // Пункт скрыт: 5 быстрых тапов по шапке профиля в настройках показывают его,
+    // ещё 5 — прячут (как логгер во втором проекте владельца). Безопасность держит
+    // сервер (X-Admin-Key); скрытие — только от лишних глаз.
+    var adminRowVisible by remember { mutableStateOf(prefs.getBoolean("admin_row_visible", false)) }
+    var adminTapCount by remember { mutableStateOf(0) }
+    var adminTapLast by remember { mutableStateOf(0L) }
     var admKey by remember { mutableStateOf(gs.git.vps.util.AdminApi.savedKey(context)) }
     var admMaintenanceSoon by remember { mutableStateOf("") }
     var admMaintenance by remember { mutableStateOf("") }
@@ -456,7 +462,26 @@ internal fun GitHubSettingsScreen(
     ) {
 
         if (currentSection == null) {
-            HomeSettingsMenu(user = user, onOpen = { currentSection = it })
+            HomeSettingsMenu(
+                user = user,
+                showAdmin = adminRowVisible,
+                onOpen = { currentSection = it },
+                onHeaderTap = {
+                    val now = System.currentTimeMillis()
+                    adminTapCount = if (now - adminTapLast < 2000L) adminTapCount + 1 else 1
+                    adminTapLast = now
+                    if (adminTapCount >= 5) {
+                        adminTapCount = 0
+                        adminRowVisible = !adminRowVisible
+                        prefs.edit().putBoolean("admin_row_visible", adminRowVisible).apply()
+                        Toast.makeText(
+                            context,
+                            if (adminRowVisible) "server admin unlocked" else "server admin hidden",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                },
+            )
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
@@ -2104,13 +2129,25 @@ internal fun GitHubSettingsScreen(
 }
 
 @Composable
-private fun HomeSettingsMenu(user: GHUser?, onOpen: (SettingsSection) -> Unit) {
+private fun HomeSettingsMenu(
+    user: GHUser?,
+    showAdmin: Boolean = false,
+    onOpen: (SettingsSection) -> Unit,
+    onHeaderTap: (() -> Unit)? = null,
+) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
-        item { HomeUserHeader(user) }
+        item {
+            Box(
+                Modifier.clickable(
+                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                    indication = null,
+                ) { onHeaderTap?.invoke() }
+            ) { HomeUserHeader(user) }
+        }
         item { TerminalSectionHeader("account") }
         item { MenuRow(Icons.Rounded.Person, SettingsSection.PROFILE, onOpen); AiModuleHairline() }
         item { MenuRow(Icons.Rounded.Email, SettingsSection.EMAILS, onOpen); AiModuleHairline() }
@@ -2135,7 +2172,9 @@ private fun HomeSettingsMenu(user: GHUser?, onOpen: (SettingsSection) -> Unit) {
         item { MenuRow(Icons.Rounded.Dns, SettingsSection.NETWORK, onOpen); AiModuleHairline() }
         item { TerminalSectionHeader("app") }
         item { MenuRow(Icons.Rounded.Info, SettingsSection.ABOUT, onOpen); AiModuleHairline() }
-        item { MenuRow(Icons.Rounded.Dns, SettingsSection.ADMIN, onOpen); AiModuleHairline() }
+        if (showAdmin) {
+            item { MenuRow(Icons.Rounded.Dns, SettingsSection.ADMIN, onOpen); AiModuleHairline() }
+        }
     }
 }
 
