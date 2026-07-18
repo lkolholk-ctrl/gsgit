@@ -73,9 +73,11 @@ Links to use:
 ## Hard technical requirements
 
 - Each page is **one self-contained HTML file**: all CSS and JS inline. No
-  CDNs, no external requests of any kind, no build tools, no frameworks.
-  Fonts: system fonts or anything you can embed inline — just no network
-  fetches.
+  CDNs, no build tools, no frameworks. Fonts: system fonts or anything you
+  can embed inline. All page **assets** (styles, scripts, fonts, images
+  except the gallery) must load with zero external requests. The only network
+  calls allowed are the runtime **data** fetches described in the next
+  section.
 - Mobile-first and fully responsive from 360 px up to desktop; the page body
   must never scroll horizontally.
 - Fast and lightweight: vanilla JS only where genuinely needed (anchor
@@ -87,6 +89,44 @@ Links to use:
   already part of each PNG. Do not draw any CSS device frames around them;
   display the images as-is.** Until the files exist the layout must degrade
   gracefully to neat labeled placeholders without breaking.
+
+## Runtime config (site.json)
+
+The site owner must be able to change key content by editing a small JSON
+file on the server — without touching the HTML. On load, `index.html` fetches
+same-origin **`/site.json`** and applies it:
+
+```json
+{
+  "mode": "countdown",
+  "countdownTo": "2026-08-01T12:00:00Z",
+  "countdownLabel": "Public release in",
+  "banner": "",
+  "downloadUrl": "https://github.com/lkolholk-ctrl/gsgit/releases/latest"
+}
+```
+
+Behavior:
+
+- `mode: "countdown"` — the hero features a live countdown timer (days /
+  hours / minutes / seconds, ticking each second) with `countdownLabel`
+  above it. When the timer reaches zero it automatically switches the page
+  into the released state without a reload.
+- `mode: "released"` — no timer; the `Download APK` button is the hero's
+  primary action.
+- `banner` — optional one-line announcement bar at the top of the page;
+  hidden when empty.
+- `downloadUrl` — overrides the default download link if present.
+- If `site.json` is missing, malformed or fails to load, the page must
+  silently default to the released state with the standard links — it must
+  never break or show an error.
+- Optionally, in the released state you may also fetch
+  `https://api.github.com/repos/lkolholk-ctrl/gsgit/releases/latest`
+  client-side to display the current version tag next to the download
+  button; degrade gracefully if the request fails.
+
+Do not mention Google Play anywhere — the app is distributed exclusively
+through GitHub Releases (and possibly other stores later).
 
 ## Design
 
