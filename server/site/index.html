@@ -914,7 +914,14 @@ document.querySelectorAll('.next').forEach(function(n){
   /* vector rocket with the octocat mark looking out of the porthole */
   var OCTO='M12,2A10,10 0 0,0 2,12C2,16.42 4.87,20.17 8.84,21.5C9.34,21.58 9.5,21.27 9.5,21C9.5,20.77 9.5,20.14 9.5,19.31C6.73,19.91 6.14,17.97 6.14,17.97C5.68,16.81 5.03,16.5 5.03,16.5C4.12,15.88 5.1,15.9 5.1,15.9C6.1,15.97 6.63,16.93 6.63,16.93C7.5,18.45 8.97,18 9.54,17.76C9.63,17.11 9.89,16.67 10.17,16.42C7.95,16.17 5.62,15.31 5.62,11.5C5.62,10.39 6,9.5 6.65,8.79C6.55,8.54 6.2,7.5 6.75,6.15C6.75,6.15 7.59,5.88 9.5,7.17C10.29,6.95 11.15,6.84 12,6.84C12.85,6.84 13.71,6.95 14.5,7.17C16.41,5.88 17.25,6.15 17.25,6.15C17.8,7.5 17.45,8.54 17.35,8.79C18,9.5 18.38,10.39 18.38,11.5C18.38,15.32 16.04,16.16 13.81,16.41C14.17,16.72 14.5,17.33 14.5,18.26C14.5,19.6 14.5,20.68 14.5,21C14.5,21.27 14.66,21.59 15.17,21.5C19.14,20.16 22,16.42 22,12A10,10 0 0,0 12,2Z';
   var mR=document.createElement('div'); mR.id='rocket'; layer.appendChild(mR);
-  var rcv=document.createElement('canvas'); rcv.width=36; rcv.height=64; mR.appendChild(rcv);
+  var RSC=3; /* hull stays chunky (3x3 blocks), porthole renders at full res */
+  var rcv=document.createElement('canvas'); rcv.width=36*RSC; rcv.height=64*RSC; mR.appendChild(rcv);
+  function putB(ctx,x,y,v,pal){
+    var t=v*pal.length-0.5+(B[y&3][x&3]/16-0.5)*1.35, i=Math.round(t);
+    if(i<0) return;
+    if(i>=pal.length) i=pal.length-1;
+    ctx.fillStyle=pal[i]; ctx.fillRect(x*RSC,y*RSC,RSC,RSC);
+  }
   var octoP=new Path2D(OCTO), texR=vn3(57,8), rkT=0, rkFlame=1;
   var APRIL1=(function(){ var d=new Date(); return d.getMonth()===3&&d.getDate()===1; })();
   function prof(y){ /* body-of-revolution profile: radius per row */
@@ -926,6 +933,7 @@ document.querySelectorAll('.next').forEach(function(n){
     return 0;
   }
   function finPass(ctx,front){ /* three fins revolving around the hull */
+    ctx.save(); ctx.scale(RSC,RSC);
     for(var k=0;k<3;k++){
       var a=rkT*2+k*2.0944, c=Math.cos(a), z=Math.sin(a);
       if(front?z<0:z>=0) continue;
@@ -934,10 +942,11 @@ document.querySelectorAll('.next').forEach(function(n){
       ctx.beginPath(); ctx.moveTo(bx,36); ctx.lineTo(tx,52); ctx.lineTo(bx,52);
       ctx.closePath(); ctx.fill();
     }
+    ctx.restore();
   }
   function drawR(){
     var ctx=rcv.getContext('2d');
-    ctx.clearRect(0,0,36,64);
+    ctx.clearRect(0,0,36*RSC,64*RSC);
     finPass(ctx,false);
     var ct=Math.cos(rkT), st=Math.sin(rkT);
     for(var y=2;y<52;y++){
@@ -950,18 +959,28 @@ document.querySelectorAll('.next').forEach(function(n){
         var lum=Math.max(0,(nx*-0.45+ny*-0.5+nz*0.74)*inv);
         var rx=nx*ct+nz*st, rz=nz*ct-nx*st; /* hull texture spins */
         var tex=texR((rx+2)*2.2,y*0.12,(rz+2)*2.2);
-        putP(ctx,18+x,y,Math.min(lum*(0.55+0.4*tex),0.98), y<15?PALG:PAL);
+        putB(ctx,18+x,y,Math.min(lum*(0.55+0.4*tex),0.98), y<15?PALG:PAL);
       }
     }
-    /* porthole with the octocat looking out */
-    ctx.fillStyle='#0a0f0a';
-    ctx.beginPath(); ctx.arc(18,25,7,0,6.2832); ctx.fill();
-    ctx.strokeStyle='#39463b'; ctx.lineWidth=1.4; ctx.stroke();
+    /* porthole with the octocat looking out — full-res detail */
+    var pcx=18*RSC, pcy=25*RSC, pr=7*RSC;
+    var glass=ctx.createRadialGradient(pcx-pr*0.4,pcy-pr*0.4,pr*0.2,pcx,pcy,pr);
+    glass.addColorStop(0,'#16201a'); glass.addColorStop(1,'#060a07');
+    ctx.fillStyle=glass;
+    ctx.beginPath(); ctx.arc(pcx,pcy,pr,0,6.2832); ctx.fill();
+    ctx.strokeStyle='#39463b'; ctx.lineWidth=RSC*1.3; ctx.stroke();
+    ctx.strokeStyle='#78887a'; ctx.lineWidth=RSC*0.4;
+    ctx.beginPath(); ctx.arc(pcx,pcy,pr-RSC*0.9,0,6.2832); ctx.stroke();
     if(!APRIL1){
-      ctx.save(); ctx.translate(12,19); ctx.scale(0.5,0.5);
-      ctx.fillStyle='#cfdccf'; ctx.fill(octoP); ctx.restore();
+      var ms=(pr*2-RSC*3)/24; /* mark almost fills the glass */
+      ctx.save(); ctx.translate(pcx-ms*12,pcy-ms*12); ctx.scale(ms,ms);
+      ctx.fillStyle='#dfe8df'; ctx.fill(octoP); ctx.restore();
+      /* glass highlight over the cat */
+      ctx.fillStyle='rgba(223,232,223,0.12)';
+      ctx.beginPath(); ctx.ellipse(pcx-pr*0.38,pcy-pr*0.42,pr*0.42,pr*0.24,-0.6,0,6.2832); ctx.fill();
     }else{
       /* april fools: someone else took the seat today */
+      ctx.save(); ctx.scale(RSC,RSC);
       ctx.fillStyle='#dfe8df';
       ctx.beginPath(); ctx.moveTo(13.6,22.4); ctx.lineTo(12.6,17.6); ctx.lineTo(16.4,20.4); ctx.closePath(); ctx.fill();
       ctx.beginPath(); ctx.moveTo(22.4,22.4); ctx.lineTo(23.4,17.6); ctx.lineTo(19.6,20.4); ctx.closePath(); ctx.fill();
@@ -981,6 +1000,7 @@ document.querySelectorAll('.next').forEach(function(n){
       ctx.beginPath(); ctx.ellipse(18,28.6,2.7,1.7,0,0,6.2832); ctx.fill();
       ctx.fillStyle='#5c1030';
       ctx.beginPath(); ctx.ellipse(18,28.7,1.2,0.7,0,0,6.2832); ctx.fill();
+      ctx.restore();
     }
     finPass(ctx,true);
     /* dithered exhaust, flickers every frame, dies on touchdown */
@@ -990,7 +1010,7 @@ document.querySelectorAll('.next').forEach(function(n){
         var w=Math.max(1,Math.round(3.5*(1-i/L)+Math.random()));
         for(var fx=-w;fx<=w;fx++){
           var v=(1-i/L)-Math.abs(fx)/(w+1)*0.45+Math.random()*0.25;
-          if(v>0.08) putP(ctx,18+fx,52+i,Math.min(v,0.95),PALG);
+          if(v>0.08) putB(ctx,18+fx,52+i,Math.min(v,0.95),PALG);
         }
       }
     }
