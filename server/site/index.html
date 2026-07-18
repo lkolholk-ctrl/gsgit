@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GsGit — GitHub in your pocket, pushed to you in seconds</title>
-<meta name="description" content="GsGit is a free, open-source GitHub client for Android: token-free sign-in, instant push notifications from your own open backend, and CI that feels native.">
+<meta name="description" content="GsGit is a free GitHub client for Android: token-free sign-in, instant push notifications, and CI that feels native.">
 <meta property="og:title" content="GsGit — GitHub client for Android">
-<meta property="og:description" content="Token-free sign-in. Instant pushes in ~2 seconds. Actions, artifacts, code editor — all native, all open source.">
+<meta property="og:description" content="Token-free sign-in. Instant pushes in ~2 seconds. Actions, artifacts, code editor — all native.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://gsgit.org/">
 <style>
@@ -296,7 +296,7 @@ h2 b{color:var(--acc)}
 <div id="banner"></div>
 <div id="topbar">
   <div class="logo">&gt;_ Gs<b>Git</b></div>
-  <a class="src" href="https://github.com/lkolholk-ctrl/gsgit">source ↗</a>
+  <a class="src" href="https://status.gsgit.org">status ↗</a>
 </div>
 <div id="dots" aria-hidden="true"></div>
 
@@ -322,14 +322,13 @@ h2 b{color:var(--acc)}
       </div>
       <div class="cta rv l3">
         <a class="btn primary" id="dl" href="https://github.com/lkolholk-ctrl/gsgit/releases/latest">↓ Download APK</a>
-        <a class="btn ghostbtn" href="https://github.com/lkolholk-ctrl/gsgit">&lt;/&gt; Source</a>
       </div>
-      <div class="sub rv l3">Android 8.0+ · free &amp; open source <span id="ver"></span></div>
+      <div class="sub rv l3">Android 8.0+ · free <span id="ver"></span></div>
       <div class="stats rv l4">
         <div><div class="v">~2s</div><div class="t">event → push</div></div>
         <div><div class="v">0</div><div class="t">tokens stored</div></div>
         <div><div class="v">60k+</div><div class="t">lines of kotlin</div></div>
-        <div><div class="v">100%</div><div class="t">open source</div></div>
+        <div><div class="v">10</div><div class="t">push channels</div></div>
       </div>
     </div>
     <div class="marq" aria-hidden="true"><div class="track">
@@ -402,14 +401,14 @@ h2 b{color:var(--acc)}
         </div>
         <div>
           <h2 class="rv">Pushed to you <b>in ~2 seconds</b></h2>
-          <p class="lead rv l2">An open-source backend turns GitHub webhooks into instant pushes. No polling, no battery drain.</p>
+          <p class="lead rv l2">The gsgit.org backend turns GitHub webhooks into instant pushes. No polling, no battery drain.</p>
           <div class="pix pipe rv l3">
             <div class="line">webhook <b>→</b> api.gsgit.org <b>→</b> FCM <b>→</b> your phone</div>
           </div>
           <ul class="pts rv l3">
             <li><b>Rich notifications</b> — full comment text, CI results, expandable.</li>
             <li><b>10 native channels</b> — mute stars, keep CI. Or the other way round.</li>
-            <li><b>Self-hostable</b> — the server ships in the same repo, Docker Compose included.</li>
+            <li><b>Sign-in alerts</b> — a new device on your account instantly pings the others.</li>
           </ul>
         </div>
       </div>
@@ -501,13 +500,13 @@ h2 b{color:var(--acc)}
   <section class="scene d2">
     <div class="ghost">FREE</div>
     <div class="hud tr">SCENE 06/06<br>TRACKERS=0 · ADS=0</div>
-    <div class="hud bl">SERVER.STORES=2 VALUES<br>LICENSE=OPEN</div>
+    <div class="hud bl">SERVER.STORES=2 VALUES<br>COST=0</div>
     <div class="inner">
       <div class="num-tag rv">06 / trust</div>
       <h2 class="rv">Built like you'd <b>build it yourself</b></h2>
       <div class="cols">
         <ul class="pts rv l2" style="margin-top:10px">
-          <li><b>Open source</b> — the app, the push backend, this page.</li>
+          <li><b>No middlemen</b> — the app talks to the official GitHub API straight from your device.</li>
           <li><b>Tokens never leave the device</b> — there is no PAT anywhere in the product.</li>
           <li><b>No analytics, no ads, no tracking</b> — the <a href="privacy.html">privacy policy</a> is refreshingly short.</li>
           <li><b>Server stores two values</b> — your GitHub login and a push token. That's all.</li>
@@ -527,7 +526,6 @@ h2 b{color:var(--acc)}
         <a class="btn primary" id="dl2" href="https://github.com/lkolholk-ctrl/gsgit/releases/latest">↓ Download APK</a>
       </div>
       <div class="foot rv l4">
-        <a href="https://github.com/lkolholk-ctrl/gsgit">GitHub</a>
         <a href="https://github.com/lkolholk-ctrl/gsgit/releases">Releases</a>
         <a href="https://status.gsgit.org">Status</a>
         <a href="privacy.html">Privacy</a>
@@ -603,8 +601,15 @@ document.querySelectorAll('.next').forEach(function(n){
 (function(){
   var timer=null;
   function pad(n){ return (n<10?'0':'')+n; }
+  function setDl(show){
+    ['dl','dl2'].forEach(function(id){
+      var el=document.getElementById(id);
+      if(el) el.style.display=show?'':'none';
+    });
+  }
   function released(){
     document.getElementById('cd').style.display='none';
+    setDl(true);
     if(timer) clearInterval(timer);
     fetch('https://api.github.com/repos/lkolholk-ctrl/gsgit/releases/latest')
       .then(function(r){ return r.ok?r.json():null; })
@@ -616,6 +621,7 @@ document.querySelectorAll('.next').forEach(function(n){
     var cd=document.getElementById('cd');
     document.getElementById('cd-label').textContent=cfg.countdownLabel||'Public release in';
     cd.style.display='block';
+    setDl(false);
     function tick(){
       var left=target-Date.now();
       if(left<=0){ released(); return; }
