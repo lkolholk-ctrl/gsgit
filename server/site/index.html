@@ -45,6 +45,9 @@ img{max-width:100%; height:auto; display:block}
 #rocket .fl .f3{animation-duration:.29s}
 @keyframes rfl{from{transform:scaleY(.72)}to{transform:scaleY(1.12)}}
 @media(max-width:860px){#rocket{width:74px; opacity:.7}}
+#rocket .fl{opacity:1; transition:opacity .7s ease}
+#rocket.landed .fl{opacity:0}
+#rocket.landed svg{animation:none}
 @media (prefers-reduced-motion:reduce){#rocket svg,#rocket .fl path{animation:none}}
 .scene{
   min-height:100svh; scroll-snap-align:start; scroll-snap-stop:always;
@@ -889,8 +892,25 @@ document.querySelectorAll('.next').forEach(function(n){
     '</svg>';
   function rocketMove(){
     var s=deckEl.scrollTop, vw=innerWidth, vh=innerHeight;
-    var x=vw*0.76-s*0.05, y=vh*1.75-s*0.5;
-    mR.style.transform='translate3d('+x+'px,'+y+'px,0) rotate(-14deg)';
+    var sEnd=Math.max(vh,deckEl.scrollHeight-deckEl.clientHeight);
+    var s1=sEnd-1.6*vh; /* descent starts ~1.5 slides before the end */
+    var hpx=mR.offsetHeight||220;
+    var x,y,rot;
+    if(s<s1){
+      /* climb through the middle slides */
+      x=vw*0.76-s*0.05; y=vh*1.75-s*0.5; rot=-14;
+      mR.classList.remove('landed');
+    }else{
+      /* descend and touch down on the horizon planet of the last slide */
+      var p=Math.min(1,(s-s1)/(sEnd-s1)), pe=1-Math.pow(1-p,2);
+      var x0=vw*0.76-s1*0.05, xL=vw*0.70;
+      var yL=vh-vw*0.301-hpx*0.73; /* nozzle resting on the dithered surface */
+      x=x0*(1-p)+xL*p;
+      y=(-hpx)*(1-pe)+yL*pe;
+      rot=-14*(1-p);
+      mR.classList.toggle('landed', p>0.92);
+    }
+    mR.style.transform='translate3d('+x+'px,'+y+'px,0) rotate('+rot.toFixed(2)+'deg)';
   }
   function rocketLayout(){ rocketMove(); }
 
