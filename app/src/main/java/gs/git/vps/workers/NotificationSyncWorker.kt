@@ -146,7 +146,7 @@ class NotificationSyncWorker(
                         if (notifications.size > 5) style.setSummaryText("+${notifications.size - 5} more")
                     }
             )
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(gs.git.vps.R.drawable.ic_stat_gsgit)
             .setNumber(notifications.size)
             .setCategory(NotificationCompat.CATEGORY_SOCIAL)
             .setAutoCancel(true)

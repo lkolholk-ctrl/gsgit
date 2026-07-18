@@ -184,34 +184,69 @@ function targetLogins(payload) {
   return [...logins];
 }
 
+// Обрезка длинных текстов для тела нотификации (BigTextStyle на клиенте раскрывает до ~450).
+function excerpt(text, max = 300) {
+  const t = String(text || '').replace(/\r/g, '').trim();
+  return t.length > max ? t.slice(0, max - 1) + '…' : t;
+}
+
 function describeEvent(event, p) {
   const repo = p.repository?.full_name || '';
   switch (event) {
     case 'push': {
-      const count = (p.commits || []).length;
+      const commits = p.commits || [];
       const branch = String(p.ref || '').replace('refs/heads/', '');
-      return { title: repo, body: `${p.sender?.login} pushed ${count} commit(s) to ${branch}` };
+      const head = excerpt(commits[commits.length - 1]?.message?.split('\n')[0], 120);
+      const extra = commits.length > 1 ? ` (+${commits.length - 1} ещё)` : '';
+      return {
+        title: `${repo} · ${branch}`,
+        body: `${p.sender?.login} запушил: ${head}${extra}`,
+      };
     }
     case 'issues':
-      return { title: repo, body: `issue #${p.issue?.number} ${p.action}: ${p.issue?.title || ''}` };
+      return {
+        title: `${repo} · issue #${p.issue?.number} ${p.action}`,
+        body: excerpt(`${p.issue?.title || ''}\n\n${p.issue?.body || ''}`),
+      };
     case 'issue_comment':
-      return { title: repo, body: `${p.sender?.login} commented on #${p.issue?.number}` };
+      return {
+        title: `${repo} · ${p.sender?.login} → #${p.issue?.number} ${excerpt(p.issue?.title, 60)}`,
+        body: excerpt(p.comment?.body),
+      };
     case 'pull_request':
-      return { title: repo, body: `PR #${p.pull_request?.number} ${p.action}: ${p.pull_request?.title || ''}` };
-    case 'pull_request_review':
-      return { title: repo, body: `${p.sender?.login} ${p.review?.state || 'reviewed'} PR #${p.pull_request?.number}` };
+      return {
+        title: `${repo} · PR #${p.pull_request?.number} ${p.action}`,
+        body: excerpt(`${p.pull_request?.title || ''}\n${p.pull_request?.head?.ref} → ${p.pull_request?.base?.ref}`),
+      };
+    case 'pull_request_review': {
+      const state = p.review?.state || 'reviewed';
+      return {
+        title: `${repo} · ${p.sender?.login} ${state} PR #${p.pull_request?.number}`,
+        body: excerpt(p.review?.body || p.pull_request?.title),
+      };
+    }
     case 'workflow_run': {
       if (p.action !== 'completed') return null;
       const run = p.workflow_run || {};
-      return { title: repo, body: `workflow "${run.name}" ${run.conclusion} on ${run.head_branch}` };
+      const mark = run.conclusion === 'success' ? '✅' : run.conclusion === 'failure' ? '❌' : '▫️';
+      return {
+        title: `${repo} · ${run.head_branch}`,
+        body: `${mark} workflow «${run.name}» ${run.conclusion} (run #${run.run_number})`,
+      };
     }
     case 'check_suite': {
       if (p.action !== 'completed' || p.check_suite?.conclusion === 'success') return null;
-      return { title: repo, body: `checks ${p.check_suite?.conclusion} on ${p.check_suite?.head_branch}` };
+      return {
+        title: `${repo} · ${p.check_suite?.head_branch}`,
+        body: `❌ checks ${p.check_suite?.conclusion}`,
+      };
     }
     case 'release':
       if (p.action !== 'published') return null;
-      return { title: repo, body: `release ${p.release?.tag_name} published` };
+      return {
+        title: `${repo} · release ${p.release?.tag_name}`,
+        body: excerpt(p.release?.name || p.release?.body || 'published'),
+      };
     default:
       return null; // прочие события молча игнорируем
   }
