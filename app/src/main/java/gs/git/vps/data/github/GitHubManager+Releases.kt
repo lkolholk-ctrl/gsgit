@@ -140,7 +140,7 @@ internal suspend fun GitHubManager.downloadReleaseAsset(context: Context, asset:
     withContext(Dispatchers.IO) {
         try {
             if (asset.downloadUrl.isBlank()) return@withContext false
-            val token = getToken(context)
+            val token = GitHubAuth.resolveApiToken(context)
             val conn = openDownloadConnection(
                 url = asset.downloadUrl,
                 token = token,
@@ -172,7 +172,7 @@ internal suspend fun GitHubManager.downloadReleaseAssetWithProgress(
     withContext(Dispatchers.IO) {
         try {
             if (asset.downloadUrl.isBlank()) return@withContext false
-            val token = getToken(context)
+            val token = GitHubAuth.resolveApiToken(context)
             val conn = openDownloadConnection(
                 url = asset.downloadUrl,
                 token = token,
@@ -211,7 +211,7 @@ internal suspend fun GitHubManager.uploadReleaseAsset(context: Context, owner: S
     withContext(Dispatchers.IO) {
         try {
             updateApiUrl(context)
-            val token = getToken(context)
+            val token = GitHubAuth.resolveApiToken(context)
             val uploadUrl = "${getApiUrl()}/repos/$owner/$repo/releases/$releaseId/assets?name=${URLEncoder.encode(file.name, "UTF-8")}"
             val conn = (URL(uploadUrl).openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
@@ -237,7 +237,7 @@ internal suspend fun GitHubManager.uploadReleaseAssetDetailed(context: Context, 
     withContext(Dispatchers.IO) {
         try {
             updateApiUrl(context)
-            val token = getToken(context)
+            val token = GitHubAuth.resolveApiToken(context)
             val labelQuery = label.takeIf { it.isNotBlank() }?.let { "&label=${URLEncoder.encode(it, "UTF-8")}" }.orEmpty()
             val uploadUrl = "${getApiUrl()}/repos/$owner/$repo/releases/$releaseId/assets?name=${URLEncoder.encode(file.name, "UTF-8")}$labelQuery"
             val conn = (URL(uploadUrl).openConnection() as HttpURLConnection).apply {

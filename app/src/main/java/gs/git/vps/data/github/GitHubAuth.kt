@@ -71,7 +71,19 @@ object GitHubAuth {
         }
     }
 
-    fun isLoggedIn(context: Context): Boolean = getToken(context).isNotBlank()
+    fun isLoggedIn(context: Context): Boolean =
+        getToken(context).isNotBlank() || getGitHubAppConnection(context).connected
+
+    /**
+     * Единая точка выбора credential'а для всех вызовов GitHub API:
+     * приоритет — живой user-token GsGit GitHub App (с автообновлением),
+     * PAT остаётся как fallback на переходный период миграции.
+     */
+    internal suspend fun resolveApiToken(context: Context): String {
+        val appToken = getValidGitHubAppUserToken(context)
+        if (appToken.isNotBlank()) return appToken
+        return getToken(context)
+    }
 
     fun getGitHubAppConnection(context: Context): GHGitHubAppConnection {
         val security = SecurityGate.decision(context)

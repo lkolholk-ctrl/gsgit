@@ -77,7 +77,7 @@ internal suspend fun GitHubManager.cloneRepo(context: Context, owner: String, re
             updateApiUrl(context)
             onProgress("Downloading...")
             val zipUrl = "${getApiUrl()}/repos/$owner/$repo/zipball"
-            val token = getToken(context)
+            val token = GitHubAuth.resolveApiToken(context)
             val conn = openDownloadConnection(
                 url = zipUrl,
                 token = token,
@@ -357,7 +357,7 @@ internal suspend fun GitHubManager.downloadFile(context: Context, owner: String,
             val downloadUrl = j.optString("download_url", "")
             if (downloadUrl.isBlank()) return@withContext false
 
-            val token = getToken(context)
+            val token = GitHubAuth.resolveApiToken(context)
             val conn = openDownloadConnection(
                 url = downloadUrl,
                 token = token,

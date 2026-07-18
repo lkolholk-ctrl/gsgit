@@ -88,7 +88,7 @@ object GitHubManager {
     data class TokenValidation(val valid: Boolean, val scopes: String, val login: String, val error: String)
 
     suspend fun validateToken(context: Context): TokenValidation {
-        val token = getToken(context)
+        val token = GitHubAuth.resolveApiToken(context)
         if (token.isBlank()) return TokenValidation(false, "", "", "no token stored")
         val r = request(context, "/user", trackErrors = false)
         if (!r.success) return TokenValidation(false, "", r.body.take(100), "HTTP ${r.code}: ${r.body.take(200)}")
@@ -100,6 +100,9 @@ object GitHubManager {
     }
 
     suspend fun getCopilotToken(context: Context): String {
+        // Copilot-эндпоинты принимают только PAT/OAuth-токен с copilot-scope;
+        // user-token GitHub App сюда не подходит — всегда шлём PAT.
+        val patToken = getToken(context)
         var res = request(
             context = context,
             endpoint = "https://api.github.com/copilot_internal/v2/token",
@@ -108,7 +111,8 @@ object GitHubManager {
                 "User-Agent" to "GitHubCopilotChat/0.11.0",
                 "Accept" to "application/json"
             ),
-            trackErrors = false
+            trackErrors = false,
+            authToken = patToken
         )
         if (!res.success) {
             res = request(
@@ -119,7 +123,8 @@ object GitHubManager {
                     "User-Agent" to "GitHubCopilotChat/0.11.0",
                     "Accept" to "application/json"
                 ),
-                trackErrors = false
+                trackErrors = false,
+                authToken = patToken
             )
         }
         if (res.success) {
@@ -160,7 +165,7 @@ object GitHubManager {
             updateApiUrl(context)
             var conn: HttpURLConnection? = null
             try {
-                val token = authToken ?: getToken(context)
+                val token = authToken ?: GitHubAuth.resolveApiToken(context)
                 val prefs = context.getSharedPreferences("github_prefs", Context.MODE_PRIVATE)
                 
                 // Diff whitespace ignore

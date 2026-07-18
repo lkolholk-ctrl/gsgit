@@ -124,7 +124,7 @@ internal suspend fun GitHubManager.getWorkflowRunLogs(context: Context, owner: S
     withContext(Dispatchers.IO) {
         try {
             updateApiUrl(context)
-            val token = getToken(context)
+            val token = GitHubAuth.resolveApiToken(context)
             val url = "${getApiUrl()}/repos/$owner/$repo/actions/runs/$runId/logs"
             val conn = (URL(url).openConnection() as HttpURLConnection).apply {
                 setRequestProperty("Authorization", "Bearer $token")
@@ -147,7 +147,7 @@ internal suspend fun GitHubManager.getJobLogs(context: Context, owner: String, r
     withContext(Dispatchers.IO) {
         try {
             updateApiUrl(context)
-            val token = getToken(context)
+            val token = GitHubAuth.resolveApiToken(context)
             val url = "${getApiUrl()}/repos/$owner/$repo/actions/jobs/$jobId/logs"
             val conn = openDownloadConnection(
                 url = url,
@@ -379,7 +379,7 @@ internal suspend fun GitHubManager.downloadArtifact(context: Context, owner: Str
     withContext(Dispatchers.IO) {
         try {
             updateApiUrl(context)
-            val token = getToken(context)
+            val token = GitHubAuth.resolveApiToken(context)
             val url = "${getApiUrl()}/repos/$owner/$repo/actions/artifacts/$artifactId/zip"
             val conn = openDownloadConnection(
                 url = url,
@@ -624,7 +624,7 @@ private fun GitHubManager.actionsCommandResult(result: GitHubManager.ApiResult, 
 private suspend fun GitHubManager.getRedirectLocationOrText(context: Context, url: String): String =
     withContext(Dispatchers.IO) {
         try {
-            val token = getToken(context)
+            val token = GitHubAuth.resolveApiToken(context)
             val conn = (URL(url).openConnection() as HttpURLConnection).apply {
                 setRequestProperty("Authorization", "Bearer $token")
                 setRequestProperty("Accept", "application/vnd.github.v3+json")
