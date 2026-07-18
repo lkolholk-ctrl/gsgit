@@ -845,8 +845,8 @@ document.querySelectorAll('.next').forEach(function(n){
     /* big ringed moon: lives on slides 1-2, floats up and away */
     var xA=vw-mA.width*PX-vw*0.02-s*0.04, yA=vh*0.03-s*0.45;
     mA.style.transform='translate3d('+xA+'px,'+yA+'px,0)';
-    /* small moon: rises through slides 4-7 from the bottom left */
-    var xB=vw*0.05+s*0.025, yB=vh*1.62-s*0.30;
+    /* small moon: starts lower-left on the hero, drifts up slower (deep parallax) */
+    var xB=vw*0.05+s*0.02, yB=vh*0.55-s*0.18;
     mB.style.transform='translate3d('+xB+'px,'+yB+'px,0)';
   }
   function moonsLayout(){
