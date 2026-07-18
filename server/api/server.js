@@ -40,10 +40,16 @@ let saveTimer = null;
 function saveDevices() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
-    const tmp = DEVICES_FILE + '.tmp';
-    fs.mkdirSync(path.dirname(DEVICES_FILE), { recursive: true });
-    fs.writeFileSync(tmp, JSON.stringify(devices, null, 2));
-    fs.renameSync(tmp, DEVICES_FILE);
+    // Ошибка записи не должна ронять процесс: устройства остаются в памяти,
+    // а причину видно в логах.
+    try {
+      const tmp = DEVICES_FILE + '.tmp';
+      fs.mkdirSync(path.dirname(DEVICES_FILE), { recursive: true });
+      fs.writeFileSync(tmp, JSON.stringify(devices, null, 2));
+      fs.renameSync(tmp, DEVICES_FILE);
+    } catch (e) {
+      console.error('[store] save failed:', e.message);
+    }
   }, 250);
 }
 
