@@ -120,6 +120,7 @@ import gs.git.vps.ui.components.AiModuleKeyValueRow
 import gs.git.vps.ui.components.AiModuleAlertDialog
 import gs.git.vps.ui.components.AiModuleIcon as Icon
 import gs.git.vps.ui.components.AiModuleSpinner
+import gs.git.vps.ui.components.AiModuleTextField
 import gs.git.vps.ui.components.AiModuleText as Text
 import gs.git.vps.ui.components.AiModuleTextAction
 import kotlinx.coroutines.launch
