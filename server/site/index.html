@@ -132,10 +132,11 @@ h2 b{color:var(--acc)}
   text-align:left; margin-top:10px;
 }
 .cols .lead{margin:0}
-@media(max-width:860px){
+@media(max-width:860px), (max-aspect-ratio:3/4){
   .cols{grid-template-columns:1fr; gap:26px; text-align:center}
   .cols .lead{margin:0 auto}
-  .cols .pts{text-align:left}
+  .cols .pts{text-align:left; margin:24px auto 0}
+  .cols .panel{max-width:560px; margin:0 auto; width:100%}
 }
 
 /* hero bits */
@@ -284,6 +285,25 @@ h2 b{color:var(--acc)}
 .scene.live .rv.l2{transition-delay:.12s}
 .scene.live .rv.l3{transition-delay:.24s}
 .scene.live .rv.l4{transition-delay:.36s}
+/* fill tall viewports: scale content up instead of leaving voids */
+@media (min-width:1500px) and (min-height:940px){
+  .scene .inner{zoom:1.12}
+}
+@media (min-height:1250px){
+  .scene .inner{zoom:1.4}
+  .ghost{font-size:clamp(160px,32vw,440px)}
+}
+@media (min-height:1750px){
+  .scene .inner{zoom:1.75}
+  .ghost{font-size:clamp(200px,38vw,560px)}
+  .hud{font-size:13px}
+  .marq .track{font-size:15px}
+}
+@media (min-height:2300px){
+  .scene .inner{zoom:2.1}
+  .ghost{font-size:clamp(240px,44vw,680px)}
+}
+
 @media (prefers-reduced-motion:reduce){
   .rv{opacity:1; transform:none; transition:none}
   .cursor,.next .chev,.marq .track,.spin{animation:none}
