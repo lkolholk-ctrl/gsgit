@@ -231,6 +231,8 @@ internal fun GitHubSettingsScreen(
     var adminTapCount by remember { mutableStateOf(0) }
     var adminTapLast by remember { mutableStateOf(0L) }
     var admKey by remember { mutableStateOf(gs.git.vps.util.AdminApi.savedKey(context)) }
+    // Панель открывается только после серверной проверки ключа ([ unlock ]).
+    var admUnlocked by remember { mutableStateOf(false) }
     var admMaintenanceSoon by remember { mutableStateOf("") }
     var admMaintenance by remember { mutableStateOf("") }
     var admLatest by remember { mutableStateOf("") }
@@ -385,13 +387,17 @@ internal fun GitHubSettingsScreen(
             SettingsSection.SYNC -> {}
             SettingsSection.ABOUT -> {}
             SettingsSection.ADMIN -> {
-                gs.git.vps.util.AdminApi.fetchConfig(context)?.let { cfg ->
-                    admMaintenanceSoon = cfg.maintenanceSoon
-                    admMaintenance = cfg.maintenance
-                    admLatest = cfg.latestVersion
-                    admMin = cfg.minVersion
-                    admChangelog = cfg.changelog
-                    admDownloadUrl = cfg.downloadUrl
+                admUnlocked = gs.git.vps.util.AdminApi.savedKey(context).isNotBlank() &&
+                    gs.git.vps.util.AdminApi.validateKey(context)
+                if (admUnlocked) {
+                    gs.git.vps.util.AdminApi.fetchConfig(context)?.let { cfg ->
+                        admMaintenanceSoon = cfg.maintenanceSoon
+                        admMaintenance = cfg.maintenance
+                        admLatest = cfg.latestVersion
+                        admMin = cfg.minVersion
+                        admChangelog = cfg.changelog
+                        admDownloadUrl = cfg.downloadUrl
+                    }
                 }
             }
         }
@@ -493,22 +499,53 @@ internal fun GitHubSettingsScreen(
                 item {
                     when (currentSection) {
                         SettingsSection.ADMIN -> SectionCard("Server Admin") {
-                            Text(
-                                text = "// admin key (from /data/admin.key on the VPS)",
-                                color = AiModuleTheme.colors.textMuted,
-                                fontSize = 11.sp,
-                                fontFamily = JetBrainsMono,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(bottom = 6.dp)
-                            )
-                            AiModuleTextField(
-                                admKey,
-                                { admKey = it; gs.git.vps.util.AdminApi.saveKey(context, it) },
-                                label = "X-Admin-Key",
-                                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                            )
-                            if (admKey.isNotBlank()) {
-                                Spacer(Modifier.height(12.dp))
+                            if (!admUnlocked) {
+                                // Первый экран — только ключ. Поля появляются лишь после
+                                // того, как сервер подтвердил ключ по [ unlock ].
+                                Text(
+                                    text = "// admin key (from /data/admin.key on the VPS)",
+                                    color = AiModuleTheme.colors.textMuted,
+                                    fontSize = 11.sp,
+                                    fontFamily = JetBrainsMono,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(bottom = 6.dp)
+                                )
+                                AiModuleTextField(
+                                    admKey,
+                                    { admKey = it },
+                                    label = "X-Admin-Key",
+                                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                                )
+                                Spacer(Modifier.height(10.dp))
+                                Text(
+                                    text = if (admBusy) "[ checking… ]" else "[ unlock ]",
+                                    color = AiModuleTheme.colors.accent,
+                                    fontSize = 13.sp,
+                                    fontFamily = JetBrainsMono,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.clickable(enabled = admKey.isNotBlank() && !admBusy) {
+                                        scope.launch {
+                                            admBusy = true
+                                            gs.git.vps.util.AdminApi.saveKey(context, admKey)
+                                            val ok = gs.git.vps.util.AdminApi.validateKey(context)
+                                            if (ok) {
+                                                gs.git.vps.util.AdminApi.fetchConfig(context)?.let { cfg ->
+                                                    admMaintenanceSoon = cfg.maintenanceSoon
+                                                    admMaintenance = cfg.maintenance
+                                                    admLatest = cfg.latestVersion
+                                                    admMin = cfg.minVersion
+                                                    admChangelog = cfg.changelog
+                                                    admDownloadUrl = cfg.downloadUrl
+                                                }
+                                            }
+                                            admUnlocked = ok
+                                            admBusy = false
+                                            if (!ok) Toast.makeText(context, "Wrong key or server unreachable", Toast.LENGTH_LONG).show()
+                                        }
+                                    }
+                                )
+                            } else {
+                                Spacer(Modifier.height(2.dp))
                                 Text(
                                     text = "// update gate & maintenance",
                                     color = AiModuleTheme.colors.textMuted,
