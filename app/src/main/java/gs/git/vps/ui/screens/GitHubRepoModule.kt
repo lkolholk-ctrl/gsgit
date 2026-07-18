@@ -1717,6 +1717,9 @@ internal fun RepoDetailScreen(
             }
         }
         Box(Modifier.fillMaxWidth().height(1.dp).background(colors.border.copy(alpha = 0.10f)))
+        // Контент секций живёт строго над bottom-bar'ом: без этого паддинга хвост
+        // README/списков оставался под баром и его нельзя было доскроллить.
+        Box(Modifier.fillMaxWidth().weight(1f).padding(bottom = contentBottomInset)) {
         if (loading) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { AiModuleSpinner(label = "loading…") }
         else when (shownSection) {
             RepoTab.FILES -> FilesTab(
@@ -1842,6 +1845,7 @@ internal fun RepoDetailScreen(
                 onCloseTab = { closeCodeTab(it) },
                 onBack = { codeInternalBack() },
             )
+        }
         }
     }
 

@@ -79,7 +79,7 @@ import gs.git.vps.data.github.GitHubManager
 import gs.git.vps.data.github.canWrite
 import gs.git.vps.data.github.getRepoProjects
 import gs.git.vps.data.github.getProject
-import gs.git.vps.data.github.createRepoProject
+import gs.git.vps.data.github.createProjectV2
 import gs.git.vps.data.github.getOrgProjects
 import gs.git.vps.data.github.updateProject
 import gs.git.vps.data.github.deleteProject
@@ -117,7 +117,8 @@ internal fun ProjectsTab(repo: GHRepo) {
     var v2Projects by remember { mutableStateOf<List<GHProjectV2>>(emptyList()) }
     var orgProjects by remember { mutableStateOf<List<GHProject>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
-    var selectedKind by remember { mutableStateOf(ProjectsKind.CLASSIC) }
+    // V2 по умолчанию: classic API закрыт GitHub'ом и обычно возвращает пусто.
+    var selectedKind by remember { mutableStateOf(ProjectsKind.V2) }
     var query by remember { mutableStateOf("") }
     var selectedProject by remember { mutableStateOf<GHProject?>(null) }
     var selectedProjectV2 by remember { mutableStateOf<GHProjectV2?>(null) }
@@ -235,7 +236,8 @@ internal fun ProjectsTab(repo: GHRepo) {
 
     if (showCreateDialog) {
         ProjectEditorDialog(
-            title = "New Classic Project",
+            // Classic projects больше не создаются (GitHub закрыл REST API, 410) — создаём Projects V2.
+            title = "New Project",
             initialName = "",
             initialBody = "",
             initialState = "open",
@@ -244,11 +246,17 @@ internal fun ProjectsTab(repo: GHRepo) {
             onDismiss = { showCreateDialog = false },
             onSave = { name, body, _ ->
                 scope.launch {
-                    val project = GitHubManager.createRepoProject(context, repo.owner, repo.name, name, body)
-                    Toast.makeText(context, if (project != null) "Project created" else "Failed", Toast.LENGTH_SHORT).show()
+                    val project = GitHubManager.createProjectV2(context, repo.owner, repo.name, name, body)
+                    Toast.makeText(
+                        context,
+                        if (project != null) "Project created"
+                        else "Failed - does the GsGit app have the Projects permission?",
+                        Toast.LENGTH_LONG
+                    ).show()
                     if (project != null) {
                         showCreateDialog = false
-                        classicProjects = listOf(project) + classicProjects
+                        v2Projects = listOf(project) + v2Projects
+                        selectedKind = ProjectsKind.V2
                     }
                 }
             }

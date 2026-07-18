@@ -15,10 +15,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,8 +38,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
 import gs.git.vps.ui.theme.AiModuleTheme
 import gs.git.vps.ui.screens.GitHubControlRadius
 import gs.git.vps.ui.theme.JetBrainsMono
@@ -57,12 +62,21 @@ fun AiModuleAlertDialog(
 ) {
     val palette = AiModuleTheme.colors
     Dialog(onDismissRequest = onDismissRequest, properties = properties) {
+        // Окно диалога должно ужиматься под клавиатуру (adjustResize), иначе поля
+        // ввода в центре/внизу остаются перекрытыми IME. Плюс скролл — если после
+        // ужатия контент не помещается.
+        val dialogView = LocalView.current
+        SideEffect {
+            (dialogView.parent as? DialogWindowProvider)?.window
+                ?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        }
         Column(
             Modifier
                 .widthIn(min = 280.dp, max = 480.dp)
                 .clip(RoundedCornerShape(GitHubControlRadius))
                 .background(palette.surface)
                 .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 14.dp),
         ) {
             if (!title.isNullOrBlank()) {

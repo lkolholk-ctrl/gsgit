@@ -64,6 +64,57 @@ internal suspend fun GitHubManager.getRepoProjectsV2(context: Context, owner: St
     } catch (e: Exception) { emptyList() }
 }
 
+// Создание проекта. Classic Projects REST похоронен GitHub'ом (эндпоинты отдают 410),
+// поэтому новые проекты создаём только как Projects V2 и сразу линкуем к репозиторию.
+internal suspend fun GitHubManager.createProjectV2(context: Context, owner: String, repo: String, title: String, shortDescription: String = ""): GHProjectV2? {
+    val ids = graphql(context, """
+        query(${'$'}owner: String!, ${'$'}repo: String!) {
+          repository(owner: ${'$'}owner, name: ${'$'}repo) { id owner { id } }
+        }
+    """.trimIndent(), JSONObject().apply {
+        put("owner", owner)
+        put("repo", repo)
+    }) ?: return null
+    val repoNode = ids.optJSONObject("repository") ?: return null
+    val repositoryId = repoNode.optString("id").takeIf { it.isNotBlank() } ?: return null
+    val ownerId = repoNode.optJSONObject("owner")?.optString("id")?.takeIf { it.isNotBlank() } ?: return null
+    val data = graphql(context, """
+        mutation(${'$'}ownerId: ID!, ${'$'}title: String!, ${'$'}repositoryId: ID!) {
+          createProjectV2(input: {ownerId: ${'$'}ownerId, title: ${'$'}title, repositoryId: ${'$'}repositoryId}) {
+            projectV2 {
+              id
+              number
+              title
+              shortDescription
+              url
+              closed
+              public
+              updatedAt
+            }
+          }
+        }
+    """.trimIndent(), JSONObject().apply {
+        put("ownerId", ownerId)
+        put("title", title)
+        put("repositoryId", repositoryId)
+    }) ?: return null
+    val j = data.optJSONObject("createProjectV2")?.optJSONObject("projectV2") ?: return null
+    val project = GHProjectV2(
+        id = j.optString("id"),
+        number = j.optInt("number"),
+        title = j.optString("title"),
+        shortDescription = j.optString("shortDescription", ""),
+        url = j.optString("url", ""),
+        closed = j.optBoolean("closed", false),
+        isPublic = j.optBoolean("public", false),
+        updatedAt = j.optString("updatedAt", ""),
+        itemsCount = 0,
+    )
+    if (shortDescription.isBlank()) return project
+    updateProjectV2(context, project.id, title = title, shortDescription = shortDescription, readme = "", closed = false, isPublic = project.isPublic)
+    return project.copy(shortDescription = shortDescription)
+}
+
 internal suspend fun GitHubManager.getProjectV2Detail(context: Context, projectId: String): GHProjectV2Detail? {
     val data = graphql(context, """
         query(${'$'}projectId: ID!) {
