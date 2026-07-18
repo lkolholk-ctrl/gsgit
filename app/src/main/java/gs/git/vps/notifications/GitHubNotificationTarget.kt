@@ -8,6 +8,8 @@ data class GitHubNotificationTarget(
     val number: Int? = null,
     val filePath: String? = null,
     val branch: String? = null,
+    val sha: String? = null,
+    val runId: Long? = null,
 ) {
     val owner: String get() = repoFullName.substringBefore('/', "")
     val repo: String get() = repoFullName.substringAfter('/', "")

@@ -643,6 +643,21 @@ internal fun RepoDetailScreen(
             }
             "Release" -> nav.selectedSection = RepoTab.RELEASES
             "Discussion" -> showDiscussions = true
+            "Commit" -> target.sha?.let { selectedCommitSha = it }
+            "Commits" -> {
+                target.branch?.let { selectedBranch = it }
+                nav.selectedSection = RepoTab.COMMITS
+            }
+            "Compare" -> showCompare = true
+            "Run" -> {
+                nav.selectedSection = RepoTab.ACTIONS
+                target.runId?.let { selectedRunId = it }
+            }
+            "Actions" -> nav.selectedSection = RepoTab.ACTIONS
+            "Branches" -> showBranchPicker = true
+            "Projects" -> nav.selectedSection = RepoTab.PROJECTS
+            "Insights" -> showRepoInsights = true
+            "Settings" -> showRepoSettings = true
             "File" -> {
                 target.branch?.let { selectedBranch = it }
                 val path = target.filePath.orEmpty()

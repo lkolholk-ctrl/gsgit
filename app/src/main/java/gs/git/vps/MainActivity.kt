@@ -259,6 +259,63 @@ class MainActivity : FragmentActivity() {
         val repoFullName = "$owner/$repo"
 
         val target = when {
+            // ── Коммиты и сравнение ──
+            segments.size >= 4 && segments[2] == "commit" -> GitHubNotificationTarget(
+                repoFullName = repoFullName,
+                subjectType = "Commit",
+                sha = segments[3],
+            )
+            segments.size >= 3 && segments[2] == "commits" -> GitHubNotificationTarget(
+                repoFullName = repoFullName,
+                subjectType = "Commits",
+                branch = segments.getOrNull(3),
+            )
+            segments.size >= 4 && segments[2] == "compare" -> GitHubNotificationTarget(
+                repoFullName = repoFullName,
+                subjectType = "Compare",
+            )
+            // ── Actions: детали рана (включая /job/... и /artifacts/...) или список ──
+            segments.size >= 5 && segments[2] == "actions" && segments[3] == "runs" &&
+                segments[4].toLongOrNull() != null -> GitHubNotificationTarget(
+                repoFullName = repoFullName,
+                subjectType = "Run",
+                runId = segments[4].toLong(),
+            )
+            segments.size >= 3 && segments[2] == "actions" -> GitHubNotificationTarget(
+                repoFullName = repoFullName,
+                subjectType = "Actions",
+            )
+            // ── Ветки, теги, задачи-разделы ──
+            segments.size >= 3 && segments[2] == "branches" -> GitHubNotificationTarget(
+                repoFullName = repoFullName,
+                subjectType = "Branches",
+            )
+            segments.size >= 3 && segments[2] == "tags" -> GitHubNotificationTarget(
+                repoFullName = repoFullName,
+                subjectType = "Release", // страница тегов ближе всего к разделу релизов
+            )
+            segments.size >= 3 && (segments[2] == "milestones" || segments[2] == "labels") ->
+                GitHubNotificationTarget(
+                    repoFullName = repoFullName,
+                    subjectType = "Issue", // раздел issues без конкретного номера
+                )
+            segments.size >= 3 && segments[2] == "projects" -> GitHubNotificationTarget(
+                repoFullName = repoFullName,
+                subjectType = "Projects",
+            )
+            segments.size >= 3 && segments[2] == "deployments" -> GitHubNotificationTarget(
+                repoFullName = repoFullName,
+                subjectType = "Actions", // деплои живут в Actions-разделе приложения
+            )
+            // ── Статистика/социальное → экран Insights ──
+            segments.size >= 3 && segments[2] in INSIGHTS_REPO_SECTIONS -> GitHubNotificationTarget(
+                repoFullName = repoFullName,
+                subjectType = "Insights",
+            )
+            segments.size >= 3 && segments[2] == "settings" -> GitHubNotificationTarget(
+                repoFullName = repoFullName,
+                subjectType = "Settings",
+            )
             segments.size >= 4 && segments[2] == "blob" -> GitHubNotificationTarget(
                 repoFullName = repoFullName,
                 subjectType = "File",
@@ -339,12 +396,15 @@ private val RESERVED_ROOT_SEGMENTS = setOf(
     "issues", "gist", "assets", "favicons"
 )
 
+// Разделы репозитория, у которых нет экрана в приложении — уходят в браузер.
 private val UNSUPPORTED_REPO_SECTIONS = setOf(
-    "actions", "commit", "commits", "compare", "wiki", "security", "pulse",
-    "graphs", "network", "branches", "tags", "archive", "raw", "blame", "find",
-    "deployments", "packages", "projects", "settings", "hooks", "milestones",
-    "labels", "watchers", "stargazers", "forks", "community", "runs", "activity",
-    "contributors"
+    "wiki", "security", "network", "archive", "raw", "blame", "find",
+    "packages", "hooks", "community",
+)
+
+// Статистика и «социальные» страницы — все ведут на экран Repo Insights.
+private val INSIGHTS_REPO_SECTIONS = setOf(
+    "pulse", "graphs", "contributors", "stargazers", "watchers", "forks", "activity",
 )
 
 @Composable
