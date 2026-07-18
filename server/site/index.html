@@ -764,18 +764,22 @@ document.querySelectorAll('.next').forEach(function(n){
       ctx.fillRect(x,y,1,1);
     }
   }
-  function moon(ctx,w,h,r,cx,cy,rad){
-    var n=vnoise(r,w,h,5);
-    var x0=(cx-rad)|0, x1=(cx+rad)|0, y0=(cy-rad)|0, y1=(cy+rad)|0;
-    for(var y=y0;y<y1;y++) for(var x=x0;x<x1;x++){
-      if(x<0||y<0||x>=w||y>=h) continue;
-      var nx=(x-cx)/rad, ny=(y-cy)/rad, d=nx*nx+ny*ny;
-      if(d>1) continue;
-      var nz=Math.sqrt(1-d);
-      var lum=Math.max(0, nx*-0.42+ny*-0.46+nz*0.78);
-      var v=lum*(0.5+0.55*n(x,y));
-      put(ctx,x,y,Math.min(v,0.98));
+  /* periodic 3D value noise — the moon texture lives on the sphere, no seams */
+  function vn3(seed,size){
+    var r=prng(seed), n=size*size*size, g=new Array(n);
+    for(var i=0;i<n;i++) g[i]=r();
+    function at(ix,iy,iz){
+      return g[((((iz%size)+size)%size)*size+(((iy%size)+size)%size))*size+(((ix%size)+size)%size)];
     }
+    return function(x,y,z){
+      var ix=Math.floor(x), iy=Math.floor(y), iz=Math.floor(z);
+      var fx=x-ix, fy=y-iy, fz=z-iz;
+      fx=fx*fx*(3-2*fx); fy=fy*fy*(3-2*fy); fz=fz*fz*(3-2*fz);
+      var v=0;
+      for(var dz=0;dz<2;dz++) for(var dy=0;dy<2;dy++) for(var dx=0;dx<2;dx++)
+        v+=at(ix+dx,iy+dy,iz+dz)*(dx?fx:1-fx)*(dy?fy:1-fy)*(dz?fz:1-fz);
+      return v;
+    };
   }
   function ring(ctx,w,h,r,cx,cy,rx,ry){
     var steps=Math.max(90,(rx*3)|0);
@@ -843,15 +847,56 @@ document.querySelectorAll('.next').forEach(function(n){
   var mA=document.createElement('canvas'), mB=document.createElement('canvas');
   layer.appendChild(mA); layer.appendChild(mB);
   document.body.insertBefore(layer,deckEl);
-  function moonSprite(cv,seed,radScreen,withRing){
-    var rad=Math.max(12,Math.round(radScreen/PX));
-    var W=withRing?Math.round(rad*3.6):rad*2+4;
-    var Hh=withRing?Math.round(rad*2.4):rad*2+4;
-    cv.width=W; cv.height=Hh;
-    cv.style.width=(W*PX)+'px'; cv.style.height=(Hh*PX)+'px';
-    var ctx=cv.getContext('2d'), r=prng(seed);
-    moon(ctx,W,Hh,r,W/2,Hh/2,rad);
-    if(withRing) ring(ctx,W,Hh,r,W/2,Hh/2,rad*1.58,rad*0.5);
+  /* software-3D moons: rotating lit spheres, dithered per frame */
+  var moonCfg=[
+    {cv:mA, tex:vn3(7,8),   ring:true,  t:0,   dt:0.010},
+    {cv:mB, tex:vn3(101,8), ring:false, t:2.2, dt:-0.014}
+  ];
+  function sphereFrame(m){
+    var cv=m.cv, ctx=cv.getContext('2d');
+    var rad=m.rad, W=cv.width, Hh=cv.height, cx=W/2, cy=Hh/2;
+    ctx.clearRect(0,0,W,Hh);
+    var ct=Math.cos(m.t), st=Math.sin(m.t), f=2.4;
+    for(var y=-rad;y<rad;y++){
+      var ny=y/rad, py=(cy+y)|0;
+      for(var x=-rad;x<rad;x++){
+        var nx=x/rad, d=nx*nx+ny*ny;
+        if(d>1) continue;
+        var nz=Math.sqrt(1-d);
+        var rx=nx*ct+nz*st, rz=nz*ct-nx*st; /* spin around Y; light stays put */
+        var n=m.tex((rx+2)*f,(ny+2)*f,(rz+2)*f);
+        var lum=Math.max(0,nx*-0.42+ny*-0.46+nz*0.78);
+        put(ctx,(cx+x)|0,py,Math.min(lum*(0.45+0.65*n),0.98));
+      }
+    }
+    if(m.ring){
+      var steps=Math.max(90,(rad*4.8)|0), ph=Math.round(m.t*46);
+      var rx2=rad*1.58, ry2=rad*0.5;
+      for(var i=0;i<steps;i++){
+        if(((i+ph)%5+5)%5>2) continue;
+        var a=i/steps*Math.PI*2;
+        ctx.fillStyle=PAL[3];
+        ctx.fillRect((cx+Math.cos(a)*rx2)|0,(cy+Math.sin(a)*ry2)|0,1,1);
+      }
+    }
+  }
+  function moonSprite(m,radScreen){
+    var rad=Math.max(12,Math.round(radScreen/PX)); m.rad=rad;
+    var W=m.ring?Math.round(rad*3.6):rad*2+4;
+    var Hh=m.ring?Math.round(rad*2.4):rad*2+4;
+    m.cv.width=W; m.cv.height=Hh;
+    m.cv.style.width=(W*PX)+'px'; m.cv.style.height=(Hh*PX)+'px';
+    sphereFrame(m);
+  }
+  if(!window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+    setInterval(function(){
+      var vh=innerHeight;
+      moonCfg.forEach(function(m){
+        var rc=m.cv.getBoundingClientRect();
+        if(rc.bottom<0||rc.top>vh) return; /* offscreen — no work */
+        m.t+=m.dt; sphereFrame(m);
+      });
+    },40);
   }
   function moonsMove(){
     var s=deckEl.scrollTop, vw=innerWidth, vh=innerHeight;
@@ -865,8 +910,8 @@ document.querySelectorAll('.next').forEach(function(n){
   function moonsLayout(){
     var m=Math.min(innerWidth,innerHeight);
     var portrait=innerHeight>innerWidth*1.3;
-    moonSprite(mA,7,m*(portrait?0.17:0.26),true);
-    moonSprite(mB,101,m*0.16,false);
+    moonSprite(moonCfg[0],m*(portrait?0.17:0.26));
+    moonSprite(moonCfg[1],m*0.16);
     moonsMove();
   }
   /* vector rocket with the octocat mark looking out of the porthole */
