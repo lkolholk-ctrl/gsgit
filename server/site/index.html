@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GsGit — GitHub in your pocket, pushed to you in seconds</title>
+<meta name="description" content="GsGit is a free, open-source GitHub client for Android: token-free sign-in, instant push notifications from your own open backend, and CI that feels native.">
+<meta property="og:title" content="GsGit — GitHub client for Android">
+<meta property="og:description" content="Token-free sign-in. Instant pushes in ~2 seconds. Actions, artifacts, code editor — all native, all open source.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://gsgit.org/">
+<style>
+:root{
+  --bg:#050605; --bg2:#0a0c0a; --ink:#e8f0e8; --dim:#9db19d; --mut:#5a6b5a;
+  --acc:#2ee66b; --acc-dim:#155c31; --line:#1c241c; --card:#0c0f0c;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg); color:var(--ink);
+  font-family:"JetBrains Mono",ui-monospace,"Cascadia Mono",Menlo,Consolas,monospace;
+  font-size:16px; line-height:1.6; overflow-x:hidden;
+}
+::selection{background:var(--acc); color:#03130a}
+
+/* ── dither textures ─────────────────────────────────────────── */
+.dither{
+  background-image:radial-gradient(#141a14 1px, transparent 1px);
+  background-size:4px 4px;
+}
+.dither-soft{
+  background-image:radial-gradient(#0e130e 1px, transparent 1px);
+  background-size:6px 6px;
+}
+
+/* ── pixel frame (RPG dialog style) ──────────────────────────── */
+.pix{
+  position:relative; background:var(--card); border:2px solid var(--line);
+  clip-path:polygon(0 8px,8px 8px,8px 0,calc(100% - 8px) 0,calc(100% - 8px) 8px,100% 8px,
+    100% calc(100% - 8px),calc(100% - 8px) calc(100% - 8px),calc(100% - 8px) 100%,
+    8px 100%,8px calc(100% - 8px),0 calc(100% - 8px));
+}
+
+a{color:var(--acc); text-decoration:none}
+a:hover{text-decoration:underline}
+img{max-width:100%; height:auto; display:block}
+
+.wrap{max-width:1080px; margin:0 auto; padding:0 20px}
+
+/* ── banner ──────────────────────────────────────────────────── */
+#banner{
+  display:none; background:var(--acc); color:#03130a; font-weight:700;
+  text-align:center; padding:8px 16px; font-size:13px; letter-spacing:.04em;
+}
+
+/* ── nav ─────────────────────────────────────────────────────── */
+nav{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:18px 0; border-bottom:1px solid var(--line);
+}
+.logo{font-weight:800; font-size:18px; letter-spacing:.06em; color:var(--ink)}
+.logo b{color:var(--acc)}
+nav .links{display:flex; gap:18px; font-size:13px}
+nav .links a{color:var(--dim)}
+nav .links a:hover{color:var(--acc); text-decoration:none}
+
+/* ── hero ────────────────────────────────────────────────────── */
+header{position:relative; overflow:hidden}
+#stars{position:absolute; inset:0; width:100%; height:100%; image-rendering:pixelated; opacity:.5; pointer-events:none}
+.hero{position:relative; padding:84px 0 72px; text-align:center}
+.hero .prompt{color:var(--mut); font-size:14px; letter-spacing:.1em}
+.hero h1{
+  font-size:clamp(44px,10vw,88px); font-weight:800; letter-spacing:.02em;
+  line-height:1.05; margin:10px 0 6px;
+  text-shadow:0 0 24px rgba(46,230,107,.18);
+}
+.hero h1 b{color:var(--acc)}
+.hero .tag{color:var(--dim); font-size:clamp(15px,2.6vw,19px); max-width:560px; margin:0 auto}
+.hero .cursor{display:inline-block; width:.55em; height:1.1em; background:var(--acc);
+  vertical-align:text-bottom; margin-left:6px; animation:blink 1.1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+
+/* countdown */
+#cd{display:none; margin:34px auto 0; max-width:520px; padding:18px 16px}
+#cd .lbl{color:var(--mut); font-size:12px; letter-spacing:.14em; text-transform:uppercase; margin-bottom:10px}
+#cd .cells{display:flex; gap:10px; justify-content:center}
+#cd .cell{min-width:76px; padding:10px 8px; background:var(--bg2); border:2px solid var(--line)}
+#cd .num{font-size:30px; font-weight:800; color:var(--acc); font-variant-numeric:tabular-nums}
+#cd .unit{font-size:10px; color:var(--mut); letter-spacing:.14em; text-transform:uppercase}
+
+.cta{display:flex; gap:14px; justify-content:center; flex-wrap:wrap; margin-top:36px}
+.btn{
+  display:inline-block; padding:14px 26px; font:inherit; font-weight:700; font-size:15px;
+  letter-spacing:.03em; cursor:pointer; border:2px solid var(--acc);
+  clip-path:polygon(0 6px,6px 6px,6px 0,calc(100% - 6px) 0,calc(100% - 6px) 6px,100% 6px,
+    100% calc(100% - 6px),calc(100% - 6px) calc(100% - 6px),calc(100% - 6px) 100%,
+    6px 100%,6px calc(100% - 6px),0 calc(100% - 6px));
+}
+.btn.primary{background:var(--acc); color:#03130a}
+.btn.primary:hover{background:#4dff87; text-decoration:none}
+.btn.ghost{background:transparent; color:var(--acc)}
+.btn.ghost:hover{background:rgba(46,230,107,.08); text-decoration:none}
+.hero .sub{margin-top:18px; color:var(--mut); font-size:12px; letter-spacing:.06em}
+#ver{color:var(--dim)}
+
+/* ── sections ───────────────────────────────────────────────── */
+section{padding:76px 0; border-top:1px solid var(--line)}
+.sec-h{color:var(--mut); font-size:13px; letter-spacing:.16em; text-transform:uppercase; margin-bottom:8px}
+.sec-t{font-size:clamp(24px,4.6vw,34px); font-weight:800; margin-bottom:34px}
+.sec-t b{color:var(--acc)}
+
+/* killer features */
+.feat{display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:18px}
+.feat .pix{padding:26px 22px}
+.feat .glyph{font-size:26px; color:var(--acc); margin-bottom:14px}
+.feat h3{font-size:17px; margin-bottom:10px; letter-spacing:.02em}
+.feat p{color:var(--dim); font-size:14px}
+
+/* capability grid */
+.grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:2px; background:var(--line); border:2px solid var(--line)}
+.grid div{background:var(--bg2); padding:14px 16px; font-size:13px; color:var(--dim)}
+.grid div::before{content:"▸ "; color:var(--acc)}
+.grid div:hover{background:var(--card); color:var(--ink)}
+
+/* gallery */
+.shots{display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:26px; align-items:start}
+.shot img{filter:drop-shadow(0 18px 32px rgba(0,0,0,.55)); transition:transform .25s ease}
+.shot:hover img{transform:translateY(-6px)}
+.shot figcaption{text-align:center; color:var(--mut); font-size:12px; margin-top:12px; letter-spacing:.04em}
+.shot .ph{
+  aspect-ratio:9/19; display:flex; align-items:center; justify-content:center;
+  color:var(--mut); font-size:12px; text-align:center; padding:16px;
+  background-image:radial-gradient(#131913 1px,transparent 1px); background-size:5px 5px;
+}
+
+/* pipeline */
+.pipe{padding:30px 22px; overflow-x:auto}
+.pipe .line{white-space:nowrap; font-size:clamp(13px,2.4vw,17px); font-weight:700}
+.pipe .line b{color:var(--acc)}
+.pipe .note{color:var(--dim); font-size:14px; margin-top:16px; white-space:normal; max-width:640px}
+
+/* security */
+.sec-list{list-style:none; display:grid; gap:12px; max-width:680px}
+.sec-list li{padding-left:26px; position:relative; color:var(--dim); font-size:14px}
+.sec-list li::before{content:"■"; position:absolute; left:0; color:var(--acc); font-size:11px; top:4px}
+.sec-list li b{color:var(--ink)}
+
+/* footer */
+footer{border-top:1px solid var(--line); padding:38px 0 46px; font-size:13px; color:var(--mut)}
+footer .row{display:flex; gap:20px; flex-wrap:wrap; margin-bottom:14px}
+footer a{color:var(--dim)}
+footer a:hover{color:var(--acc)}
+
+/* reveal on scroll */
+.rv{opacity:0; transform:translateY(14px); transition:opacity .5s ease,transform .5s ease}
+.rv.on{opacity:1; transform:none}
+@media (prefers-reduced-motion:reduce){
+  .rv{opacity:1; transform:none; transition:none}
+  .hero .cursor{animation:none}
+}
+</style>
+</head>
+<body>
+
+<div id="banner"></div>
+
+<div class="wrap">
+  <nav>
+    <div class="logo">&gt;_ Gs<b>Git</b></div>
+    <div class="links">
+      <a href="#features">features</a>
+      <a href="#gallery">screens</a>
+      <a href="https://github.com/lkolholk-ctrl/gsgit">source</a>
+    </div>
+  </nav>
+</div>
+
+<header class="dither-soft">
+  <canvas id="stars" width="192" height="108" aria-hidden="true"></canvas>
+  <div class="wrap hero">
+    <div class="prompt">$ ./gsgit --launch</div>
+    <h1>Gs<b>Git</b><span class="cursor"></span></h1>
+    <p class="tag">A full GitHub client for Android. Sign in without tokens, get every event pushed to your phone in seconds.</p>
+
+    <div id="cd" class="pix">
+      <div class="lbl" id="cd-label">Public release in</div>
+      <div class="cells">
+        <div class="cell"><div class="num" id="cd-d">--</div><div class="unit">days</div></div>
+        <div class="cell"><div class="num" id="cd-h">--</div><div class="unit">hours</div></div>
+        <div class="cell"><div class="num" id="cd-m">--</div><div class="unit">min</div></div>
+        <div class="cell"><div class="num" id="cd-s">--</div><div class="unit">sec</div></div>
+      </div>
+    </div>
+
+    <div class="cta">
+      <a class="btn primary" id="dl" href="https://github.com/lkolholk-ctrl/gsgit/releases/latest">↓ Download APK</a>
+      <a class="btn ghost" href="https://github.com/lkolholk-ctrl/gsgit">&lt;/&gt; Source code</a>
+    </div>
+    <div class="sub">Android 8.0+ · free &amp; open source <span id="ver"></span></div>
+  </div>
+</header>
+
+<section id="features">
+  <div class="wrap">
+    <div class="sec-h">// why gsgit</div>
+    <div class="sec-t rv">Three things other clients <b>don't do</b></div>
+    <div class="feat">
+      <div class="pix rv">
+        <div class="glyph">⌘</div>
+        <h3>Sign in without tokens</h3>
+        <p>GitHub App device flow: no personal access tokens to create, paste or leak. A short-lived session lives in hardware-encrypted storage, refreshes itself, and can be revoked from GitHub at any moment. New device on your account? Every other device gets a security alert.</p>
+      </div>
+      <div class="pix rv">
+        <div class="glyph">⚡</div>
+        <h3>Instant push notifications</h3>
+        <p>An open-source notification backend turns GitHub webhooks into pushes that reach your phone in ~2 seconds — no battery-draining polling. Rich expandable texts and ten separate Android channels: mute stars, keep CI, or the other way round.</p>
+      </div>
+      <div class="pix rv">
+        <div class="glyph">▶</div>
+        <h3>CI that feels native</h3>
+        <p>Workflow runs live-refresh on screen while they execute. Artifacts download in the background with progress and Cancel, land straight in system Downloads, unzip themselves. Dispatch and re-run workflows right from the phone.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sec-h">// everything else</div>
+    <div class="sec-t rv">The <b>whole workflow</b>, not a subset</div>
+    <div class="grid rv">
+      <div>repo &amp; file browser</div><div>code editor + syntax highlighting</div>
+      <div>commits, diffs &amp; compare</div><div>blame &amp; file history</div>
+      <div>issues &amp; labels</div><div>pull requests &amp; reviews</div>
+      <div>checks &amp; merge methods</div><div>actions, jobs, logs</div>
+      <div>artifacts &amp; releases</div><div>workflow dispatch forms</div>
+      <div>discussions &amp; gists</div><div>webhooks management</div>
+      <div>branch protection rules</div><div>collaborators</div>
+      <div>notifications inbox</div><div>deep links for github.com URLs</div>
+      <div>biometric / PIN app lock</div><div>repo insights</div>
+    </div>
+  </div>
+</section>
+
+<section id="gallery" class="dither">
+  <div class="wrap">
+    <div class="sec-h">// screens</div>
+    <div class="sec-t rv">Dark. Monospaced. <b>Fast.</b></div>
+    <div class="shots">
+      <figure class="shot rv"><img src="assets/screen-1.png" alt="Repository list" onerror="ph(this)"><figcaption>repositories</figcaption></figure>
+      <figure class="shot rv"><img src="assets/screen-2.png" alt="Actions run with jobs and steps" onerror="ph(this)"><figcaption>actions run</figcaption></figure>
+      <figure class="shot rv"><img src="assets/screen-3.png" alt="Push notifications" onerror="ph(this)"><figcaption>instant pushes</figcaption></figure>
+      <figure class="shot rv"><img src="assets/screen-4.png" alt="Code editor" onerror="ph(this)"><figcaption>code editor</figcaption></figure>
+      <figure class="shot rv"><img src="assets/screen-5.png" alt="Pull request detail" onerror="ph(this)"><figcaption>pull requests</figcaption></figure>
+      <figure class="shot rv"><img src="assets/screen-6.png" alt="Notification channels" onerror="ph(this)"><figcaption>10 notification channels</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sec-h">// how pushes work</div>
+    <div class="sec-t rv">No polling. <b>No middlemen you can't read.</b></div>
+    <div class="pix pipe rv">
+      <div class="line">GitHub webhook <b>→</b> api.gsgit.org <b>→</b> FCM <b>→</b> your phone <b>(~2 s)</b></div>
+      <p class="note">The server stores exactly two things: your GitHub login and the device push token. Nothing else. The backend is open source in the same repository — run your own with Docker Compose if you like.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sec-h">// security &amp; privacy</div>
+    <div class="sec-t rv">Built like you'd <b>build it yourself</b></div>
+    <ul class="sec-list rv">
+      <li><b>Open source</b> — the app, the push backend, this page.</li>
+      <li><b>Tokens never leave the device</b> — sessions sit in encrypted storage; there is no PAT anywhere in the product.</li>
+      <li><b>Revoke anytime</b> — one click in GitHub settings cuts all access instantly.</li>
+      <li><b>No analytics, no ads, no tracking</b> — read the <a href="privacy.html">privacy policy</a>, it's refreshingly short.</li>
+    </ul>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="row">
+      <a href="https://github.com/lkolholk-ctrl/gsgit">GitHub</a>
+      <a href="https://github.com/lkolholk-ctrl/gsgit/releases">Releases</a>
+      <a href="https://status.gsgit.org">Status</a>
+      <a href="privacy.html">Privacy</a>
+    </div>
+    <div>© 2026 GsGit — GitHub in your pocket.</div>
+  </div>
+</footer>
+
+<script>
+/* placeholder for missing screenshots */
+function ph(img){
+  var f=img.parentElement, c=document.createElement('div');
+  c.className='ph pix'; c.textContent='screenshot coming soon';
+  img.replaceWith(c);
+}
+
+/* pixel starfield (kimi-style dither sky, cheap: low-res canvas, 8 fps) */
+(function(){
+  var cv=document.getElementById('stars'); if(!cv) return;
+  var mq=window.matchMedia('(prefers-reduced-motion: reduce)');
+  var ctx=cv.getContext('2d'), W=cv.width, H=cv.height, cells=[];
+  for(var i=0;i<140;i++) cells.push([Math.random()*W|0, Math.random()*H|0, Math.random()]);
+  function frame(){
+    ctx.clearRect(0,0,W,H);
+    for(var i=0;i<cells.length;i++){
+      var c=cells[i]; c[2]+=0.06;
+      var a=(Math.sin(c[2])+1)/2;
+      if(a>0.55){ ctx.fillStyle='rgba(46,230,107,'+(a*0.5)+')'; ctx.fillRect(c[0],c[1],1,1); }
+      else if(a>0.3){ ctx.fillStyle='rgba(232,240,232,'+(a*0.25)+')'; ctx.fillRect(c[0],c[1],1,1); }
+    }
+  }
+  frame();
+  if(!mq.matches) setInterval(frame, 125);
+})();
+
+/* reveal on scroll */
+(function(){
+  var io=new IntersectionObserver(function(es){
+    es.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add('on'); io.unobserve(e.target);} });
+  },{threshold:0.12});
+  document.querySelectorAll('.rv').forEach(function(el){ io.observe(el); });
+})();
+
+/* runtime config: /site.json (countdown / released / banner / downloadUrl) */
+(function(){
+  var timer=null;
+  function released(cfg){
+    var cd=document.getElementById('cd'); cd.style.display='none';
+    if(timer) clearInterval(timer);
+    fetchVersion();
+  }
+  function pad(n){ return (n<10?'0':'')+n; }
+  function countdown(cfg){
+    var target=Date.parse(cfg.countdownTo||''); if(isNaN(target)) return released(cfg);
+    var cd=document.getElementById('cd');
+    document.getElementById('cd-label').textContent=cfg.countdownLabel||'Public release in';
+    cd.style.display='block';
+    function tick(){
+      var left=target-Date.now();
+      if(left<=0){ released(cfg); return; }
+      var s=Math.floor(left/1000);
+      document.getElementById('cd-d').textContent=pad(Math.floor(s/86400));
+      document.getElementById('cd-h').textContent=pad(Math.floor(s%86400/3600));
+      document.getElementById('cd-m').textContent=pad(Math.floor(s%3600/60));
+      document.getElementById('cd-s').textContent=pad(s%60);
+    }
+    tick(); timer=setInterval(tick,1000);
+  }
+  function apply(cfg){
+    if(cfg.banner){ var b=document.getElementById('banner'); b.textContent=cfg.banner; b.style.display='block'; }
+    if(cfg.downloadUrl){ document.getElementById('dl').href=cfg.downloadUrl; }
+    if(cfg.mode==='countdown') countdown(cfg); else released(cfg);
+  }
+  function fetchVersion(){
+    fetch('https://api.github.com/repos/lkolholk-ctrl/gsgit/releases/latest')
+      .then(function(r){ return r.ok?r.json():null; })
+      .then(function(j){ if(j&&j.tag_name) document.getElementById('ver').textContent='· latest '+j.tag_name; })
+      .catch(function(){});
+  }
+  fetch('/site.json',{cache:'no-store'})
+    .then(function(r){ return r.ok?r.json():{}; })
+    .then(apply)
+    .catch(function(){ apply({}); });
+})();
+</script>
+</body>
+</html>
