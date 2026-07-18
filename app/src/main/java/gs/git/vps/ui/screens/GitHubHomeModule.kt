@@ -1,5 +1,7 @@
 package gs.git.vps.ui.screens
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.os.Environment
 import android.widget.Toast
@@ -37,6 +39,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import gs.git.vps.data.Strings
 import gs.git.vps.data.github.*
+import gs.git.vps.data.github.model.GHDeviceCode
 import gs.git.vps.data.github.model.QuickGlanceStats
 import gs.git.vps.data.github.model.GHUser
 import gs.git.vps.data.github.model.GHRepo
@@ -48,6 +51,7 @@ import gs.git.vps.ui.components.AiModuleSecondaryButton
 import gs.git.vps.ui.components.AiModuleSpinner
 import gs.git.vps.ui.components.AiModuleText as Text
 import gs.git.vps.ui.theme.*
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -64,11 +68,81 @@ internal fun LoginScreen(onBack: () -> Unit, onMinimize: () -> Unit, onClose: ((
     val scope = rememberCoroutineScope()
     val palette = AiModuleTheme.colors
     var securityWarning by remember { mutableStateOf("") }
+    var deviceCode by remember { mutableStateOf<GHDeviceCode?>(null) }
+    var deviceCodeExpiresAt by remember { mutableStateOf(0L) }
+    var appAuthBusy by remember { mutableStateOf(false) }
+    var appAuthError by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
         securityWarning = withContext(Dispatchers.Default) {
             SecurityGate.environmentMessage(context)
         }
+    }
+
+    LaunchedEffect(deviceCode?.deviceCode) {
+        val pendingCode = deviceCode ?: return@LaunchedEffect
+        var intervalSeconds = pendingCode.interval.coerceAtLeast(5)
+        while (System.currentTimeMillis() < deviceCodeExpiresAt) {
+            delay(intervalSeconds * 1000L)
+            val result = GitHubManager.pollGsGitAppDeviceToken(context, pendingCode.deviceCode)
+            when {
+                result.token?.isNotBlank() == true -> {
+                    appAuthError = ""
+                    deviceCode = null
+                    onLogin("")
+                    return@LaunchedEffect
+                }
+                result.error == "authorization_pending" -> Unit
+                result.error == "slow_down" -> intervalSeconds += 5
+                result.error == "access_denied" -> {
+                    appAuthError = "Authorization was cancelled on GitHub"
+                    deviceCode = null
+                    return@LaunchedEffect
+                }
+                result.error == "expired_token" -> {
+                    appAuthError = "The device code expired. Try again."
+                    deviceCode = null
+                    return@LaunchedEffect
+                }
+                result.error == "secure_storage_unavailable" -> {
+                    appAuthError = SecurityGate.blockedMessage(context)
+                    deviceCode = null
+                    return@LaunchedEffect
+                }
+                else -> {
+                    appAuthError = result.error?.replace('_', ' ') ?: "GitHub authorization failed"
+                    deviceCode = null
+                    return@LaunchedEffect
+                }
+            }
+        }
+        appAuthError = "The device code expired. Try again."
+        deviceCode = null
+    }
+
+    fun startAppSignIn() {
+        appAuthBusy = true
+        appAuthError = ""
+        scope.launch {
+            val code = GitHubManager.initiateGsGitAppDeviceFlow()
+            appAuthBusy = false
+            if (code == null || code.deviceCode.isBlank() || code.userCode.isBlank()) {
+                appAuthError = "GitHub did not return a device code"
+                return@launch
+            }
+            deviceCode = code
+            deviceCodeExpiresAt = System.currentTimeMillis() + code.expiresIn.coerceAtLeast(1) * 1000L
+            if (!context.openExternalHttps(code.verificationUri)) {
+                Toast.makeText(context, "Open ${code.verificationUri} and enter the code", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    fun copyDeviceCode() {
+        val code = deviceCode?.userCode ?: return
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("GitHub device code", code))
+        Toast.makeText(context, "Code copied", Toast.LENGTH_SHORT).show()
     }
 
     AiModuleSurface {
@@ -95,7 +169,7 @@ internal fun LoginScreen(onBack: () -> Unit, onMinimize: () -> Unit, onClose: ((
                 },
             )
             Column(
-                Modifier.fillMaxSize().padding(24.dp),
+                Modifier.fillMaxSize().padding(24.dp).verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
@@ -116,6 +190,93 @@ internal fun LoginScreen(onBack: () -> Unit, onMinimize: () -> Unit, onClose: ((
                     textAlign = TextAlign.Center,
                 )
                 Spacer(Modifier.height(24.dp))
+                val pendingDeviceCode = deviceCode
+                if (pendingDeviceCode == null) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(GitHubControlRadius))
+                            .border(1.dp, palette.accent, RoundedCornerShape(GitHubControlRadius))
+                            .background(if (!appAuthBusy) palette.accent else palette.surface)
+                            .clickable(enabled = !appAuthBusy && !testing) { startAppSignIn() }
+                            .padding(vertical = 12.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (appAuthBusy) {
+                            AiModuleSpinner(label = "starting…")
+                        } else {
+                            Text(
+                                "[ sign in with github ]",
+                                color = palette.background,
+                                fontFamily = JetBrainsMono,
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 13.sp,
+                            )
+                        }
+                    }
+                } else {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(GitHubControlRadius))
+                            .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
+                            .background(palette.surface)
+                            .padding(12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Text(
+                            "enter this code on github.com",
+                            color = palette.textSecondary,
+                            fontFamily = JetBrainsMono,
+                            fontSize = 11.sp,
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            pendingDeviceCode.userCode,
+                            color = palette.accent,
+                            fontFamily = JetBrainsMono,
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 20.sp,
+                            modifier = Modifier.clickable { copyDeviceCode() },
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            "tap the code to copy",
+                            color = palette.textMuted,
+                            fontFamily = JetBrainsMono,
+                            fontSize = 10.sp,
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        AiModuleSpinner(label = "waiting for authorization…")
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            "[ cancel ]",
+                            color = palette.error,
+                            fontFamily = JetBrainsMono,
+                            fontSize = 11.sp,
+                            modifier = Modifier.clickable { deviceCode = null },
+                        )
+                    }
+                }
+                if (appAuthError.isNotBlank()) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        appAuthError,
+                        color = palette.error,
+                        fontFamily = JetBrainsMono,
+                        fontSize = 11.sp,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Center,
+                    )
+                }
+                Spacer(Modifier.height(20.dp))
+                Text(
+                    "· or use a personal access token ·",
+                    color = palette.textMuted,
+                    fontFamily = JetBrainsMono,
+                    fontSize = 10.sp,
+                )
+                Spacer(Modifier.height(12.dp))
                 Text(
                     "personal access token",
                     color = palette.textSecondary,
@@ -187,8 +348,8 @@ internal fun LoginScreen(onBack: () -> Unit, onMinimize: () -> Unit, onClose: ((
                     Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(GitHubControlRadius))
-                        .border(1.dp, palette.accent, RoundedCornerShape(GitHubControlRadius))
-                        .background(if (!testing) palette.accent else palette.surface)
+                        .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
+                        .background(palette.surface)
                         .clickable(enabled = !testing) {
                             if (token.isBlank()) {
                                 error = "Token required"
@@ -219,7 +380,7 @@ internal fun LoginScreen(onBack: () -> Unit, onMinimize: () -> Unit, onClose: ((
                     } else {
                         Text(
                             "[ ${Strings.ghSignIn.lowercase()} ]",
-                            color = palette.background,
+                            color = palette.accent,
                             fontFamily = JetBrainsMono,
                             fontWeight = FontWeight.Medium,
                             fontSize = 13.sp,
