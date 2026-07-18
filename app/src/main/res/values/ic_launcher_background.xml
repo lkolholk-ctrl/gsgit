@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Фон адаптивной иконки: тёмный металл в тон медальона.
+         Прозрачный фон под маской лаунчера давал бы чёрные артефакты. -->
+    <color name="ic_launcher_background">#1F1F1F</color>
+</resources>
