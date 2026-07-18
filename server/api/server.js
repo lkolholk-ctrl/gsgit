@@ -247,6 +247,54 @@ function describeEvent(event, p) {
         title: `${repo} · release ${p.release?.tag_name}`,
         body: excerpt(p.release?.name || p.release?.body || 'published'),
       };
+    case 'discussion':
+      if (p.action !== 'created' && p.action !== 'answered') return null;
+      return {
+        title: `${repo} · discussion ${p.action}`,
+        body: excerpt(`${p.discussion?.title || ''}\n\n${p.discussion?.body || ''}`),
+      };
+    case 'discussion_comment':
+      if (p.action !== 'created') return null;
+      return {
+        title: `${repo} · ${p.sender?.login} → ${excerpt(p.discussion?.title, 60)}`,
+        body: excerpt(p.comment?.body),
+      };
+    case 'create': // новая ветка или тег
+      return {
+        title: repo,
+        body: `${p.sender?.login} создал ${p.ref_type === 'tag' ? 'тег' : 'ветку'} ${p.ref}`,
+      };
+    case 'delete':
+      return {
+        title: repo,
+        body: `${p.sender?.login} удалил ${p.ref_type === 'tag' ? 'тег' : 'ветку'} ${p.ref}`,
+      };
+    case 'member':
+      if (p.action !== 'added') return null;
+      return {
+        title: `${repo} · коллабораторы`,
+        body: `${p.sender?.login} добавил ${p.member?.login} в репозиторий`,
+      };
+    case 'fork':
+      return {
+        title: repo,
+        body: `🍴 ${p.sender?.login} сделал форк → ${p.forkee?.full_name || ''}`,
+      };
+    case 'star':
+      if (p.action !== 'created') return null;
+      return { title: repo, body: `⭐ ${p.sender?.login} поставил звезду` };
+    case 'watch': // легаси-вариант события звезды
+      if (p.action !== 'started') return null;
+      return { title: repo, body: `⭐ ${p.sender?.login} поставил звезду` };
+    case 'deployment_status': {
+      const st = p.deployment_status?.state;
+      if (!st || st === 'pending' || st === 'queued' || st === 'in_progress') return null;
+      const mark = st === 'success' ? '✅' : '❌';
+      return {
+        title: `${repo} · deploy ${p.deployment?.environment || ''}`,
+        body: `${mark} ${st}`,
+      };
+    }
     default:
       return null; // прочие события молча игнорируем
   }
@@ -346,8 +394,24 @@ const server = http.createServer(async (req, res) => {
       if (!body.fcmToken) return send(res, 400, { error: 'fcmToken required' });
       const login = await githubLogin(auth.slice(7).trim());
       if (!login) return send(res, 401, { error: 'github token rejected' });
+      const isNewDevice = !(devices[login.toLowerCase()] || []).includes(body.fcmToken);
       addDevice(login, body.fcmToken);
-      console.log(`[register] ${login}`);
+      console.log(`[register] ${login}${isNewDevice ? ' (new device)' : ''}`);
+      // Security-пуш: о входе с нового устройства предупреждаем все ОСТАЛЬНЫЕ
+      // устройства этого аккаунта (сам новичок уведомление не получает).
+      if (isNewDevice) {
+        const others = (devices[login.toLowerCase()] || []).filter((t) => t !== body.fcmToken);
+        const deviceName = excerpt(body.device, 48) || 'новое устройство';
+        for (const t of others) {
+          sendPush(t, {
+            type: 'security',
+            title: 'GsGit · вход в аккаунт',
+            body: `Пуши включены на новом устройстве: ${deviceName}. Если это не ты — отзови доступ GsGit App в настройках GitHub.`,
+            repo: '',
+            url: 'https://github.com/settings/apps/authorizations',
+          }).catch(() => {});
+        }
+      }
       return send(res, 200, { ok: true, login });
     }
 

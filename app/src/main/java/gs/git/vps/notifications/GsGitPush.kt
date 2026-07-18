@@ -80,7 +80,11 @@ object GsGitPush {
 
     /** Используется и из onNewToken (FCM сменил токен устройства). */
     suspend fun registerToken(context: Context, userToken: String, fcmToken: String): Boolean {
-        val body = JSONObject().put("fcmToken", fcmToken).toString()
+        val deviceName = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}".trim()
+        val body = JSONObject()
+            .put("fcmToken", fcmToken)
+            .put("device", deviceName)
+            .toString()
         val ok = post(
             context, "/register", body,
             headers = mapOf("Authorization" to "Bearer $userToken"),
