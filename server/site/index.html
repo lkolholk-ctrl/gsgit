@@ -30,7 +30,12 @@ img{max-width:100%; height:auto; display:block}
 #deck{
   height:100svh; overflow-y:auto; overflow-x:hidden;
   scroll-snap-type:y mandatory; scroll-behavior:smooth;
+  position:relative; z-index:1;
 }
+/* two free-floating moons parallax through the deck */
+#moonlayer{position:fixed; inset:0; z-index:0; pointer-events:none; overflow:hidden}
+#moonlayer canvas{position:absolute; left:0; top:0; image-rendering:pixelated; will-change:transform; opacity:.85}
+@media(max-width:860px){#moonlayer canvas{opacity:.5}}
 .scene{
   min-height:100svh; scroll-snap-align:start; scroll-snap-stop:always;
   position:relative; display:flex; flex-direction:column;
@@ -813,13 +818,8 @@ document.querySelectorAll('.next').forEach(function(n){
     var ctx=cv.getContext('2d'), r=prng(seeds[kind]||7);
     if(kind==='hero'){
       stars(ctx,w,h,r,110);
-      var portrait=h>w*1.3;
-      var mx=portrait?w*0.80:w*0.74, my=portrait?h*0.10:h*0.26;
-      var mr=portrait?w*0.30:Math.min(w,h)*0.30;
-      moon(ctx,w,h,r,mx,my,mr);
-      ring(ctx,w,h,r,mx,my,mr*1.75,mr*0.55);
       cloud(ctx,w,h,r,w*0.06,h*0.92,w*0.34,h*0.22,1.0);
-      if(!portrait) cloud(ctx,w,h,r,w*0.16,h*0.06,w*0.22,h*0.13,0.8);
+      if(h<=w*1.3) cloud(ctx,w,h,r,w*0.16,h*0.06,w*0.22,h*0.13,0.8);
     } else if(kind==='clouds'){
       stars(ctx,w,h,r,55);
       cloud(ctx,w,h,r,w*0.94,h*0.10,w*0.30,h*0.20,1.05);
@@ -845,8 +845,44 @@ document.querySelectorAll('.next').forEach(function(n){
   var arts=[].slice.call(document.querySelectorAll('canvas.art'));
   function paintAll(){ arts.forEach(paint); }
   paintAll();
+
+  /* two full moons drifting through the slides with the scroll */
+  var deckEl=document.getElementById('deck');
+  var layer=document.createElement('div'); layer.id='moonlayer';
+  var mA=document.createElement('canvas'), mB=document.createElement('canvas');
+  layer.appendChild(mA); layer.appendChild(mB);
+  document.body.insertBefore(layer,deckEl);
+  function moonSprite(cv,seed,radScreen,withRing){
+    var rad=Math.max(12,Math.round(radScreen/PX));
+    var W=withRing?Math.round(rad*3.6):rad*2+4;
+    var Hh=withRing?Math.round(rad*2.4):rad*2+4;
+    cv.width=W; cv.height=Hh;
+    cv.style.width=(W*PX)+'px'; cv.style.height=(Hh*PX)+'px';
+    var ctx=cv.getContext('2d'), r=prng(seed);
+    moon(ctx,W,Hh,r,W/2,Hh/2,rad);
+    if(withRing) ring(ctx,W,Hh,r,W/2,Hh/2,rad*1.58,rad*0.5);
+  }
+  function moonsMove(){
+    var s=deckEl.scrollTop, vw=innerWidth, vh=innerHeight;
+    /* big ringed moon: lives on slides 1-2, floats up and away */
+    var xA=vw-mA.width*PX-vw*0.02-s*0.04, yA=vh*0.03-s*0.45;
+    mA.style.transform='translate3d('+xA+'px,'+yA+'px,0)';
+    /* small moon: rises through slides 4-7 from the bottom left */
+    var xB=vw*0.05+s*0.025, yB=vh*1.62-s*0.30;
+    mB.style.transform='translate3d('+xB+'px,'+yB+'px,0)';
+  }
+  function moonsLayout(){
+    var m=Math.min(innerWidth,innerHeight);
+    var portrait=innerHeight>innerWidth*1.3;
+    moonSprite(mA,7,m*(portrait?0.17:0.26),true);
+    moonSprite(mB,101,m*0.16,false);
+    moonsMove();
+  }
+  moonsLayout();
+  deckEl.addEventListener('scroll',function(){ requestAnimationFrame(moonsMove); },{passive:true});
+
   var rt=null;
-  window.addEventListener('resize',function(){ clearTimeout(rt); rt=setTimeout(paintAll,180); });
+  window.addEventListener('resize',function(){ clearTimeout(rt); rt=setTimeout(function(){ paintAll(); moonsLayout(); },180); });
 
   /* ascii garbage wall */
   var wall=document.querySelector('.asciiwall');
