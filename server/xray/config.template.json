@@ -12,8 +12,10 @@
       "streamSettings": {
         "network": "xhttp",
         "xhttpSettings": {
-          "path": "__PATH__",
-          "mode": "auto"
+          "path": "/",
+          "mode": "auto",
+          "scMaxEachPostBytes": 1000000,
+          "xPaddingBytes": "100-1100"
         }
       }
     }

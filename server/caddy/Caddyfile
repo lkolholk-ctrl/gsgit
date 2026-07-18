@@ -1,16 +1,13 @@
 # TLS-сертификаты Caddy выпускает и продлевает сам (Let's Encrypt).
 # Поменяй домены здесь, если зона будет другой.
 
-gsgit.org {
-	# Опциональный сниппет личного XHTTP-узла (генерит xray-setup.sh).
-	# Пока файла нет — import ничего не подключает, сайт работает как обычно.
-	import /etc/caddy/conf.d/*.caddy
+# Опциональный поддомен личного XHTTP-узла (генерит xray-setup.sh).
+# Пока сниппета нет — import ничего не подключает, стек работает как обычно.
+import /etc/caddy/conf.d/*.caddy
 
-	# Всё остальное — статический сайт.
-	handle {
-		root * /srv/site
-		file_server
-	}
+gsgit.org {
+	root * /srv/site
+	file_server
 }
 
 api.gsgit.org {
