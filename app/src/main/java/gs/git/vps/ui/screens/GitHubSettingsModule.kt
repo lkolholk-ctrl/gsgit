@@ -40,6 +40,7 @@ import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Email
 import androidx.compose.material.icons.rounded.Group
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Key
 import androidx.compose.material.icons.rounded.Logout
 import androidx.compose.material.icons.rounded.Notifications
@@ -81,6 +82,7 @@ import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.VolumeUp
 import android.content.Context
+import gs.git.vps.notifications.GsGitPush
 import gs.git.vps.workers.NotificationSyncWorker
 import gs.git.vps.security.BackupManager
 import gs.git.vps.security.BiometricHelper
@@ -138,7 +140,8 @@ private enum class SettingsSection(val title: String, val subtitle: String) {
     SECURITY("Security & Backups", "Biometric lock and secure backup configuration"),
     EDITOR("Editor & Diff", "Font size, word wrap, tab size, whitespaces"),
     NETWORK("Network & Proxy", "HTTP proxy and API endpoint configuration"),
-    SYNC("Background Sync", "Notification polling interval and limits")
+    SYNC("Background Sync", "Notification polling interval and limits"),
+    ABOUT("About & Updates", "Version, updates, website and status")
 }
 
 private enum class KeyMode { SSH, SSH_SIGNING, GPG }
@@ -209,6 +212,14 @@ internal fun GitHubSettingsScreen(
     // Category 6: Cyberpunk Cosmetics
     var cosmeticCrtEffect by remember { mutableStateOf(prefs.getBoolean("cosmetic_crt_effect", false)) }
     var cosmeticKeyboardSound by remember { mutableStateOf(prefs.getBoolean("cosmetic_keyboard_sound", false)) }
+
+    // Category 7: About & Updates
+    var checkingUpdate by remember { mutableStateOf(false) }
+    var updateStatus by remember { mutableStateOf<String?>(null) }
+    var updateUrl by remember { mutableStateOf("") }
+    var quietOn by remember { mutableStateOf(GsGitPush.quietEnabled(context)) }
+    var quietStartH by remember { mutableStateOf(GsGitPush.quietStart(context)) }
+    var quietEndH by remember { mutableStateOf(GsGitPush.quietEnd(context)) }
 
 
     var profile by remember { mutableStateOf<GHUserProfile?>(null) }
@@ -351,6 +362,7 @@ internal fun GitHubSettingsScreen(
             SettingsSection.EDITOR -> {}
             SettingsSection.NETWORK -> {}
             SettingsSection.SYNC -> {}
+            SettingsSection.ABOUT -> {}
         }
         loading = false
     }
@@ -430,6 +442,117 @@ internal fun GitHubSettingsScreen(
                 item { HomeUserHeader(user) }
                 item {
                     when (currentSection) {
+                        SettingsSection.ABOUT -> SectionCard("About & Updates") {
+                            Text(
+                                text = "// application",
+                                color = AiModuleTheme.colors.textMuted,
+                                fontSize = 11.sp,
+                                fontFamily = JetBrainsMono,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(bottom = 6.dp)
+                            )
+                            Text(
+                                text = "version  v${gs.git.vps.BuildConfig.VERSION_NAME}",
+                                color = AiModuleTheme.colors.textPrimary,
+                                fontSize = 13.sp,
+                                fontFamily = JetBrainsMono
+                            )
+                            Text(
+                                text = "build    #${gs.git.vps.BuildConfig.BUILD_RUN} - ${gs.git.vps.BuildConfig.GIT_SHA.take(7)}",
+                                color = AiModuleTheme.colors.textMuted,
+                                fontSize = 12.sp,
+                                fontFamily = JetBrainsMono,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                            Spacer(Modifier.height(10.dp))
+                            Text(
+                                text = if (checkingUpdate) "[ checking… ]" else "[ check for updates ]",
+                                color = AiModuleTheme.colors.accent,
+                                fontSize = 13.sp,
+                                fontFamily = JetBrainsMono,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.clickable(enabled = !checkingUpdate) {
+                                    scope.launch {
+                                        checkingUpdate = true
+                                        val latest = GitHubManager
+                                            .getReleases(context, "lkolholk-ctrl", "gsgit", 1)
+                                            .firstOrNull { !it.draft && !it.prerelease }
+                                        checkingUpdate = false
+                                        when {
+                                            latest == null -> { updateStatus = "Could not reach GitHub releases"; updateUrl = "" }
+                                            latest.tag == "v${gs.git.vps.BuildConfig.VERSION_NAME}" -> {
+                                                updateStatus = "You are on the latest version (${latest.tag})"; updateUrl = ""
+                                            }
+                                            else -> {
+                                                updateStatus = "New version ${latest.tag} available - tap to open"
+                                                updateUrl = latest.htmlUrl.ifBlank { "https://github.com/lkolholk-ctrl/gsgit/releases" }
+                                            }
+                                        }
+                                    }
+                                }
+                            )
+                            updateStatus?.let { status ->
+                                Text(
+                                    text = status,
+                                    color = if (updateUrl.isBlank()) AiModuleTheme.colors.textMuted else AiModuleTheme.colors.accent,
+                                    fontSize = 12.sp,
+                                    fontFamily = JetBrainsMono,
+                                    modifier = Modifier
+                                        .padding(top = 6.dp)
+                                        .clickable(enabled = updateUrl.isNotBlank()) {
+                                            context.startActivity(
+                                                android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(updateUrl))
+                                            )
+                                        }
+                                )
+                            }
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                text = "// links",
+                                color = AiModuleTheme.colors.textMuted,
+                                fontSize = 11.sp,
+                                fontFamily = JetBrainsMono,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(bottom = 6.dp)
+                            )
+                            AboutLinkRow("gsgit.org - website", "https://gsgit.org")
+                            AboutLinkRow("status.gsgit.org - service status", "https://status.gsgit.org")
+                            AboutLinkRow("github releases - all versions", "https://github.com/lkolholk-ctrl/gsgit/releases")
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                text = "// quiet hours",
+                                color = AiModuleTheme.colors.textMuted,
+                                fontSize = 11.sp,
+                                fontFamily = JetBrainsMono,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(bottom = 6.dp)
+                            )
+                            ToggleRow(
+                                label = "Quiet hours (digest after)",
+                                checked = quietOn,
+                                icon = Icons.Rounded.Notifications
+                            ) {
+                                quietOn = it
+                                GsGitPush.setQuietHours(context, it, quietStartH, quietEndH)
+                            }
+                            if (quietOn) {
+                                HourAdjustRow("from", quietStartH) {
+                                    quietStartH = it
+                                    GsGitPush.setQuietHours(context, true, it, quietEndH)
+                                }
+                                HourAdjustRow("to", quietEndH) {
+                                    quietEndH = it
+                                    GsGitPush.setQuietHours(context, true, quietStartH, it)
+                                }
+                                Text(
+                                    text = "pushes inside the window are held and arrive as one digest",
+                                    color = AiModuleTheme.colors.textMuted,
+                                    fontSize = 11.sp,
+                                    fontFamily = JetBrainsMono,
+                                    modifier = Modifier.padding(top = 6.dp)
+                                )
+                            }
+                        }
                         SettingsSection.PROFILE -> SectionCard("Profile") {
                             CompactField("Name", profileName) { profileName = it }
                             CompactField("Bio", profileBio, singleLine = false, minLines = 3) { profileBio = it }
@@ -1888,6 +2011,8 @@ private fun HomeSettingsMenu(user: GHUser?, onOpen: (SettingsSection) -> Unit) {
         item { TerminalSectionHeader("security") }
         item { MenuRow(Icons.Rounded.Security, SettingsSection.SECURITY, onOpen); AiModuleHairline() }
         item { MenuRow(Icons.Rounded.Dns, SettingsSection.NETWORK, onOpen); AiModuleHairline() }
+        item { TerminalSectionHeader("app") }
+        item { MenuRow(Icons.Rounded.Info, SettingsSection.ABOUT, onOpen); AiModuleHairline() }
     }
 }
 
@@ -1922,6 +2047,56 @@ private fun HomeUserHeader(user: GHUser?) {
             }
         }
         AiModuleHairline()
+    }
+}
+
+@Composable
+private fun AboutLinkRow(label: String, url: String) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    Text(
+        text = "> $label",
+        color = AiModuleTheme.colors.accent,
+        fontSize = 13.sp,
+        fontFamily = JetBrainsMono,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable {
+                context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+            }
+            .padding(vertical = 5.dp)
+    )
+}
+
+@Composable
+private fun HourAdjustRow(label: String, hour: Int, onChange: (Int) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(top = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Text(
+            text = "$label ${"%02d".format(hour)}:00",
+            color = AiModuleTheme.colors.textPrimary,
+            fontSize = 13.sp,
+            fontFamily = JetBrainsMono,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            "[-]",
+            color = AiModuleTheme.colors.accent,
+            fontSize = 13.sp,
+            fontFamily = JetBrainsMono,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.clickable { onChange((hour + 23) % 24) }.padding(4.dp)
+        )
+        Text(
+            "[+]",
+            color = AiModuleTheme.colors.accent,
+            fontSize = 13.sp,
+            fontFamily = JetBrainsMono,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.clickable { onChange((hour + 1) % 24) }.padding(4.dp)
+        )
     }
 }
 

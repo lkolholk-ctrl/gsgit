@@ -275,6 +275,44 @@ internal fun LoginScreen(onBack: () -> Unit, onMinimize: () -> Unit, onClose: ((
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
+                Spacer(Modifier.height(14.dp))
+                // Футер: версия и ссылки на сайт/статус — то же, что в Settings → About.
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "v${gs.git.vps.BuildConfig.VERSION_NAME}",
+                        color = palette.textMuted,
+                        fontFamily = JetBrainsMono,
+                        fontSize = 11.sp,
+                    )
+                    Text("  ·  ", color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 11.sp)
+                    Text(
+                        "gsgit.org",
+                        color = palette.accent,
+                        fontFamily = JetBrainsMono,
+                        fontSize = 11.sp,
+                        modifier = Modifier.clickable {
+                            context.startActivity(
+                                android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://gsgit.org"))
+                            )
+                        },
+                    )
+                    Text("  ·  ", color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 11.sp)
+                    Text(
+                        "status",
+                        color = palette.accent,
+                        fontFamily = JetBrainsMono,
+                        fontSize = 11.sp,
+                        modifier = Modifier.clickable {
+                            context.startActivity(
+                                android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://status.gsgit.org"))
+                            )
+                        },
+                    )
+                }
                 Spacer(Modifier.height(6.dp))
             }
         }

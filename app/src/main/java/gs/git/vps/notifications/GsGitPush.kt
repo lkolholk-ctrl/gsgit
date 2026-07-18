@@ -32,6 +32,30 @@ object GsGitPush {
     private const val PREFS = "github_prefs"
     private const val KEY_ENABLED = "push_instant_enabled"
     private const val KEY_LAST_TOKEN = "push_last_fcm_token"
+    private const val KEY_QUIET_ENABLED = "push_quiet_enabled"
+    private const val KEY_QUIET_START = "push_quiet_start"
+    private const val KEY_QUIET_END = "push_quiet_end"
+
+    // ── Тихие часы: в окне start..end сервер копит пуши и шлёт один дайджест после ──
+
+    fun quietEnabled(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_QUIET_ENABLED, false)
+
+    fun quietStart(context: Context): Int =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getInt(KEY_QUIET_START, 23)
+
+    fun quietEnd(context: Context): Int =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getInt(KEY_QUIET_END, 8)
+
+    /** Сохранить тихие часы и перерегистрироваться, чтобы сервер узнал о настройке. */
+    fun setQuietHours(context: Context, enabled: Boolean, start: Int, end: Int) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putBoolean(KEY_QUIET_ENABLED, enabled)
+            .putInt(KEY_QUIET_START, start.coerceIn(0, 23))
+            .putInt(KEY_QUIET_END, end.coerceIn(0, 23))
+            .apply()
+        registerAsync(context)
+    }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -81,9 +105,14 @@ object GsGitPush {
     /** Используется и из onNewToken (FCM сменил токен устройства). */
     suspend fun registerToken(context: Context, userToken: String, fcmToken: String): Boolean {
         val deviceName = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}".trim()
+        val quietOn = quietEnabled(context)
         val body = JSONObject()
             .put("fcmToken", fcmToken)
             .put("device", deviceName)
+            // qs == qe сервер трактует как «тихие часы выключены».
+            .put("quietStart", if (quietOn) quietStart(context) else 0)
+            .put("quietEnd", if (quietOn) quietEnd(context) else 0)
+            .put("tzOffsetMin", java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 60000)
             .toString()
         val ok = post(
             context, "/register", body,

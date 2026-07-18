@@ -5,8 +5,15 @@
 //   GET  /healthz     — проверка живости (для Uptime Kuma)
 //   POST /webhook     — приёмник вебхуков GitHub (подпись X-Hub-Signature-256 обязательна)
 //   POST /register    — регистрация устройства: Authorization: Bearer <GsGit App user token>,
-//                       body {"fcmToken": "..."}; логин берём из GET /user на GitHub API
+//                       body {"fcmToken": "...", "device": "...", "quietStart": 23,
+//                       "quietEnd": 8, "tzOffsetMin": 180}; логин берём из GET /user
 //   POST /unregister  — удаление устройства: body {"fcmToken": "..."}
+//   POST /announce    — броадкаст всем устройствам: header X-Admin-Key, body {title, body, url?}
+//
+// Фоновые механики (тик раз в 5 минут):
+//   - тихие часы: пуши в окне quietStart..quietEnd копятся и после окна уходят одним дайджестом
+//   - напоминания о ревью: review_requested без ревью сутки → пуш ревьюеру
+//   - недельная сводка: счётчики активности per-login, отправка в воскресенье 20:00 МСК
 
 'use strict';
 
@@ -27,43 +34,70 @@ const MAX_BODY = 1024 * 1024; // GitHub шлёт до ~25 МБ, но нам ст
 if (!WEBHOOK_SECRET) console.warn('[warn] GITHUB_WEBHOOK_SECRET не задан — /webhook будет отвечать 503');
 if (!FCM_PROJECT_ID) console.warn('[warn] FCM_PROJECT_ID не задан — пуши отправляться не будут');
 
-// ─── Хранилище устройств: { "<github login>": ["<fcm token>", ...] } ─────────
+// ─── Общий JSON-стор с дебаунс-записью ───────────────────────────────────────
 
-let devices = {};
-try {
-  devices = JSON.parse(fs.readFileSync(DEVICES_FILE, 'utf8'));
-} catch (_) {
-  devices = {};
+function loadJson(file, fallback) {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) { return fallback; }
 }
 
-let saveTimer = null;
-function saveDevices() {
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    // Ошибка записи не должна ронять процесс: устройства остаются в памяти,
+const saveTimers = {};
+function saveJson(file, value) {
+  clearTimeout(saveTimers[file]);
+  saveTimers[file] = setTimeout(() => {
+    // Ошибка записи не должна ронять процесс: данные остаются в памяти,
     // а причину видно в логах.
     try {
-      const tmp = DEVICES_FILE + '.tmp';
-      fs.mkdirSync(path.dirname(DEVICES_FILE), { recursive: true });
-      fs.writeFileSync(tmp, JSON.stringify(devices, null, 2));
-      fs.renameSync(tmp, DEVICES_FILE);
+      const tmp = file + '.tmp';
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(tmp, JSON.stringify(value, null, 2));
+      fs.renameSync(tmp, file);
     } catch (e) {
       console.error('[store] save failed:', e.message);
     }
   }, 250);
 }
 
-function addDevice(login, fcmToken) {
+// ─── Хранилище устройств ─────────────────────────────────────────────────────
+// { "<github login>": [ { t: "<fcm token>", name, qs, qe, tz, held: [...] } ] }
+// qs/qe — тихие часы (0-23, qs===qe → выключены), tz — смещение от UTC в минутах,
+// held — пуши, задержанные тихими часами. Легаси-формат (массив строк) мигрируется на лету.
+
+const DATA_DIR = path.dirname(DEVICES_FILE);
+const REMINDERS_FILE = process.env.REMINDERS_FILE || path.join(DATA_DIR, 'reminders.json');
+const STATS_FILE = process.env.STATS_FILE || path.join(DATA_DIR, 'stats.json');
+const ADMIN_KEY_FILE = process.env.ADMIN_KEY_FILE || path.join(DATA_DIR, 'admin.key');
+
+let devices = loadJson(DEVICES_FILE, {});
+for (const login of Object.keys(devices)) {
+  devices[login] = (devices[login] || []).map((d) => (typeof d === 'string' ? { t: d } : d));
+}
+
+function saveDevices() { saveJson(DEVICES_FILE, devices); }
+
+function allDeviceObjects() {
+  const out = [];
+  for (const login of Object.keys(devices)) for (const d of devices[login]) out.push(d);
+  return out;
+}
+
+function addDevice(login, fcmToken, meta) {
   const key = login.toLowerCase();
   const list = devices[key] || (devices[key] = []);
-  if (!list.includes(fcmToken)) list.push(fcmToken);
+  let entry = list.find((d) => d.t === fcmToken);
+  const isNew = !entry;
+  if (!entry) { entry = { t: fcmToken }; list.push(entry); }
+  entry.name = meta.name || entry.name || '';
+  entry.qs = Number.isInteger(meta.qs) ? meta.qs : (entry.qs ?? null);
+  entry.qe = Number.isInteger(meta.qe) ? meta.qe : (entry.qe ?? null);
+  entry.tz = Number.isInteger(meta.tz) ? meta.tz : (entry.tz ?? 0);
   saveDevices();
+  return isNew;
 }
 
 function removeDeviceToken(fcmToken) {
   let removed = false;
   for (const login of Object.keys(devices)) {
-    const next = devices[login].filter((t) => t !== fcmToken);
+    const next = devices[login].filter((d) => d.t !== fcmToken);
     if (next.length !== devices[login].length) removed = true;
     if (next.length === 0) delete devices[login];
     else devices[login] = next;
@@ -71,6 +105,22 @@ function removeDeviceToken(fcmToken) {
   if (removed) saveDevices();
   return removed;
 }
+
+// ─── Админ-ключ для /announce: из env или автогенерация в /data ──────────────
+
+let ADMIN_KEY = process.env.ADMIN_KEY || '';
+if (!ADMIN_KEY) {
+  try {
+    ADMIN_KEY = fs.readFileSync(ADMIN_KEY_FILE, 'utf8').trim();
+  } catch (_) {
+    ADMIN_KEY = crypto.randomBytes(24).toString('hex');
+    try {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+      fs.writeFileSync(ADMIN_KEY_FILE, ADMIN_KEY);
+    } catch (e) { console.error('[admin] key save failed:', e.message); }
+  }
+}
+console.log(`[admin] announce key: ${ADMIN_KEY.slice(0, 6)}… (полный — в ${ADMIN_KEY_FILE})`);
 
 // ─── Мини-клиент HTTPS (без зависимостей) ────────────────────────────────────
 
@@ -157,6 +207,170 @@ async function sendPush(deviceToken, data) {
   }
   return true;
 }
+
+// ─── Тихие часы: пуш либо уходит сразу, либо копится до конца окна ──────────
+
+function inQuietWindow(dev, now = new Date()) {
+  const qs = dev.qs, qe = dev.qe;
+  if (!Number.isInteger(qs) || !Number.isInteger(qe) || qs === qe) return false;
+  const local = (now.getUTCHours() * 60 + now.getUTCMinutes() + (dev.tz || 0) + 1440) % 1440;
+  const h = Math.floor(local / 60);
+  return qs < qe ? h >= qs && h < qe : h >= qs || h < qe;
+}
+
+async function deliverOrHold(dev, data) {
+  if (inQuietWindow(dev)) {
+    dev.held = dev.held || [];
+    dev.held.push({ ts: Date.now(), title: data.title, body: data.body, url: data.url || '' });
+    if (dev.held.length > 60) dev.held = dev.held.slice(-60);
+    saveDevices();
+    return true; // «доставлено» в очередь
+  }
+  return sendPush(dev.t, data);
+}
+
+async function flushHeld() {
+  for (const dev of allDeviceObjects()) {
+    if (!dev.held || dev.held.length === 0 || inQuietWindow(dev)) continue;
+    const held = dev.held;
+    dev.held = [];
+    saveDevices();
+    const lines = held.slice(0, 8).map((h) => `- ${h.title}: ${excerpt(h.body, 70)}`);
+    if (held.length > 8) lines.push(`…and ${held.length - 8} more`);
+    await sendPush(dev.t, {
+      type: 'digest',
+      title: `While you were away - ${held.length} update${held.length === 1 ? '' : 's'}`,
+      body: lines.join('\n'),
+      repo: '',
+      url: held[0]?.url || '',
+    }).catch(() => {});
+  }
+}
+
+// ─── Напоминания о ревью: сутки без ответа → нудж ревьюеру ──────────────────
+
+let reminders = loadJson(REMINDERS_FILE, {});
+function saveReminders() { saveJson(REMINDERS_FILE, reminders); }
+
+function trackReminders(event, p) {
+  const repo = p.repository?.full_name || '';
+  const pr = p.pull_request?.number;
+  if (!repo || !pr) return;
+  if (event === 'pull_request' && p.action === 'review_requested' && p.requested_reviewer?.login) {
+    const reviewer = p.requested_reviewer.login.toLowerCase();
+    reminders[`${repo}#${pr}:${reviewer}`] = {
+      repo, pr, reviewer,
+      title: p.pull_request?.title || '',
+      url: p.pull_request?.html_url || '',
+      requestedAt: Date.now(),
+      nudged: false,
+    };
+    saveReminders();
+  } else if (event === 'pull_request_review' && p.action === 'submitted') {
+    const reviewer = p.sender?.login?.toLowerCase();
+    if (reviewer && delete reminders[`${repo}#${pr}:${reviewer}`]) saveReminders();
+  } else if (event === 'pull_request' && p.action === 'closed') {
+    let changed = false;
+    for (const k of Object.keys(reminders)) {
+      if (k.startsWith(`${repo}#${pr}:`)) { delete reminders[k]; changed = true; }
+    }
+    if (changed) saveReminders();
+  }
+}
+
+async function checkReminders() {
+  const now = Date.now();
+  let changed = false;
+  for (const [key, r] of Object.entries(reminders)) {
+    if (now - r.requestedAt > 14 * 86_400_000) { delete reminders[key]; changed = true; continue; }
+    if (r.nudged || now - r.requestedAt < 24 * 3_600_000) continue;
+    r.nudged = true;
+    changed = true;
+    const hours = Math.round((now - r.requestedAt) / 3_600_000);
+    for (const dev of devices[r.reviewer] || []) {
+      deliverOrHold(dev, {
+        type: 'reminder',
+        title: `${r.repo} - PR #${r.pr} awaits your review`,
+        body: `"${excerpt(r.title, 80)}" has been waiting ${hours}h for your review.`,
+        repo: r.repo,
+        url: r.url,
+      }).catch(() => {});
+    }
+  }
+  if (changed) saveReminders();
+}
+
+// ─── Недельная сводка активности ─────────────────────────────────────────────
+
+let stats = loadJson(STATS_FILE, { lastSent: '', byLogin: {} });
+function saveStats() { saveJson(STATS_FILE, stats); }
+
+function bumpStat(login, field, by = 1) {
+  if (!login) return;
+  const key = String(login).toLowerCase();
+  const s = stats.byLogin[key] || (stats.byLogin[key] = {});
+  s[field] = (s[field] || 0) + by;
+  saveStats();
+}
+
+function trackStats(event, p) {
+  const sender = p.sender?.login;
+  switch (event) {
+    case 'push': bumpStat(sender, 'commits', (p.commits || []).length); break;
+    case 'pull_request':
+      if (p.action === 'opened') bumpStat(sender, 'prsOpened');
+      if (p.action === 'closed' && p.pull_request?.merged) bumpStat(p.pull_request?.user?.login, 'prsMerged');
+      break;
+    case 'issues': if (p.action === 'opened') bumpStat(sender, 'issuesOpened'); break;
+    case 'pull_request_review': if (p.action === 'submitted') bumpStat(sender, 'reviews'); break;
+    case 'release': if (p.action === 'published') bumpStat(sender, 'releases'); break;
+    case 'star': case 'watch':
+      if (p.action === 'created' || p.action === 'started') bumpStat(p.repository?.owner?.login, 'stars');
+      break;
+  }
+}
+
+function weeklySummaryLine(s) {
+  const parts = [];
+  if (s.commits) parts.push(`${s.commits} commit${s.commits === 1 ? '' : 's'}`);
+  if (s.prsMerged) parts.push(`${s.prsMerged} PR${s.prsMerged === 1 ? '' : 's'} merged`);
+  if (s.prsOpened) parts.push(`${s.prsOpened} PR${s.prsOpened === 1 ? '' : 's'} opened`);
+  if (s.issuesOpened) parts.push(`${s.issuesOpened} issue${s.issuesOpened === 1 ? '' : 's'} opened`);
+  if (s.reviews) parts.push(`${s.reviews} review${s.reviews === 1 ? '' : 's'}`);
+  if (s.releases) parts.push(`${s.releases} release${s.releases === 1 ? '' : 's'}`);
+  if (s.stars) parts.push(`${s.stars} new star${s.stars === 1 ? '' : 's'}`);
+  return parts.join(' - ');
+}
+
+async function checkWeekly() {
+  // Воскресенье 17:00 UTC = 20:00 МСК. lastSent хранит дату, чтобы не слать дважды.
+  const now = new Date();
+  if (now.getUTCDay() !== 0 || now.getUTCHours() !== 17) return;
+  const today = now.toISOString().slice(0, 10);
+  if (stats.lastSent === today) return;
+  stats.lastSent = today;
+  for (const [login, s] of Object.entries(stats.byLogin)) {
+    const line = weeklySummaryLine(s);
+    if (!line) continue;
+    for (const dev of devices[login] || []) {
+      sendPush(dev.t, {
+        type: 'weekly',
+        title: 'Your GitHub week',
+        body: line,
+        repo: '',
+        url: '',
+      }).catch(() => {});
+    }
+  }
+  stats.byLogin = {};
+  saveStats();
+}
+
+setInterval(() => {
+  flushHeld().catch((e) => console.error('[digest]', e.message));
+  checkReminders().catch((e) => console.error('[reminder]', e.message));
+  checkWeekly().catch((e) => console.error('[weekly]', e.message));
+}, 5 * 60_000);
 
 // ─── Вебхуки GitHub → адресаты и текст уведомления ───────────────────────────
 
@@ -310,14 +524,19 @@ function describeEvent(event, p) {
 }
 
 async function handleWebhook(event, payload) {
+  trackReminders(event, payload);
+  trackStats(event, payload);
   const note = describeEvent(event, payload);
   if (!note) return { delivered: 0, reason: 'event ignored' };
   const logins = targetLogins(payload);
-  const tokens = new Set();
-  for (const l of logins) for (const t of devices[l] || []) tokens.add(t);
+  const seen = new Set();
+  const targets = [];
+  for (const l of logins) for (const d of devices[l] || []) {
+    if (!seen.has(d.t)) { seen.add(d.t); targets.push(d); }
+  }
   let delivered = 0;
-  for (const token of tokens) {
-    const ok = await sendPush(token, {
+  for (const dev of targets) {
+    const ok = await deliverOrHold(dev, {
       type: note.type || event,
       title: note.title,
       body: note.body,
@@ -403,13 +622,17 @@ const server = http.createServer(async (req, res) => {
       if (!body.fcmToken) return send(res, 400, { error: 'fcmToken required' });
       const login = await githubLogin(auth.slice(7).trim());
       if (!login) return send(res, 401, { error: 'github token rejected' });
-      const isNewDevice = !(devices[login.toLowerCase()] || []).includes(body.fcmToken);
-      addDevice(login, body.fcmToken);
+      const isNewDevice = addDevice(login, body.fcmToken, {
+        name: body.device,
+        qs: body.quietStart,
+        qe: body.quietEnd,
+        tz: body.tzOffsetMin,
+      });
       console.log(`[register] ${login}${isNewDevice ? ' (new device)' : ''}`);
       // Security-пуш: о входе с нового устройства предупреждаем все ОСТАЛЬНЫЕ
       // устройства этого аккаунта (сам новичок уведомление не получает).
       if (isNewDevice) {
-        const others = (devices[login.toLowerCase()] || []).filter((t) => t !== body.fcmToken);
+        const others = (devices[login.toLowerCase()] || []).filter((d) => d.t !== body.fcmToken).map((d) => d.t);
         const deviceName = excerpt(body.device, 48) || 'новое устройство';
         for (const t of others) {
           sendPush(t, {
@@ -422,6 +645,31 @@ const server = http.createServer(async (req, res) => {
         }
       }
       return send(res, 200, { ok: true, login });
+    }
+
+    if (req.method === 'POST' && url.pathname === '/announce') {
+      // Броадкаст всем устройствам. Ключ — X-Admin-Key (env ADMIN_KEY или /data/admin.key).
+      const given = String(req.headers['x-admin-key'] || '');
+      if (!given || given !== ADMIN_KEY) return send(res, 401, { error: 'bad admin key' });
+      const raw = await readBody(req);
+      let body;
+      try { body = JSON.parse(raw.toString('utf8')); } catch (_) {
+        return send(res, 400, { error: 'bad json' });
+      }
+      if (!body.title || !body.body) return send(res, 400, { error: 'title and body required' });
+      let delivered = 0;
+      for (const dev of allDeviceObjects()) {
+        const ok = await sendPush(dev.t, {
+          type: 'announce',
+          title: String(body.title),
+          body: String(body.body),
+          repo: '',
+          url: String(body.url || ''),
+        }).catch(() => false);
+        if (ok) delivered++;
+      }
+      console.log(`[announce] "${body.title}" -> ${delivered} devices`);
+      return send(res, 200, { ok: true, delivered });
     }
 
     if (req.method === 'POST' && url.pathname === '/unregister') {

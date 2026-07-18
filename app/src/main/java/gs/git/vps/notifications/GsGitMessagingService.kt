@@ -100,6 +100,8 @@ class GsGitMessagingService : FirebaseMessagingService() {
                 PushChannel("gsgit_discussions", "Discussions", normal),
                 PushChannel("gsgit_social", "Stars, forks & members", normal),
                 PushChannel("gsgit_security", "Account security", high),
+                PushChannel("gsgit_digest", "Digests & weekly summary", normal),
+                PushChannel("gsgit_announcements", "App announcements", high),
                 PushChannel("gsgit_other", "Other GitHub events", normal),
             )
         }
@@ -116,6 +118,9 @@ class GsGitMessagingService : FirebaseMessagingService() {
                 "discussion" -> "gsgit_discussions"
                 "star", "watch", "fork", "member" -> "gsgit_social"
                 "security" -> "gsgit_security"
+                "digest", "weekly" -> "gsgit_digest"
+                "announce" -> "gsgit_announcements"
+                "reminder" -> "gsgit_pulls"
                 else -> "gsgit_other"
             }
             return CHANNELS.first { it.id == id }
