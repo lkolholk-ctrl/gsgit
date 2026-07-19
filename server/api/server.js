@@ -10,6 +10,16 @@
 //   POST /unregister  — удаление устройства: body {"fcmToken": "..."}
 //   POST /announce    — броадкаст всем устройствам: header X-Admin-Key, body {title, body, url?}
 //
+// Админ-панель (всё под X-Admin-Key):
+//   GET  /admin/stats, /admin/health, /admin/metrics, /admin/audit, /admin/errors
+//   GET  /admin/devices            — список; GET/DELETE /admin/devices/{deviceId}
+//   POST /admin/devices/{deviceId}/{test-push|clear-held|disable-push}
+//   GET  /admin/announcements[/{id}]; POST .../{id}/{retry|cancel}
+//   GET  /appconfig; POST /admin/appconfig; GET /admin/appconfig/history[/{rev}]
+//   POST /admin/appconfig/{rollback|validate}
+//   POST /admin/maintenance/{schedule|stop}; GET /admin/maintenance; DELETE .../schedule
+//   GET/POST /admin/releases; POST /admin/releases/{version}/publish
+//
 // Фоновые механики (тик раз в 5 минут):
 //   - тихие часы: пуши в окне quietStart..quietEnd копятся и после окна уходят одним дайджестом
 //   - напоминания о ревью: review_requested без ревью сутки → пуш ревьюеру
@@ -85,11 +95,14 @@ function addDevice(login, fcmToken, meta) {
   const list = devices[key] || (devices[key] = []);
   let entry = list.find((d) => d.t === fcmToken);
   const isNew = !entry;
-  if (!entry) { entry = { t: fcmToken }; list.push(entry); }
+  if (!entry) { entry = { t: fcmToken, registeredAt: Date.now() }; list.push(entry); }
   entry.name = meta.name || entry.name || '';
   entry.qs = Number.isInteger(meta.qs) ? meta.qs : (entry.qs ?? null);
   entry.qe = Number.isInteger(meta.qe) ? meta.qe : (entry.qe ?? null);
   entry.tz = Number.isInteger(meta.tz) ? meta.tz : (entry.tz ?? 0);
+  if (typeof meta.appVersion === 'string' && meta.appVersion) entry.appVersion = meta.appVersion;
+  if (entry.pe === undefined) entry.pe = true;
+  entry.lastSeenAt = Date.now();
   saveDevices();
   return isNew;
 }
@@ -135,6 +148,159 @@ let appConfig = Object.assign({
   downloadUrl: 'https://github.com/lkolholk-ctrl/gsgit/releases/latest',
 }, loadJson(APPCONFIG_FILE, {}));
 function saveAppConfig() { saveJson(APPCONFIG_FILE, appConfig); }
+
+// ─── Расширенная админка: доп-хранилища и хелперы (строго аддитивно) ──────────
+// Всё под тем же X-Admin-Key. Ничего из боевых путей (/webhook, /register,
+// пуши, старые /admin/*) не меняет по контракту — только добавляет.
+
+const SERVER_VERSION = '1.1.0';
+const startedAt = Date.now();
+
+const ANNOUNCEMENTS_FILE = process.env.ANNOUNCEMENTS_FILE || path.join(DATA_DIR, 'announcements.json');
+const APPCONFIG_HISTORY_FILE = process.env.APPCONFIG_HISTORY_FILE || path.join(DATA_DIR, 'appconfig-history.json');
+const RELEASES_FILE = process.env.RELEASES_FILE || path.join(DATA_DIR, 'releases.json');
+const AUDIT_FILE = process.env.AUDIT_FILE || path.join(DATA_DIR, 'audit.json');
+const METRICS_FILE = process.env.METRICS_FILE || path.join(DATA_DIR, 'metrics.json');
+const ERRORS_FILE = process.env.ERRORS_FILE || path.join(DATA_DIR, 'errors.json');
+const MAINT_FILE = process.env.MAINT_FILE || path.join(DATA_DIR, 'maintenance.json');
+
+let announcements = loadJson(ANNOUNCEMENTS_FILE, []);        // newest last, cap 500
+let appConfigHistory = loadJson(APPCONFIG_HISTORY_FILE, []); // {revision, changedAt, changedFields, reason, snapshot}
+let releases = loadJson(RELEASES_FILE, []);                  // {version, changelog, url, sha256, mandatory, rollout, publishedAt}
+let auditLog = loadJson(AUDIT_FILE, []);                     // newest last, cap 1000
+let metrics = loadJson(METRICS_FILE, { hours: {} });        // hours: { 'YYYY-MM-DDTHH': {..counters..} }
+let errorsLog = loadJson(ERRORS_FILE, {});                  // 'service|code' -> {id, service, code, message, count, createdAt, lastAt}
+let maintSchedule = loadJson(MAINT_FILE, null);            // {startsAt, endsAt, message, applied, prevMaintenance}
+
+const VERSION_RE = /^\d+\.\d+\.\d+([.-][0-9A-Za-z.-]+)?$/;
+
+function clientIp(req) {
+  return String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() ||
+    req.socket?.remoteAddress || '';
+}
+function adminOk(req) {
+  const given = String(req.headers['x-admin-key'] || '');
+  return !!given && given === ADMIN_KEY;
+}
+async function jsonBody(req) {
+  const raw = await readBody(req);
+  try { return JSON.parse(raw.toString('utf8')); } catch (_) { return undefined; }
+}
+function cmpVersions(a, b) {
+  const pa = String(a).split(/[.\-]/).map((x) => parseInt(x, 10) || 0);
+  const pb = String(b).split(/[.\-]/).map((x) => parseInt(x, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d) return d > 0 ? 1 : -1;
+  }
+  return 0;
+}
+// Пагинация newest-first по массиву, который хранится oldest-first.
+function paginateDesc(arr, limit, cursor) {
+  const lim = Math.min(Math.max(Number(limit) || 50, 1), 200);
+  const desc = arr.slice().reverse();
+  const start = Math.max(Number(cursor) || 0, 0);
+  const items = desc.slice(start, start + lim);
+  const nextCursor = start + lim < desc.length ? String(start + lim) : null;
+  return { items, nextCursor };
+}
+
+// — метрики: почасовые бакеты, окно до ~31 суток —
+function hourKey(d = new Date()) { return d.toISOString().slice(0, 13); }
+function recordMetric(field, by = 1) {
+  const k = hourKey();
+  const b = metrics.hours[k] || (metrics.hours[k] = {});
+  b[field] = (b[field] || 0) + by;
+  saveJson(METRICS_FILE, metrics);
+}
+function pruneMetrics() {
+  const cutoff = Date.now() - 31 * 86_400_000;
+  let changed = false;
+  for (const k of Object.keys(metrics.hours)) {
+    if (Date.parse(k + ':00:00Z') < cutoff) { delete metrics.hours[k]; changed = true; }
+  }
+  if (changed) saveJson(METRICS_FILE, metrics);
+}
+function metricsFor(hoursBack) {
+  const cutoff = Date.now() - hoursBack * 3_600_000;
+  const sum = {};
+  for (const [k, b] of Object.entries(metrics.hours)) {
+    if (Date.parse(k + ':00:00Z') >= cutoff) {
+      for (const f of Object.keys(b)) sum[f] = (sum[f] || 0) + b[f];
+    }
+  }
+  return sum;
+}
+
+// — серверные ошибки: агрегируем по service+code, без секретов —
+function recordError(service, code, message) {
+  const key = service + '|' + code;
+  const e = errorsLog[key] || (errorsLog[key] = {
+    id: 'err_' + crypto.randomBytes(4).toString('hex'), service, code, count: 0, createdAt: Date.now(),
+  });
+  e.count += 1;
+  e.message = excerpt(message, 200);
+  e.lastAt = Date.now();
+  saveJson(ERRORS_FILE, errorsLog);
+}
+
+// — журнал админ-действий: время, IP, действие, результат (без ключей и тел) —
+function audit(req, action, result, meta) {
+  auditLog.push({
+    id: 'aud_' + crypto.randomBytes(4).toString('hex'),
+    at: Date.now(), ip: clientIp(req), action, result: result || 'ok', meta: meta || {},
+  });
+  if (auditLog.length > 1000) auditLog = auditLog.slice(-1000);
+  saveJson(AUDIT_FILE, auditLog);
+}
+
+// — устойчивый непрозрачный id устройства (НЕ tokenTail: его недостаточно) —
+function deviceIdOf(token) {
+  return crypto.createHash('sha256').update(String(token)).digest('hex').slice(0, 16);
+}
+function findDevByToken(token) {
+  for (const login of Object.keys(devices)) for (const d of devices[login]) if (d.t === token) return d;
+  return null;
+}
+function findByDeviceId(id) {
+  for (const login of Object.keys(devices)) for (const d of devices[login]) {
+    if (deviceIdOf(d.t) === id) return { login, dev: d };
+  }
+  return null;
+}
+
+// — история конфига: снимок → ревизия на каждое изменение (для отката) —
+function pushConfigRevision(changedFields, reason) {
+  const revision = (appConfigHistory[appConfigHistory.length - 1]?.revision || 0) + 1;
+  appConfigHistory.push({
+    revision, changedAt: Date.now(),
+    changedFields: changedFields || [], reason: excerpt(reason || '', 200),
+    snapshot: { ...appConfig },
+  });
+  if (appConfigHistory.length > 200) appConfigHistory = appConfigHistory.slice(-200);
+  saveJson(APPCONFIG_HISTORY_FILE, appConfigHistory);
+  return revision;
+}
+
+// — планировщик техработ: окно [startsAt, endsAt) включает/снимает maintenance —
+function applyMaintenanceSchedule() {
+  if (!maintSchedule) return;
+  const start = Date.parse(maintSchedule.startsAt), end = Date.parse(maintSchedule.endsAt);
+  if (Number.isNaN(start) || Number.isNaN(end)) { maintSchedule = null; saveJson(MAINT_FILE, maintSchedule); return; }
+  const now = Date.now();
+  if (now >= start && now < end && !maintSchedule.applied) {
+    maintSchedule.prevMaintenance = appConfig.maintenance;
+    appConfig.maintenance = maintSchedule.message || 'scheduled maintenance';
+    maintSchedule.applied = true;
+    saveAppConfig(); saveJson(MAINT_FILE, maintSchedule);
+    console.log('[maint] scheduled window started');
+  } else if (now >= end && maintSchedule.applied) {
+    appConfig.maintenance = maintSchedule.prevMaintenance || '';
+    saveAppConfig();
+    maintSchedule = null; saveJson(MAINT_FILE, maintSchedule);
+    console.log('[maint] scheduled window ended');
+  }
+}
 
 // ─── Мини-клиент HTTPS (без зависимостей) ────────────────────────────────────
 
@@ -191,6 +357,9 @@ async function getFcmAccessToken() {
 }
 
 async function sendPush(deviceToken, data) {
+  const dev = findDevByToken(deviceToken);
+  // Устройство выключено админом (disable-push) — молча пропускаем.
+  if (dev && dev.pe === false) return false;
   const accessToken = await getFcmAccessToken();
   const message = JSON.stringify({
     message: {
@@ -212,13 +381,20 @@ async function sendPush(deviceToken, data) {
   );
   if (res.status === 404 || res.body.includes('UNREGISTERED')) {
     // Токен устройства умер (переустановка/чистка) — выкидываем из базы.
+    recordError('push', 'FCM_UNREGISTERED', 'device token no longer valid');
+    recordMetric('pushFail');
     removeDeviceToken(deviceToken);
     return false;
   }
   if (res.status !== 200) {
     console.error(`[fcm] ${res.status}: ${res.body.slice(0, 300)}`);
+    recordError('push', 'FCM_' + res.status, 'fcm rejected the message');
+    recordMetric('pushFail');
+    if (dev) { dev.lastPushAt = Date.now(); dev.lastPushStatus = 'failed'; saveDevices(); }
     return false;
   }
+  recordMetric('pushSent');
+  if (dev) { dev.lastPushAt = Date.now(); dev.lastPushStatus = 'delivered'; saveDevices(); }
   return true;
 }
 
@@ -384,7 +560,12 @@ setInterval(() => {
   flushHeld().catch((e) => console.error('[digest]', e.message));
   checkReminders().catch((e) => console.error('[reminder]', e.message));
   checkWeekly().catch((e) => console.error('[weekly]', e.message));
+  try { applyMaintenanceSchedule(); } catch (e) { console.error('[maint]', e.message); }
+  try { pruneMetrics(); } catch (e) { console.error('[metrics]', e.message); }
 }, 5 * 60_000);
+
+// Если сервер перезапустился внутри запланированного окна — применить сразу.
+applyMaintenanceSchedule();
 
 // ─── Вебхуки GitHub → адресаты и текст уведомления ───────────────────────────
 
@@ -600,12 +781,17 @@ function readBody(req) {
 // wildcard-origin безопасен: чужой сайт ключа не знает и запрос не пройдёт.
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Key',
   'Access-Control-Max-Age': '86400',
 };
 
 function send(res, status, obj) {
+  try {
+    recordMetric('req');
+    if (status >= 500) recordMetric('e5xx');
+    else if (status >= 400) recordMetric('e4xx');
+  } catch (_) { /* метрики не должны влиять на ответ */ }
   const body = JSON.stringify(obj);
   res.writeHead(status, { 'Content-Type': 'application/json', ...CORS_HEADERS });
   res.end(body);
@@ -630,39 +816,50 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, appConfig);
     }
 
-    // Правка конфига из встроенной админки GsGit (X-Admin-Key).
+    // Правка конфига из админки (X-Admin-Key). Каждое изменение → ревизия (для отката).
     if (req.method === 'POST' && url.pathname === '/admin/appconfig') {
-      const given = String(req.headers['x-admin-key'] || '');
-      if (!given || given !== ADMIN_KEY) return send(res, 401, { error: 'bad admin key' });
-      const raw = await readBody(req);
-      let body;
-      try { body = JSON.parse(raw.toString('utf8')); } catch (_) {
-        return send(res, 400, { error: 'bad json' });
-      }
+      if (!adminOk(req)) return send(res, 401, { error: 'bad admin key' });
+      const body = await jsonBody(req);
+      if (body === undefined) return send(res, 400, { error: 'bad json' });
+      const changed = [];
       for (const f of APPCONFIG_FIELDS) {
-        if (typeof body[f] === 'string') appConfig[f] = body[f];
+        if (typeof body[f] === 'string' && body[f] !== appConfig[f]) { appConfig[f] = body[f]; changed.push(f); }
       }
       saveAppConfig();
-      console.log('[admin] appconfig updated');
+      const revision = changed.length ? pushConfigRevision(changed, body.reason) : (appConfigHistory[appConfigHistory.length - 1]?.revision || 0);
+      audit(req, 'appconfig.update', 'ok', { changedFields: changed, revision });
+      console.log('[admin] appconfig updated (rev', revision + ')');
       return send(res, 200, appConfig);
     }
 
     // Список зарегистрированных push-устройств (для админ-панели).
     if (req.method === 'GET' && url.pathname === '/admin/devices') {
-      const given = String(req.headers['x-admin-key'] || '');
-      if (!given || given !== ADMIN_KEY) return send(res, 401, { error: 'bad admin key' });
-      const list = Object.keys(devices).sort().map((login) => ({
-        login,
-        count: devices[login].length,
-        devices: devices[login].map((d) => ({
-          name: d.name || '',
-          tzOffsetMin: d.tz ?? 0,
-          quietHours: (Number.isInteger(d.qs) && Number.isInteger(d.qe) && d.qs !== d.qe)
-            ? { start: d.qs, end: d.qe } : null,
-          heldCount: (d.held || []).length,
-          tokenTail: String(d.t || '').slice(-6),
-        })),
-      }));
+      if (!adminOk(req)) return send(res, 401, { error: 'bad admin key' });
+      const qLogin = String(url.searchParams.get('login') || '').toLowerCase();
+      const qStatus = String(url.searchParams.get('status') || '');
+      const mapDev = (d) => ({
+        deviceId: deviceIdOf(d.t),
+        name: d.name || '',
+        appVersion: d.appVersion || '',
+        tzOffsetMin: d.tz ?? 0,
+        quietHours: (Number.isInteger(d.qs) && Number.isInteger(d.qe) && d.qs !== d.qe)
+          ? { start: d.qs, end: d.qe } : null,
+        heldCount: (d.held || []).length,
+        pushEnabled: d.pe !== false,
+        registeredAt: d.registeredAt ? new Date(d.registeredAt).toISOString() : '',
+        lastSeenAt: d.lastSeenAt ? new Date(d.lastSeenAt).toISOString() : '',
+        lastPushAt: d.lastPushAt ? new Date(d.lastPushAt).toISOString() : '',
+        lastPushStatus: d.lastPushStatus || '',
+        tokenTail: String(d.t || '').slice(-6),
+      });
+      const list = Object.keys(devices).sort()
+        .filter((login) => !qLogin || login.includes(qLogin))
+        .map((login) => ({
+          login,
+          count: devices[login].length,
+          devices: devices[login].filter((d) => qStatus !== 'active' || d.pe !== false).map(mapDev),
+        }))
+        .filter((g) => g.devices.length > 0);
       return send(res, 200, { logins: list.length, devices: list });
     }
 
@@ -683,6 +880,304 @@ const server = http.createServer(async (req, res) => {
       });
     }
 
+    // ── Расширенная админка (всё под X-Admin-Key, строго аддитивно) ────────────
+
+    // 1. Живость сервера (реальная, не факт ответа).
+    if (req.method === 'GET' && url.pathname === '/admin/health') {
+      if (!adminOk(req)) return send(res, 401, { error: 'bad admin key' });
+      let fbOk = false;
+      try { fbOk = !!FCM_PROJECT_ID && fs.existsSync(SERVICE_ACCOUNT_FILE); } catch (_) {}
+      const held = allDeviceObjects().reduce((n, d) => n + (d.held || []).length, 0);
+      return send(res, 200, {
+        status: 'ok',
+        uptimeSec: Math.floor((Date.now() - startedAt) / 1000),
+        serverVersion: SERVER_VERSION,
+        database: 'ok',
+        firebase: fbOk ? 'ok' : 'off',
+        githubWebhooks: WEBHOOK_SECRET ? 'ok' : 'off',
+        pushQueue: held,
+        serverTime: new Date().toISOString(),
+      });
+    }
+
+    // 2. Метрики за период (1h/24h/7d/30d или ?hours=N).
+    if (req.method === 'GET' && url.pathname === '/admin/metrics') {
+      if (!adminOk(req)) return send(res, 401, { error: 'bad admin key' });
+      const period = String(url.searchParams.get('period') || '24h');
+      const map = { '1h': 1, '24h': 24, '7d': 168, '30d': 720 };
+      const hours = Number(url.searchParams.get('hours')) || map[period] || 24;
+      const m = metricsFor(hours);
+      const active = allDeviceObjects();
+      return send(res, 200, {
+        period, hours,
+        registrations: m.reg || 0,
+        activeDevices: active.length,
+        pushesSent: m.pushSent || 0,
+        pushesFailed: m.pushFail || 0,
+        heldPushes: active.reduce((n, d) => n + (d.held || []).length, 0),
+        githubEvents: m.gh || 0,
+        requests: m.req || 0,
+        responses4xx: m.e4xx || 0,
+        responses5xx: m.e5xx || 0,
+      });
+    }
+
+    // 3. История рассылок (newest-first; токены наружу не отдаём).
+    if (req.method === 'GET' && url.pathname === '/admin/announcements') {
+      if (!adminOk(req)) return send(res, 401, { error: 'bad admin key' });
+      const { items, nextCursor } = paginateDesc(announcements, url.searchParams.get('limit'), url.searchParams.get('cursor'));
+      const pub = items.map(({ failedTokens, body, ...rest }) => ({ ...rest, createdAt: new Date(rest.createdAt).toISOString() }));
+      return send(res, 200, { items: pub, nextCursor });
+    }
+    {
+      const m = url.pathname.match(/^\/admin\/announcements\/([A-Za-z0-9_]+)$/);
+      if (m && req.method === 'GET') {
+        if (!adminOk(req)) return send(res, 401, { error: 'bad admin key' });
+        const a = announcements.find((x) => x.id === m[1]);
+        if (!a) return send(res, 404, { error: 'not found' });
+        const { failedTokens, ...pub } = a;
+        return send(res, 200, { ...pub, createdAt: new Date(a.createdAt).toISOString() });
+      }
+    }
+    {
+      const m = url.pathname.match(/^\/admin\/announcements\/([A-Za-z0-9_]+)\/retry$/);
+      if (m && req.method === 'POST') {
+        if (!adminOk(req)) return send(res, 401, { error: 'bad admin key' });
+        const a = announcements.find((x) => x.id === m[1]);
+        if (!a) return send(res, 404, { error: 'not found' });
+        const tokens = (a.failedTokens || []).slice();
+        let delivered = 0; const stillFailed = [];
+        for (const t of tokens) {
+          const ok = await sendPush(t, { type: 'announce', title: a.title, body: a.body, repo: '', url: a.url || '' }).catch(() => false);
+          if (ok) delivered++; else stillFailed.push(t);
+        }
+        a.delivered += delivered; a.failed = stillFailed.length; a.failedTokens = stillFailed;
+        saveJson(ANNOUNCEMENTS_FILE, announcements);
+        audit(req, 'announce.retry', 'ok', { id: a.id, delivered });
+        return send(res, 200, { ok: true, delivered, stillFailed: stillFailed.length });
+      }
+    }
+    {
+      const m = url.pathname.match(/^\/admin\/announcements\/([A-Za-z0-9_]+)\/cancel$/);
+      if (m && req.method === 'POST') {
+        if (!adminOk(req)) return send(res, 401, { error: 'bad admin key' });
+        // Броадкаст выполняется синхронно — «начатую» рассылку отменять нечего.
+        return send(res, 409, { error: 'broadcasts complete synchronously - nothing to cancel' });
+      }
+    }
+
+    // 4. Тест-пуш на одно устройство по deviceId.
+    {
+      const m = url.pathname.match(/^\/admin\/devices\/([a-f0-9]{16})\/test-push$/);
+      if (m && req.method === 'POST') {
+        if (!adminOk(req)) return send(res, 401, { error: 'bad admin key' });
+        const found = findByDeviceId(m[1]);
+        if (!found) return send(res, 404, { error: 'device not found' });
+        const body = (await jsonBody(req)) || {};
+        const ok = await sendPush(found.dev.t, {
+          type: 'announce',
+          title: String(body.title || 'GsGit test push'),
+          body: String(body.body || 'Test notification from the admin panel.'),
+          repo: '', url: String(body.url || ''),
+        }).catch(() => false);
+        audit(req, 'device.test-push', ok ? 'ok' : 'failed', { login: found.login, deviceId: m[1] });
+        return send(res, ok ? 200 : 502, { ok, delivered: ok ? 1 : 0 });
+      }
+    }
+
+    // 5. Диагностика устройств: clear-held / disable-push / детали / удаление.
+    {
+      const m = url.pathname.match(/^\/admin\/devices\/([a-f0-9]{16})\/clear-held$/);
+      if (m && req.method === 'POST') {
+        if (!adminOk(req)) return send(res, 401, { error: 'bad admin key' });
+        const found = findByDeviceId(m[1]);
+        if (!found) return send(res, 404, { error: 'device not found' });
+        const cleared = (found.dev.held || []).length;
+        found.dev.held = []; saveDevices();
+        audit(req, 'device.clear-held', 'ok', { login: found.login, deviceId: m[1], cleared });
+        return send(res, 200, { ok: true, cleared });
+      }
+    }
+    {
+      const m = url.pathname.match(/^\/admin\/devices\/([a-f0-9]{16})\/disable-push$/);
+      if (m && req.method === 'POST') {
+        if (!adminOk(req)) return send(res, 401, { error: 'bad admin key' });
+        const found = findByDeviceId(m[1]);
+        if (!found) return send(res, 404, { error: 'device not found' });
+        const body = (await jsonBody(req)) || {};
+        const enabled = body.enabled === true; // по умолчанию выключаем
+        found.dev.pe = enabled; saveDevices();
+        audit(req, 'device.push-toggle', 'ok', { login: found.login, deviceId: m[1], enabled });
+        return send(res, 200, { ok: true, pushEnabled: enabled });
+      }
+    }
+    {
+      const m = url.pathname.match(/^\/admin\/devices\/([a-f0-9]{16})$/);
+      if (m && (req.method === 'GET' || req.method === 'DELETE')) {
+        if (!adminOk(req)) return send(res, 401, { error: 'bad admin key' });
+        const found = findByDeviceId(m[1]);
+        if (!found) return send(res, 404, { error: 'device not found' });
+        if (req.method === 'DELETE') {
+          removeDeviceToken(found.dev.t);
+          audit(req, 'device.delete', 'ok', { login: found.login, deviceId: m[1] });
+          return send(res, 200, { ok: true, removed: true });
+        }
+        const d = found.dev;
+        return send(res, 200, {
+          deviceId: m[1], login: found.login, name: d.name || '', appVersion: d.appVersion || '',
+          tzOffsetMin: d.tz ?? 0,
+          quietHours: (Number.isInteger(d.qs) && Number.isInteger(d.qe) && d.qs !== d.qe) ? { start: d.qs, end: d.qe } : null,
+          heldCount: (d.held || []).length, pushEnabled: d.pe !== false,
+          registeredAt: d.registeredAt ? new Date(d.registeredAt).toISOString() : '',
+          lastSeenAt: d.lastSeenAt ? new Date(d.lastSeenAt).toISOString() : '',
+          lastPushAt: d.lastPushAt ? new Date(d.lastPushAt).toISOString() : '',
+          lastPushStatus: d.lastPushStatus || '', tokenTail: String(d.t || '').slice(-6),
+        });
+      }
+    }
+
+    // 6. История конфигурации и откат.
+    if (req.method === 'GET' && url.pathname === '/admin/appconfig/history') {
+      if (!adminOk(req)) return send(res, 401, { error: 'bad admin key' });
+      const { items, nextCursor } = paginateDesc(appConfigHistory, url.searchParams.get('limit'), url.searchParams.get('cursor'));
+      const pub = items.map((r) => ({ revision: r.revision, changedAt: new Date(r.changedAt).toISOString(), changedFields: r.changedFields, reason: r.reason }));
+      return send(res, 200, { items: pub, nextCursor });
+    }
+    {
+      const m = url.pathname.match(/^\/admin\/appconfig\/history\/(\d+)$/);
+      if (m && req.method === 'GET') {
+        if (!adminOk(req)) return send(res, 401, { error: 'bad admin key' });
+        const r = appConfigHistory.find((x) => x.revision === Number(m[1]));
+        if (!r) return send(res, 404, { error: 'not found' });
+        return send(res, 200, { revision: r.revision, changedAt: new Date(r.changedAt).toISOString(), changedFields: r.changedFields, reason: r.reason, snapshot: r.snapshot });
+      }
+    }
+    if (req.method === 'POST' && url.pathname === '/admin/appconfig/rollback') {
+      if (!adminOk(req)) return send(res, 401, { error: 'bad admin key' });
+      const body = await jsonBody(req);
+      if (body === undefined) return send(res, 400, { error: 'bad json' });
+      const r = appConfigHistory.find((x) => x.revision === Number(body.revision));
+      if (!r) return send(res, 404, { error: 'revision not found' });
+      for (const f of APPCONFIG_FIELDS) if (typeof r.snapshot[f] === 'string') appConfig[f] = r.snapshot[f];
+      saveAppConfig();
+      const rev = pushConfigRevision(APPCONFIG_FIELDS.slice(), `rollback to revision ${r.revision}`);
+      audit(req, 'appconfig.rollback', 'ok', { toRevision: r.revision, newRevision: rev });
+      return send(res, 200, appConfig);
+    }
+    if (req.method === 'POST' && url.pathname === '/admin/appconfig/validate') {
+      if (!adminOk(req)) return send(res, 401, { error: 'bad admin key' });
+      const body = await jsonBody(req);
+      if (body === undefined) return send(res, 400, { error: 'bad json' });
+      const errors = [];
+      for (const f of ['latestVersion', 'minVersion']) {
+        if (typeof body[f] === 'string' && body[f] && !VERSION_RE.test(body[f])) errors.push(`${f} is not x.y.z`);
+      }
+      if (typeof body.minVersion === 'string' && typeof body.latestVersion === 'string' &&
+          VERSION_RE.test(body.minVersion) && VERSION_RE.test(body.latestVersion) &&
+          cmpVersions(body.minVersion, body.latestVersion) > 0) {
+        errors.push('minVersion is greater than latestVersion');
+      }
+      return send(res, 200, { ok: errors.length === 0, errors });
+    }
+
+    // 7. Планирование техработ.
+    if (req.method === 'POST' && url.pathname === '/admin/maintenance/schedule') {
+      if (!adminOk(req)) return send(res, 401, { error: 'bad admin key' });
+      const body = await jsonBody(req);
+      if (body === undefined) return send(res, 400, { error: 'bad json' });
+      const start = Date.parse(body.startsAt), end = Date.parse(body.endsAt);
+      if (Number.isNaN(start) || Number.isNaN(end) || end <= start) return send(res, 400, { error: 'bad startsAt/endsAt' });
+      maintSchedule = { startsAt: new Date(start).toISOString(), endsAt: new Date(end).toISOString(), message: String(body.message || 'scheduled maintenance'), applied: false, prevMaintenance: '' };
+      saveJson(MAINT_FILE, maintSchedule);
+      applyMaintenanceSchedule();
+      audit(req, 'maintenance.schedule', 'ok', { startsAt: maintSchedule.startsAt, endsAt: maintSchedule.endsAt });
+      return send(res, 200, { ok: true, schedule: maintSchedule });
+    }
+    if (req.method === 'GET' && url.pathname === '/admin/maintenance') {
+      if (!adminOk(req)) return send(res, 401, { error: 'bad admin key' });
+      return send(res, 200, { maintenanceNow: appConfig.maintenance || '', schedule: maintSchedule });
+    }
+    if (req.method === 'DELETE' && url.pathname === '/admin/maintenance/schedule') {
+      if (!adminOk(req)) return send(res, 401, { error: 'bad admin key' });
+      if (maintSchedule && maintSchedule.applied) { appConfig.maintenance = maintSchedule.prevMaintenance || ''; saveAppConfig(); }
+      maintSchedule = null; saveJson(MAINT_FILE, maintSchedule);
+      audit(req, 'maintenance.unschedule', 'ok', {});
+      return send(res, 200, { ok: true });
+    }
+    if (req.method === 'POST' && url.pathname === '/admin/maintenance/stop') {
+      if (!adminOk(req)) return send(res, 401, { error: 'bad admin key' });
+      appConfig.maintenance = ''; saveAppConfig();
+      maintSchedule = null; saveJson(MAINT_FILE, maintSchedule);
+      pushConfigRevision(['maintenance'], 'maintenance stopped');
+      audit(req, 'maintenance.stop', 'ok', {});
+      return send(res, 200, { ok: true });
+    }
+
+    // 8. Управление релизами (атомарная публикация в appConfig).
+    if (req.method === 'GET' && url.pathname === '/admin/releases') {
+      if (!adminOk(req)) return send(res, 401, { error: 'bad admin key' });
+      const { items, nextCursor } = paginateDesc(releases, url.searchParams.get('limit'), url.searchParams.get('cursor'));
+      return send(res, 200, { items, nextCursor });
+    }
+    if (req.method === 'POST' && url.pathname === '/admin/releases') {
+      if (!adminOk(req)) return send(res, 401, { error: 'bad admin key' });
+      const body = await jsonBody(req);
+      if (body === undefined) return send(res, 400, { error: 'bad json' });
+      if (typeof body.version !== 'string' || !VERSION_RE.test(body.version)) return send(res, 400, { error: 'bad version' });
+      const existing = releases.find((r) => r.version === body.version);
+      const rec = existing || { version: body.version, createdAt: Date.now(), publishedAt: '' };
+      rec.changelog = String(body.changelog ?? rec.changelog ?? '');
+      rec.url = String(body.url ?? rec.url ?? '');
+      rec.sha256 = String(body.sha256 ?? rec.sha256 ?? '');
+      rec.mandatory = body.mandatory === true || rec.mandatory === true;
+      rec.rollout = Number.isFinite(body.rollout) ? body.rollout : (rec.rollout ?? 100);
+      if (!existing) releases.push(rec);
+      saveJson(RELEASES_FILE, releases);
+      audit(req, 'release.upsert', 'ok', { version: rec.version });
+      return send(res, 200, rec);
+    }
+    {
+      const m = url.pathname.match(/^\/admin\/releases\/([0-9A-Za-z.\-]+)\/publish$/);
+      if (m && req.method === 'POST') {
+        if (!adminOk(req)) return send(res, 401, { error: 'bad admin key' });
+        const rec = releases.find((r) => r.version === m[1]);
+        if (!rec) return send(res, 404, { error: 'release not found' });
+        appConfig.latestVersion = rec.version;
+        if (rec.changelog) appConfig.changelog = rec.changelog;
+        if (rec.url) appConfig.downloadUrl = rec.url;
+        if (rec.mandatory) appConfig.minVersion = rec.version;
+        saveAppConfig();
+        rec.publishedAt = new Date().toISOString();
+        saveJson(RELEASES_FILE, releases);
+        const rev = pushConfigRevision(['latestVersion', 'changelog', 'downloadUrl'], `publish release ${rec.version}`);
+        audit(req, 'release.publish', 'ok', { version: rec.version, revision: rev });
+        return send(res, 200, { ok: true, appConfig });
+      }
+    }
+
+    // 9. Журнал админ-действий.
+    if (req.method === 'GET' && url.pathname === '/admin/audit') {
+      if (!adminOk(req)) return send(res, 401, { error: 'bad admin key' });
+      const { items, nextCursor } = paginateDesc(auditLog, url.searchParams.get('limit'), url.searchParams.get('cursor'));
+      const pub = items.map((a) => ({ id: a.id, at: new Date(a.at).toISOString(), ip: a.ip, action: a.action, result: a.result, meta: a.meta }));
+      return send(res, 200, { items: pub, nextCursor });
+    }
+
+    // 10. Серверные ошибки (агрегированные, без ключей/токенов/стектрейсов).
+    if (req.method === 'GET' && url.pathname === '/admin/errors') {
+      if (!adminOk(req)) return send(res, 401, { error: 'bad admin key' });
+      const service = String(url.searchParams.get('service') || '');
+      const limit = Math.min(Math.max(Number(url.searchParams.get('limit')) || 50, 1), 200);
+      let items = Object.values(errorsLog);
+      if (service) items = items.filter((e) => e.service === service);
+      items.sort((a, b) => b.lastAt - a.lastAt);
+      items = items.slice(0, limit).map((e) => ({
+        id: e.id, service: e.service, code: e.code, message: e.message, count: e.count,
+        createdAt: new Date(e.createdAt).toISOString(), lastAt: new Date(e.lastAt).toISOString(),
+      }));
+      return send(res, 200, { items });
+    }
+
     if (req.method === 'POST' && url.pathname === '/webhook') {
       if (!WEBHOOK_SECRET) return send(res, 503, { error: 'webhook secret not configured' });
       const raw = await readBody(req);
@@ -694,6 +1189,7 @@ const server = http.createServer(async (req, res) => {
       try { payload = JSON.parse(raw.toString('utf8')); } catch (_) {
         return send(res, 400, { error: 'bad json' });
       }
+      recordMetric('gh');
       const result = await handleWebhook(event, payload);
       console.log(`[webhook] ${event} ${payload.action || ''} -> ${JSON.stringify(result)}`);
       return send(res, 200, result);
@@ -715,7 +1211,9 @@ const server = http.createServer(async (req, res) => {
         qs: body.quietStart,
         qe: body.quietEnd,
         tz: body.tzOffsetMin,
+        appVersion: body.appVersion,
       });
+      recordMetric('reg');
       console.log(`[register] ${login}${isNewDevice ? ' (new device)' : ''}`);
       // Security-пуш: о входе с нового устройства предупреждаем все ОСТАЛЬНЫЕ
       // устройства этого аккаунта (сам новичок уведомление не получает).
@@ -737,16 +1235,14 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'POST' && url.pathname === '/announce') {
       // Броадкаст всем устройствам. Ключ — X-Admin-Key (env ADMIN_KEY или /data/admin.key).
-      const given = String(req.headers['x-admin-key'] || '');
-      if (!given || given !== ADMIN_KEY) return send(res, 401, { error: 'bad admin key' });
-      const raw = await readBody(req);
-      let body;
-      try { body = JSON.parse(raw.toString('utf8')); } catch (_) {
-        return send(res, 400, { error: 'bad json' });
-      }
+      if (!adminOk(req)) return send(res, 401, { error: 'bad admin key' });
+      const body = await jsonBody(req);
+      if (body === undefined) return send(res, 400, { error: 'bad json' });
       if (!body.title || !body.body) return send(res, 400, { error: 'title and body required' });
+      const targets = allDeviceObjects();
       let delivered = 0;
-      for (const dev of allDeviceObjects()) {
+      const failedTokens = [];
+      for (const dev of targets) {
         const ok = await sendPush(dev.t, {
           type: 'announce',
           title: String(body.title),
@@ -754,8 +1250,18 @@ const server = http.createServer(async (req, res) => {
           repo: '',
           url: String(body.url || ''),
         }).catch(() => false);
-        if (ok) delivered++;
+        if (ok) delivered++; else failedTokens.push(dev.t);
       }
+      const rec = {
+        id: 'ann_' + crypto.randomBytes(5).toString('hex'),
+        title: String(body.title), body: String(body.body), url: String(body.url || ''),
+        createdAt: Date.now(), targeted: targets.length, delivered, failed: failedTokens.length,
+        status: 'completed', failedTokens,
+      };
+      announcements.push(rec);
+      if (announcements.length > 500) announcements = announcements.slice(-500);
+      saveJson(ANNOUNCEMENTS_FILE, announcements);
+      audit(req, 'announce.send', 'ok', { id: rec.id, delivered, failed: rec.failed });
       console.log(`[announce] "${body.title}" -> ${delivered} devices`);
       return send(res, 200, { ok: true, delivered });
     }
