@@ -113,6 +113,8 @@ object GsGitPush {
             .put("quietStart", if (quietOn) quietStart(context) else 0)
             .put("quietEnd", if (quietOn) quietEnd(context) else 0)
             .put("tzOffsetMin", java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 60000)
+            // Версия приложения — чтобы в админке было видно, кто на какой сборке.
+            .put("appVersion", gs.git.vps.BuildConfig.VERSION_NAME)
             .toString()
         val ok = post(
             context, "/register", body,
