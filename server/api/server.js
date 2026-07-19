@@ -606,10 +606,10 @@ function describeEvent(event, p) {
       const commits = p.commits || [];
       const branch = String(p.ref || '').replace('refs/heads/', '');
       const head = excerpt(commits[commits.length - 1]?.message?.split('\n')[0], 120);
-      const extra = commits.length > 1 ? ` (+${commits.length - 1} ещё)` : '';
+      const extra = commits.length > 1 ? ` (+${commits.length - 1} more)` : '';
       return {
         title: `${repo} · ${branch}`,
-        body: `${p.sender?.login} запушил: ${head}${extra}`,
+        body: `${p.sender?.login} pushed: ${head}${extra}`,
       };
     }
     case 'issues':
@@ -680,30 +680,30 @@ function describeEvent(event, p) {
     case 'create': // новая ветка или тег
       return {
         title: repo,
-        body: `${p.sender?.login} создал ${p.ref_type === 'tag' ? 'тег' : 'ветку'} ${p.ref}`,
+        body: `${p.sender?.login} created ${p.ref_type === 'tag' ? 'tag' : 'branch'} ${p.ref}`,
       };
     case 'delete':
       return {
         title: repo,
-        body: `${p.sender?.login} удалил ${p.ref_type === 'tag' ? 'тег' : 'ветку'} ${p.ref}`,
+        body: `${p.sender?.login} deleted ${p.ref_type === 'tag' ? 'tag' : 'branch'} ${p.ref}`,
       };
     case 'member':
       if (p.action !== 'added') return null;
       return {
-        title: `${repo} · коллабораторы`,
-        body: `${p.sender?.login} добавил ${p.member?.login} в репозиторий`,
+        title: `${repo} · collaborators`,
+        body: `${p.sender?.login} added ${p.member?.login} to the repository`,
       };
     case 'fork':
       return {
         title: repo,
-        body: `🍴 ${p.sender?.login} сделал форк → ${p.forkee?.full_name || ''}`,
+        body: `🍴 ${p.sender?.login} forked → ${p.forkee?.full_name || ''}`,
       };
     case 'star':
       if (p.action !== 'created') return null;
-      return { title: repo, body: `⭐ ${p.sender?.login} поставил звезду` };
+      return { title: repo, body: `⭐ ${p.sender?.login} starred the repo` };
     case 'watch': // легаси-вариант события звезды
       if (p.action !== 'started') return null;
-      return { title: repo, body: `⭐ ${p.sender?.login} поставил звезду` };
+      return { title: repo, body: `⭐ ${p.sender?.login} starred the repo` };
     case 'deployment_status': {
       const st = p.deployment_status?.state;
       if (!st || st === 'pending' || st === 'queued' || st === 'in_progress') return null;
@@ -1219,12 +1219,12 @@ const server = http.createServer(async (req, res) => {
       // устройства этого аккаунта (сам новичок уведомление не получает).
       if (isNewDevice) {
         const others = (devices[login.toLowerCase()] || []).filter((d) => d.t !== body.fcmToken).map((d) => d.t);
-        const deviceName = excerpt(body.device, 48) || 'новое устройство';
+        const deviceName = excerpt(body.device, 48) || 'a new device';
         for (const t of others) {
           sendPush(t, {
             type: 'security',
-            title: 'GsGit · вход в аккаунт',
-            body: `Пуши включены на новом устройстве: ${deviceName}. Если это не ты — отзови доступ GsGit App в настройках GitHub.`,
+            title: 'GsGit · account sign-in',
+            body: `Push notifications were enabled on a new device: ${deviceName}. If this wasn't you, revoke GsGit App access in your GitHub settings.`,
             repo: '',
             url: 'https://github.com/settings/apps/authorizations',
           }).catch(() => {});
