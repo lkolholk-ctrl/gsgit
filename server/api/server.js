@@ -153,7 +153,7 @@ function saveAppConfig() { saveJson(APPCONFIG_FILE, appConfig); }
 // Всё под тем же X-Admin-Key. Ничего из боевых путей (/webhook, /register,
 // пуши, старые /admin/*) не меняет по контракту — только добавляет.
 
-const SERVER_VERSION = '1.1.0';
+const SERVER_VERSION = '1.1.1';
 const startedAt = Date.now();
 
 const ANNOUNCEMENTS_FILE = process.env.ANNOUNCEMENTS_FILE || path.join(DATA_DIR, 'announcements.json');
