@@ -52,7 +52,7 @@ object AppUpdate {
                 latestVersion = json.optString("latestVersion", ""),
                 minVersion = json.optString("minVersion", ""),
                 changelog = json.optString("changelog", ""),
-                downloadUrl = json.optString("downloadUrl", "https://github.com/lkolholk-ctrl/gsgit/releases/latest"),
+                downloadUrl = json.optString("downloadUrl", "https://github.com/lkolholk-ctrl/gsgit-releases/releases/latest"),
             )
         } catch (e: Exception) {
             Log.w(TAG, "config fetch failed: ${e.message}")

@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       publish_release:
-        description: Publish a GitHub Release from main after a successful build
+        description: Publish a public release to gsgit-releases from main
         required: true
         default: false
         type: boolean
@@ -21,16 +21,19 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  # Публичная витрина релизов (код приватный, APK раздаём отсюда).
+  RELEASES_REPO: lkolholk-ctrl/gsgit-releases
+
 jobs:
   release-build:
     # GitHub does not expose repository secrets to pull requests from forks.
-    # Skipping those runs is safer than publishing an unsigned APK as release.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    outputs:
-      version: ${{ steps.version.outputs.version }}
-      tag: ${{ steps.version.outputs.tag }}
+    permissions:
+      # Нужно для rolling `dev`-пререлиза в этом (приватном) репозитории.
+      contents: write
     env:
       RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
       ORG_GRADLE_PROJECT_GSGIT_RELEASE_STORE_PASSWORD: ${{ secrets.GSGIT_RELEASE_STORE_PASSWORD }}
@@ -55,14 +58,29 @@ jobs:
           printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
           printf 'tag=v%s\n' "$version" >> "$GITHUB_OUTPUT"
 
-      - name: Require a new release tag
-        if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish_release == true)) }}
+      - name: Determine if this run publishes a public release
+        id: mode
+        shell: bash
+        run: |
+          publish=false
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            if [[ "${{ github.event_name }}" == "push" ]] || \
+               [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.publish_release }}" == "true" ]]; then
+              publish=true
+            fi
+          fi
+          printf 'publish=%s\n' "$publish" >> "$GITHUB_OUTPUT"
+
+      - name: Require a new release tag in the showcase repo
+        if: ${{ steps.mode.outputs.publish == 'true' }}
         env:
+          GH_TOKEN: ${{ secrets.RELEASES_REPO_TOKEN }}
           TAG_NAME: ${{ steps.version.outputs.tag }}
         shell: bash
         run: |
-          if git rev-parse --quiet --verify "refs/tags/$TAG_NAME" >/dev/null; then
-            printf '::error::Release tag %s already exists. Bump GSGIT_VERSION_NAME.\n' "$TAG_NAME"
+          set -euo pipefail
+          if gh release view "$TAG_NAME" --repo "$RELEASES_REPO" >/dev/null 2>&1; then
+            printf '::error::Release %s already exists in %s. Bump GSGIT_VERSION_NAME.\n' "$TAG_NAME" "$RELEASES_REPO"
             exit 1
           fi
 
@@ -135,57 +153,60 @@ jobs:
             sha256sum "GsGit-${VERSION_NAME}.apk" "GsGit-${VERSION_NAME}.aab" > SHA256SUMS.txt
           )
 
-      - uses: actions/upload-artifact@v7
-        with:
-          name: gsgit-release-${{ github.run_number }}
-          path: dist/
-          if-no-files-found: error
-          retention-days: 14
-          compression-level: 0
-
-      - name: Remove restored keystore
-        if: ${{ always() }}
-        run: rm -f release.keystore
-
-  publish-release:
-    name: Publish GitHub Release
-    needs: release-build
-    if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish_release == true)) }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-      VERSION_NAME: ${{ needs.release-build.outputs.version }}
-      TAG_NAME: ${{ needs.release-build.outputs.tag }}
-    steps:
-      - uses: actions/download-artifact@v8
-        with:
-          name: gsgit-release-${{ github.run_number }}
-          path: dist
-
-      - name: Verify downloaded assets
+      # ── Тестовые сборки (ветки): rolling `dev`-пререлиз в приватном репо. ──
+      # Ассеты релизов не считаются в квоту хранилища Actions (в отличие от
+      # артефактов), видны только владельцу. Старый dev-ассет перезаписывается.
+      - name: Publish rolling dev build (non-main)
+        if: ${{ steps.mode.outputs.publish != 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION_NAME: ${{ steps.version.outputs.version }}
+          RUN_NUMBER: ${{ github.run_number }}
+          SHA: ${{ github.sha }}
+          REF_NAME: ${{ github.ref_name }}
         shell: bash
         run: |
           set -euo pipefail
-          test -f "dist/GsGit-${VERSION_NAME}.apk"
-          test -f "dist/GsGit-${VERSION_NAME}.aab"
-          test -f dist/SHA256SUMS.txt
-          (cd dist && sha256sum --check SHA256SUMS.txt)
+          gh release delete dev --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag 2>/dev/null || true
+          gh release create dev \
+            "dist/GsGit-${VERSION_NAME}.apk#GsGit ${VERSION_NAME} (dev build #${RUN_NUMBER})" \
+            "dist/SHA256SUMS.txt#SHA-256 checksums" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$SHA" \
+            --title "dev build ${VERSION_NAME} (#${RUN_NUMBER})" \
+            --notes "Latest CI build from \`${REF_NAME}\`. Not a public release." \
+            --prerelease
 
-      - name: Publish release with generated changelog
+      # ── Боевой релиз (main): публикация в публичную витрину gsgit-releases. ──
+      - name: Publish public release to showcase (main)
+        if: ${{ steps.mode.outputs.publish == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_REPO_TOKEN }}
+          VERSION_NAME: ${{ steps.version.outputs.version }}
+          TAG_NAME: ${{ steps.version.outputs.tag }}
         shell: bash
         run: |
           set -euo pipefail
+          # Заметки из коммитов приватного репо (в витрине истории нет).
+          # Теги в приватном больше не создаём, поэтому новейший v* = прошлый релиз.
+          prev_tag="$(git tag --list 'v*' --sort=-v:refname | sed -n '1p' || true)"
+          if [[ -n "$prev_tag" ]]; then range="${prev_tag}..HEAD"; else range="HEAD~30..HEAD"; fi
+          notes="$(git log "$range" --no-merges --pretty='- %s' 2>/dev/null \
+            | grep -viE '^- (chore|docs|ci)(\(|:)' | head -40 || true)"
+          [[ -z "$notes" ]] && notes="Signed Android release."
+          {
+            printf '%s\n\n' "$notes"
+            printf 'APK and AAB signatures were verified by GitHub Actions. SHA-256 checksums attached.\n'
+          } > release-notes.md
           gh release create "$TAG_NAME" \
             "dist/GsGit-${VERSION_NAME}.apk#GsGit ${VERSION_NAME} APK" \
             "dist/GsGit-${VERSION_NAME}.aab#GsGit ${VERSION_NAME} Android App Bundle" \
             "dist/SHA256SUMS.txt#SHA-256 checksums" \
-            --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" \
+            --repo "$RELEASES_REPO" \
             --title "GsGit ${VERSION_NAME}" \
-            --notes "Signed Android release. APK and AAB signatures were verified by GitHub Actions." \
-            --generate-notes \
-            --fail-on-no-commits \
+            --notes-file release-notes.md \
             --latest
+
+      - name: Remove restored keystore
+        if: ${{ always() }}
+        run: rm -f release.keystore

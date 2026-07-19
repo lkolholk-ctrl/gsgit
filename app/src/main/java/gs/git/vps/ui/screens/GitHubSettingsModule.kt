@@ -660,7 +660,7 @@ internal fun GitHubSettingsScreen(
                                     scope.launch {
                                         checkingUpdate = true
                                         val latest = GitHubManager
-                                            .getReleases(context, "lkolholk-ctrl", "gsgit", 1)
+                                            .getReleases(context, "lkolholk-ctrl", "gsgit-releases", 1)
                                             .firstOrNull { !it.draft && !it.prerelease }
                                         checkingUpdate = false
                                         when {
@@ -670,7 +670,7 @@ internal fun GitHubSettingsScreen(
                                             }
                                             else -> {
                                                 updateStatus = "New version ${latest.tag} available - tap to open"
-                                                updateUrl = latest.htmlUrl.ifBlank { "https://github.com/lkolholk-ctrl/gsgit/releases" }
+                                                updateUrl = latest.htmlUrl.ifBlank { "https://github.com/lkolholk-ctrl/gsgit-releases/releases" }
                                             }
                                         }
                                     }
@@ -702,7 +702,7 @@ internal fun GitHubSettingsScreen(
                             )
                             AboutLinkRow("gsgit.org - website", "https://gsgit.org")
                             AboutLinkRow("status.gsgit.org - service status", "https://status.gsgit.org")
-                            AboutLinkRow("github releases - all versions", "https://github.com/lkolholk-ctrl/gsgit/releases")
+                            AboutLinkRow("github releases - all versions", "https://github.com/lkolholk-ctrl/gsgit-releases/releases")
                             Spacer(Modifier.height(12.dp))
                             Text(
                                 text = "// quiet hours",
