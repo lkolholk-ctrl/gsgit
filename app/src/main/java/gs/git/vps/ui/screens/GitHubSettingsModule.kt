@@ -2567,19 +2567,35 @@ private fun matchesSettingsQuery(query: String, vararg values: String): Boolean 
 }
 
 private fun getCacheSize(context: Context): Long {
+    // Авторитетная цифра — из того же источника, что и системный экран App info
+    // (StorageStatsManager). Для собственного uid спец-разрешение не нужно.
+    try {
+        val ssm = context.getSystemService(Context.STORAGE_STATS_SERVICE)
+            as? android.app.usage.StorageStatsManager
+        if (ssm != null) {
+            val stats = ssm.queryStatsForUid(
+                android.os.storage.StorageManager.UUID_DEFAULT,
+                android.os.Process.myUid(),
+            )
+            return stats.cacheBytes
+        }
+    } catch (_: Throwable) { /* фолбэк ниже */ }
+    // Фолбэк: сумма внутреннего и внешнего cache-каталогов (не только cacheDir).
     var size = 0L
     try {
-        context.cacheDir.walkTopDown().forEach { file ->
-            if (file.isFile) size += file.length()
+        for (dir in listOfNotNull(context.cacheDir, context.externalCacheDir)) {
+            dir.walkTopDown().forEach { if (it.isFile) size += it.length() }
         }
     } catch (_: Exception) {}
     return size
 }
 
 private fun clearCache(context: Context) {
-    try {
-        context.cacheDir.deleteRecursively()
-    } catch (_: Exception) {}
+    // Чистим оба cache-каталога (внутренний + внешний) — их система тоже считает
+    // кешем. Содержимое удаляем, сами каталоги оставляем (пересоздадутся при нужде).
+    for (dir in listOfNotNull(context.cacheDir, context.externalCacheDir)) {
+        try { dir.listFiles()?.forEach { it.deleteRecursively() } } catch (_: Exception) {}
+    }
 }
 
 @Composable
