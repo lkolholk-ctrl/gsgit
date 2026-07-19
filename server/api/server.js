@@ -595,15 +595,31 @@ function readBody(req) {
   });
 }
 
+// CORS: админ-панель (веб) живёт на другом origin и обращается к этому API из
+// браузера. Авторизация — через заголовок X-Admin-Key (не cookie), поэтому
+// wildcard-origin безопасен: чужой сайт ключа не знает и запрос не пройдёт.
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Key',
+  'Access-Control-Max-Age': '86400',
+};
+
 function send(res, status, obj) {
   const body = JSON.stringify(obj);
-  res.writeHead(status, { 'Content-Type': 'application/json' });
+  res.writeHead(status, { 'Content-Type': 'application/json', ...CORS_HEADERS });
   res.end(body);
 }
 
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url || '/', 'http://localhost');
+
+    // Префлайт CORS для браузерной админ-панели.
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, CORS_HEADERS);
+      return res.end();
+    }
 
     if (req.method === 'GET' && url.pathname === '/healthz') {
       return send(res, 200, { ok: true, devices: Object.keys(devices).length });
