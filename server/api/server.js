@@ -631,6 +631,42 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, appConfig);
     }
 
+    // Список зарегистрированных push-устройств (для админ-панели).
+    if (req.method === 'GET' && url.pathname === '/admin/devices') {
+      const given = String(req.headers['x-admin-key'] || '');
+      if (!given || given !== ADMIN_KEY) return send(res, 401, { error: 'bad admin key' });
+      const list = Object.keys(devices).sort().map((login) => ({
+        login,
+        count: devices[login].length,
+        devices: devices[login].map((d) => ({
+          name: d.name || '',
+          tzOffsetMin: d.tz ?? 0,
+          quietHours: (Number.isInteger(d.qs) && Number.isInteger(d.qe) && d.qs !== d.qe)
+            ? { start: d.qs, end: d.qe } : null,
+          heldCount: (d.held || []).length,
+          tokenTail: String(d.t || '').slice(-6),
+        })),
+      }));
+      return send(res, 200, { logins: list.length, devices: list });
+    }
+
+    // Сводная статистика (для дашборда админ-панели).
+    if (req.method === 'GET' && url.pathname === '/admin/stats') {
+      const given = String(req.headers['x-admin-key'] || '');
+      if (!given || given !== ADMIN_KEY) return send(res, 401, { error: 'bad admin key' });
+      const allDevices = allDeviceObjects();
+      const held = allDevices.reduce((n, d) => n + (d.held || []).length, 0);
+      return send(res, 200, {
+        logins: Object.keys(devices).length,
+        devices: allDevices.length,
+        quietEnabled: allDevices.filter((d) => Number.isInteger(d.qs) && Number.isInteger(d.qe) && d.qs !== d.qe).length,
+        heldPushes: held,
+        maintenance: appConfig.maintenance ? 'on' : 'off',
+        latestVersion: appConfig.latestVersion,
+        minVersion: appConfig.minVersion,
+      });
+    }
+
     if (req.method === 'POST' && url.pathname === '/webhook') {
       if (!WEBHOOK_SECRET) return send(res, 503, { error: 'webhook secret not configured' });
       const raw = await readBody(req);
