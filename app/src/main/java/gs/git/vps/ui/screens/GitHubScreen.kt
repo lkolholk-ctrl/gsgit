@@ -75,10 +75,6 @@ fun GitHubScreen(
             // перепроверяется раз в минуту — гейт снимается сам, без перезапуска приложения.
             var appConfig by remember { mutableStateOf<gs.git.vps.util.AppUpdate.Config?>(null) }
             var updateDismissed by remember { mutableStateOf(false) }
-            // Владельческий байпас: если локально сохранён НАСТОЯЩИЙ админ-ключ
-            // (сервер подтвердил), гейты не блокируют — иначе maintenance запер бы
-            // и админку, которой он выключается.
-            var adminBypass by remember { mutableStateOf(false) }
             val currentVersion = gs.git.vps.BuildConfig.VERSION_NAME
             LaunchedEffect(Unit) {
                 while (true) {
@@ -86,17 +82,14 @@ fun GitHubScreen(
                     val blocked = appConfig?.let {
                         it.maintenance.isNotBlank() || gs.git.vps.util.AppUpdate.isOlder(currentVersion, it.minVersion)
                     } == true
-                    if (blocked && !adminBypass) {
-                        adminBypass = gs.git.vps.util.AdminApi.validateKey(context)
-                    }
                     kotlinx.coroutines.delay(if (blocked) 60_000L else 30L * 60_000L)
                 }
             }
-            val maintenanceNow = if (adminBypass) "" else appConfig?.maintenance.orEmpty()
-            val forceUpdate = !adminBypass && maintenanceNow.isBlank() && appConfig?.let {
+            val maintenanceNow = appConfig?.maintenance.orEmpty()
+            val forceUpdate = maintenanceNow.isBlank() && appConfig?.let {
                 gs.git.vps.util.AppUpdate.isOlder(currentVersion, it.minVersion)
             } == true
-            val softUpdate = !adminBypass && maintenanceNow.isBlank() && !forceUpdate && appConfig?.let {
+            val softUpdate = maintenanceNow.isBlank() && !forceUpdate && appConfig?.let {
                 gs.git.vps.util.AppUpdate.isOlder(currentVersion, it.latestVersion)
             } == true
 
@@ -202,13 +195,8 @@ fun GitHubScreen(
                 }
             }
 
-            // ── «Скоро техработы» — верхняя плашка, не блокирует. Владельцу в байпасе
-            // показываем, что у юзеров прямо сейчас закрыто. ──
-            val maintenanceSoonText = when {
-                adminBypass && appConfig?.maintenance.orEmpty().isNotBlank() ->
-                    "maintenance is ON for users - admin bypass active"
-                else -> appConfig?.maintenanceSoon.orEmpty()
-            }
+            // ── «Скоро техработы» — верхняя плашка, не блокирует. ──
+            val maintenanceSoonText = appConfig?.maintenanceSoon.orEmpty()
             if (maintenanceSoonText.isNotBlank() && maintenanceNow.isBlank() && !forceUpdate) {
                 androidx.compose.ui.window.Popup(alignment = Alignment.TopCenter) {
                     Row(

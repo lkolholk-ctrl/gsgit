@@ -142,8 +142,7 @@ private enum class SettingsSection(val title: String, val subtitle: String) {
     EDITOR("Editor & Diff", "Font size, word wrap, tab size, whitespaces"),
     NETWORK("Network & Proxy", "HTTP proxy and API endpoint configuration"),
     SYNC("Background Sync", "Notification polling interval and limits"),
-    ABOUT("About & Updates", "Version, updates, website and status"),
-    ADMIN("Server Admin", "Maintenance, update gates and announcements")
+    ABOUT("About & Updates", "Version, updates, website and status")
 }
 
 private enum class KeyMode { SSH, SSH_SIGNING, GPG }
@@ -222,28 +221,6 @@ internal fun GitHubSettingsScreen(
     var quietOn by remember { mutableStateOf(GsGitPush.quietEnabled(context)) }
     var quietStartH by remember { mutableStateOf(GsGitPush.quietStart(context)) }
     var quietEndH by remember { mutableStateOf(GsGitPush.quietEnd(context)) }
-
-    // Category 8: Server Admin (встроенная админка — техработы/гейты/анонсы).
-    // Пункт скрыт: 5 быстрых тапов по шапке профиля в настройках показывают его,
-    // ещё 5 — прячут (как логгер во втором проекте владельца). Безопасность держит
-    // сервер (X-Admin-Key); скрытие — только от лишних глаз.
-    var adminRowVisible by remember { mutableStateOf(prefs.getBoolean("admin_row_visible", false)) }
-    var adminTapCount by remember { mutableStateOf(0) }
-    var adminTapLast by remember { mutableStateOf(0L) }
-    var admKey by remember { mutableStateOf(gs.git.vps.util.AdminApi.savedKey(context)) }
-    // Панель открывается только после серверной проверки ключа ([ unlock ]).
-    var admUnlocked by remember { mutableStateOf(false) }
-    var admMaintenanceSoon by remember { mutableStateOf("") }
-    var admMaintenance by remember { mutableStateOf("") }
-    var admLatest by remember { mutableStateOf("") }
-    var admMin by remember { mutableStateOf("") }
-    var admChangelog by remember { mutableStateOf("") }
-    var admDownloadUrl by remember { mutableStateOf("") }
-    var admBusy by remember { mutableStateOf(false) }
-    var annTitle by remember { mutableStateOf("") }
-    var annBody by remember { mutableStateOf("") }
-    var annUrl by remember { mutableStateOf("") }
-
 
     var profile by remember { mutableStateOf<GHUserProfile?>(null) }
     var profileName by remember { mutableStateOf("") }
@@ -386,20 +363,6 @@ internal fun GitHubSettingsScreen(
             SettingsSection.NETWORK -> {}
             SettingsSection.SYNC -> {}
             SettingsSection.ABOUT -> {}
-            SettingsSection.ADMIN -> {
-                admUnlocked = gs.git.vps.util.AdminApi.savedKey(context).isNotBlank() &&
-                    gs.git.vps.util.AdminApi.validateKey(context)
-                if (admUnlocked) {
-                    gs.git.vps.util.AdminApi.fetchConfig(context)?.let { cfg ->
-                        admMaintenanceSoon = cfg.maintenanceSoon
-                        admMaintenance = cfg.maintenance
-                        admLatest = cfg.latestVersion
-                        admMin = cfg.minVersion
-                        admChangelog = cfg.changelog
-                        admDownloadUrl = cfg.downloadUrl
-                    }
-                }
-            }
         }
         loading = false
     }
@@ -471,23 +434,7 @@ internal fun GitHubSettingsScreen(
         if (currentSection == null) {
             HomeSettingsMenu(
                 user = user,
-                showAdmin = adminRowVisible,
                 onOpen = { currentSection = it },
-                onHeaderTap = {
-                    val now = System.currentTimeMillis()
-                    adminTapCount = if (now - adminTapLast < 2000L) adminTapCount + 1 else 1
-                    adminTapLast = now
-                    if (adminTapCount >= 5) {
-                        adminTapCount = 0
-                        adminRowVisible = !adminRowVisible
-                        prefs.edit().putBoolean("admin_row_visible", adminRowVisible).apply()
-                        Toast.makeText(
-                            context,
-                            if (adminRowVisible) "server admin unlocked" else "server admin hidden",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                },
             )
         } else {
             LazyColumn(
@@ -498,135 +445,6 @@ internal fun GitHubSettingsScreen(
                 item { HomeUserHeader(user) }
                 item {
                     when (currentSection) {
-                        SettingsSection.ADMIN -> SectionCard("Server Admin") {
-                            if (!admUnlocked) {
-                                // Первый экран — только ключ. Поля появляются лишь после
-                                // того, как сервер подтвердил ключ по [ unlock ].
-                                Text(
-                                    text = "// admin key (from /data/admin.key on the VPS)",
-                                    color = AiModuleTheme.colors.textMuted,
-                                    fontSize = 11.sp,
-                                    fontFamily = JetBrainsMono,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(bottom = 6.dp)
-                                )
-                                AiModuleTextField(
-                                    admKey,
-                                    { admKey = it },
-                                    label = "X-Admin-Key",
-                                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                                )
-                                Spacer(Modifier.height(10.dp))
-                                Text(
-                                    text = if (admBusy) "[ checking… ]" else "[ unlock ]",
-                                    color = AiModuleTheme.colors.accent,
-                                    fontSize = 13.sp,
-                                    fontFamily = JetBrainsMono,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.clickable(enabled = admKey.isNotBlank() && !admBusy) {
-                                        scope.launch {
-                                            admBusy = true
-                                            gs.git.vps.util.AdminApi.saveKey(context, admKey)
-                                            val ok = gs.git.vps.util.AdminApi.validateKey(context)
-                                            if (ok) {
-                                                gs.git.vps.util.AdminApi.fetchConfig(context)?.let { cfg ->
-                                                    admMaintenanceSoon = cfg.maintenanceSoon
-                                                    admMaintenance = cfg.maintenance
-                                                    admLatest = cfg.latestVersion
-                                                    admMin = cfg.minVersion
-                                                    admChangelog = cfg.changelog
-                                                    admDownloadUrl = cfg.downloadUrl
-                                                }
-                                            }
-                                            admUnlocked = ok
-                                            admBusy = false
-                                            if (!ok) Toast.makeText(context, "Wrong key or server unreachable", Toast.LENGTH_LONG).show()
-                                        }
-                                    }
-                                )
-                            } else {
-                                Spacer(Modifier.height(2.dp))
-                                Text(
-                                    text = "// update gate & maintenance",
-                                    color = AiModuleTheme.colors.textMuted,
-                                    fontSize = 11.sp,
-                                    fontFamily = JetBrainsMono,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(bottom = 6.dp)
-                                )
-                                AiModuleTextField(admMaintenanceSoon, { admMaintenanceSoon = it }, label = "Maintenance soon (banner, empty = off)")
-                                Spacer(Modifier.height(8.dp))
-                                AiModuleTextField(admMaintenance, { admMaintenance = it }, label = "Maintenance NOW (locks the app, empty = off)")
-                                Spacer(Modifier.height(8.dp))
-                                AiModuleTextField(admLatest, { admLatest = it }, label = "Latest version (soft update)")
-                                Spacer(Modifier.height(8.dp))
-                                AiModuleTextField(admMin, { admMin = it }, label = "Min version (forced update)")
-                                Spacer(Modifier.height(8.dp))
-                                AiModuleTextField(admChangelog, { admChangelog = it }, label = "Changelog", minLines = 3, maxLines = 8)
-                                Spacer(Modifier.height(8.dp))
-                                AiModuleTextField(admDownloadUrl, { admDownloadUrl = it }, label = "Download URL")
-                                Spacer(Modifier.height(10.dp))
-                                Text(
-                                    text = if (admBusy) "[ saving… ]" else "[ save config ]",
-                                    color = AiModuleTheme.colors.accent,
-                                    fontSize = 13.sp,
-                                    fontFamily = JetBrainsMono,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.clickable(enabled = !admBusy) {
-                                        scope.launch {
-                                            admBusy = true
-                                            val ok = gs.git.vps.util.AdminApi.saveConfig(
-                                                context, admMaintenanceSoon, admMaintenance,
-                                                admLatest, admMin, admChangelog, admDownloadUrl,
-                                            )
-                                            admBusy = false
-                                            Toast.makeText(
-                                                context,
-                                                if (ok) "Config saved - devices pick it up within a minute"
-                                                else "Failed - check the admin key",
-                                                Toast.LENGTH_LONG
-                                            ).show()
-                                        }
-                                    }
-                                )
-                                Spacer(Modifier.height(14.dp))
-                                Text(
-                                    text = "// announcement to all devices",
-                                    color = AiModuleTheme.colors.textMuted,
-                                    fontSize = 11.sp,
-                                    fontFamily = JetBrainsMono,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(bottom = 6.dp)
-                                )
-                                AiModuleTextField(annTitle, { annTitle = it }, label = "Title")
-                                Spacer(Modifier.height(8.dp))
-                                AiModuleTextField(annBody, { annBody = it }, label = "Text", minLines = 2, maxLines = 6)
-                                Spacer(Modifier.height(8.dp))
-                                AiModuleTextField(annUrl, { annUrl = it }, label = "URL (optional)")
-                                Spacer(Modifier.height(10.dp))
-                                Text(
-                                    text = if (admBusy) "[ sending… ]" else "[ send announcement ]",
-                                    color = AiModuleTheme.colors.warning,
-                                    fontSize = 13.sp,
-                                    fontFamily = JetBrainsMono,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.clickable(enabled = !admBusy && annTitle.isNotBlank() && annBody.isNotBlank()) {
-                                        scope.launch {
-                                            admBusy = true
-                                            val delivered = gs.git.vps.util.AdminApi.announce(context, annTitle, annBody, annUrl)
-                                            admBusy = false
-                                            Toast.makeText(
-                                                context,
-                                                if (delivered != null) "Delivered to $delivered devices"
-                                                else "Failed - check the admin key",
-                                                Toast.LENGTH_LONG
-                                            ).show()
-                                            if (delivered != null) { annTitle = ""; annBody = ""; annUrl = "" }
-                                        }
-                                    }
-                                )
-                            }
-                        }
                         SettingsSection.ABOUT -> SectionCard("About & Updates") {
                             Text(
                                 text = "// application",
@@ -2169,23 +1987,14 @@ internal fun GitHubSettingsScreen(
 @Composable
 private fun HomeSettingsMenu(
     user: GHUser?,
-    showAdmin: Boolean = false,
     onOpen: (SettingsSection) -> Unit,
-    onHeaderTap: (() -> Unit)? = null,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
-        item {
-            Box(
-                Modifier.clickable(
-                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                    indication = null,
-                ) { onHeaderTap?.invoke() }
-            ) { HomeUserHeader(user) }
-        }
+        item { HomeUserHeader(user) }
         item { TerminalSectionHeader("account") }
         item { MenuRow(Icons.Rounded.Person, SettingsSection.PROFILE, onOpen); AiModuleHairline() }
         item { MenuRow(Icons.Rounded.Email, SettingsSection.EMAILS, onOpen); AiModuleHairline() }
@@ -2210,9 +2019,6 @@ private fun HomeSettingsMenu(
         item { MenuRow(Icons.Rounded.Dns, SettingsSection.NETWORK, onOpen); AiModuleHairline() }
         item { TerminalSectionHeader("app") }
         item { MenuRow(Icons.Rounded.Info, SettingsSection.ABOUT, onOpen); AiModuleHairline() }
-        if (showAdmin) {
-            item { MenuRow(Icons.Rounded.Dns, SettingsSection.ADMIN, onOpen); AiModuleHairline() }
-        }
     }
 }
 
