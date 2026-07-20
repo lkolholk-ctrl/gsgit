@@ -34,10 +34,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import dev.chrisbanes.haze.HazeProgressive
-import dev.chrisbanes.haze.hazeEffect
-import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.rememberHazeState
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -1407,10 +1403,8 @@ internal fun RepoDetailScreen(
     val palette = AiModuleTheme.colors
     // Нижний инсет = высота glass bottom-bar + системный nav-инсет, чтобы низ контента не перекрывался.
     val contentBottomInset = RepoBottomBarReservedHeight + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    // haze: контент — backdrop-источник, бар блюрит его под собой (frosted glass, telegram-style).
-    val hazeState = rememberHazeState()
     Box(Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize().background(palette.background).hazeSource(hazeState)) {
+        Column(Modifier.fillMaxSize().background(palette.background)) {
         GitHubPageBar(
             title = "> ${repo.name}",
             subtitle = if (currentPath.isNotBlank()) "${repo.fullName} \u00B7 $currentPath" else repo.fullName,
@@ -1852,19 +1846,9 @@ internal fun RepoDetailScreen(
         // Bottom-bar (items/topRowSections определены вверху). Подсветка — по совпадению секции айтема с
         // selectedSection (null-лендинг → activeKey="" → ничего не подсвечено). Диспатч в единый selectedSection.
         val activeBarKey = bottomBarItems.firstOrNull { it.section != null && it.section == nav.selectedSection }?.key ?: ""
-        // Frosted «мыло» в нижней полосе: контент под баром блюрится прогрессивно — снизу полный блюр,
-        // плавно к нулю вверху полосы (до высоты бара). Сам бар (solid, непрозрачный) рисуется поверх.
-        Box(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .height(contentBottomInset)
-                .hazeEffect(state = hazeState) {
-                    blurRadius = 24.dp
-                    noiseFactor = 0f
-                    progressive = HazeProgressive.verticalGradient(startIntensity = 0f, endIntensity = 1f)
-                },
-        )
+        // Bottom-bar — solid, непрозрачный. Блюр-полоса (haze) убрана: она затягивала
+        // WebView-README в графический слой и давала циклическое мерцание контента.
+        // Контент и так поднят над баром через contentBottomInset — блюрить под ним нечего.
         RepoBottomBar(
             items = bottomBarItems,
             activeKey = activeBarKey,
