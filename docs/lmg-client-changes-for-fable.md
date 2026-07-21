@@ -32,14 +32,22 @@ if (!partnerKey.isNullOrBlank()) builder.header("X-Partner-Key", partnerKey)
 В `IcmAuthRepository` убрать хранение/использование `apiKey`/`getPartnerKey()` (партнёрский ключ в APK не хранить).
 
 ## 3. Выпуск сессии — через сервер (не s2s с устройства)
-Сейчас клиент сам дёргает s2s `POST /session/issue`. Заменить:
-- После Telegram-логина вызывать **`POST <LMG_SERVER>/lmg/auth/telegram`** с данными Telegram Login Widget
-  (`id, first_name, last_name, username, photo_url, auth_date, hash`, опц. `hide_explicit`).
+**Модель входа (согласована):** Telegram Login Widget живёт на странице ICM, приложение полей виджета
+(`id/hash/auth_date`) НЕ видит — после логина ICM возвращает deep-link `linked/<icm_user_id>/state`.
+Значит на устройстве нет ни бот-токена, ни HMAC. Клиент берёт `icm_user_id` из deep-link и шлёт его
+как `partner_user_id` на наш сервер; сервер (origin уже в whitelist ICM) минтит upstream-сессию.
+
+Заменить прямой s2s `POST /session/issue` на:
+- После возврата из ICM deep-link (`linked/<icm_user_id>/state`) вызывать
+  **`POST <LMG_SERVER>/lmg/session/issue`** с телом `{ "partner_user_id": "<icm_user_id>", "hide_explicit": <bool> }`.
   Ответ: `{ partner_session_token, expires_in, scopes, partner_user_id, is_premium, premium_expires_at, plan }`.
-  → положить `partner_session_token` в `IcmApi.sessionToken`, `partner_user_id` в `IcmApi.partnerUserId`.
-- Рефреш протухшего токена: **`POST <LMG_SERVER>/lmg/session/refresh`** с `{ partner_user_id }`.
-- **Удалить** с устройства `IcmApi.issueSession()`/прямой `/session/issue` и всю s2s-логику (`s2sOnly`,
-  отправку `X-Partner-Key` на session/issue).
+  → `partner_session_token` в `IcmApi.sessionToken`, `partner_user_id` (= icm_user_id) в `IcmApi.partnerUserId` (сохранить в prefs).
+- Рефреш протухшего токена: **`POST <LMG_SERVER>/lmg/session/refresh`** с `{ partner_user_id }` (тот же сохранённый id).
+- **Удалить** с устройства `IcmApi.issueSession()`/прямой `/session/issue`, весь s2s (`s2sOnly`,
+  `X-Partner-Key` на session/issue) и любые данные Telegram-виджета — они больше не нужны.
+
+> Сверить одно: что `icm_user_id` из deep-link — это и есть `partner_user_id` для upstream `/session/issue`
+> (в партнёрке ICM это наш идентификатор пользователя). Если ICM отдаёт другой линк-id — передавай именно его.
 
 ## 4. Email-линк → на сервер
 `/link/email/{request|verify|password/reset|password/change}` → **`<LMG_SERVER>/lmg/auth/email/{...}`**

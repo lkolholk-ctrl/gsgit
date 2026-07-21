@@ -224,12 +224,38 @@ const server = http.createServer(async (req, res) => {
       }, userView(pid)));
     }
 
+    // ── issue: минт сессии по partner_user_id, пришедшему из ICM deep-link ──
+    // (linked/<icm_user_id>/state → app POST-ит сюда icm_user_id как partner_user_id).
+    // Юзер регистрируется на лету, HMAC не нужен — доверяем origin-whitelist ICM.
+    if (method === 'POST' && p === '/lmg/session/issue') {
+      if (!ICM_PARTNER_KEY) return send(res, 503, { error: 'not configured' });
+      const body = await jsonBody(req);
+      const pid = body && body.partner_user_id;
+      if (!pid) return send(res, 400, { error: 'no partner_user_id' });
+      const { status, data } = await issueUpstreamSession(pid, !!(body && body.hide_explicit));
+      if (status < 200 || status >= 300 || !data.partner_session_token) {
+        recordError('SESSION_' + status, 'upstream session/issue failed'); recordMetric('authFail');
+        return send(res, 502, { error: 'session issue failed' });
+      }
+      const now = Date.now();
+      const u = users[pid] || (users[pid] = { createdAt: now });
+      u.lastSeenAt = now;
+      saveJson(FILES.users, users);
+      recordMetric('sessionIssued');
+      return send(res, 200, Object.assign({
+        partner_session_token: data.partner_session_token,
+        expires_in: data.expires_in || 0,
+        scopes: data.scopes || [],
+      }, userView(pid)));
+    }
+
     // ── refresh: перевыпустить сессию по partner_user_id ──
     if (method === 'POST' && p === '/lmg/session/refresh') {
       if (!ICM_PARTNER_KEY) return send(res, 503, { error: 'not configured' });
       const body = await jsonBody(req);
       const pid = body && body.partner_user_id;
-      if (!pid || !users[pid]) return send(res, 401, { error: 'unknown user' });
+      if (!pid) return send(res, 400, { error: 'no partner_user_id' });
+      if (!users[pid]) users[pid] = { createdAt: Date.now() };   // авто-регистрация, если сервер перезапускали
       const { status, data } = await issueUpstreamSession(pid, !!body.hide_explicit);
       if (status < 200 || status >= 300 || !data.partner_session_token) { recordError('SESSION_' + status, 'refresh failed'); return send(res, 502, { error: 'refresh failed' }); }
       users[pid].lastSeenAt = Date.now(); saveJson(FILES.users, users);
