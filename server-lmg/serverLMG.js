@@ -175,6 +175,28 @@ async function issueUpstreamSession(partnerUserId, hideExplicit) {
   let data; try { data = JSON.parse(r.body.toString('utf8')); } catch (_) { data = {}; }
   return { status: r.status, data };
 }
+// Учёт устройств (паритет с GsGit, но без пушей): читаем заголовки, БЕЗ геолокации.
+// Клиент шлёт X-Device-Id (стабильный per-install), X-App-Version; платформа — из User-Agent.
+function touchDevice(pid, req) {
+  const u = users[pid]; if (!u) return;
+  const rawId = req.headers['x-device-id'];
+  const ua = String(req.headers['user-agent'] || '');
+  // если клиент не прислал id — деривим стабильный из UA, чтобы не плодить записи
+  const devId = (rawId && String(rawId).slice(0, 64))
+    || 'ua_' + crypto.createHash('sha256').update(ua).digest('hex').slice(0, 16);
+  const now = Date.now();
+  const devices = u.devices || (u.devices = {});
+  const d = devices[devId] || (devices[devId] = { firstSeen: now });
+  d.lastSeen = now;
+  d.appVersion = String(req.headers['x-app-version'] || d.appVersion || '');
+  d.platform = /Android/i.test(ua) ? 'android' : (ua.split(/[/ ]/)[0] || 'unknown').slice(0, 32);
+  // держим не больше 10 последних устройств на юзера
+  const ids = Object.keys(devices);
+  if (ids.length > 10) {
+    ids.sort((a, b) => (devices[a].lastSeen || 0) - (devices[b].lastSeen || 0));
+    while (Object.keys(devices).length > 10) delete devices[ids.shift()];
+  }
+}
 function userView(pid) {
   const u = users[pid] || {};
   const premium = !!u.isPremium && (!u.premiumExpiresAt || Date.now() < u.premiumExpiresAt);
@@ -240,6 +262,7 @@ const server = http.createServer(async (req, res) => {
       const now = Date.now();
       const u = users[pid] || (users[pid] = { createdAt: now });
       u.lastSeenAt = now;
+      touchDevice(pid, req);
       saveJson(FILES.users, users);
       recordMetric('sessionIssued');
       return send(res, 200, Object.assign({
@@ -279,7 +302,7 @@ const server = http.createServer(async (req, res) => {
     if (method === 'GET' && p === '/lmg/me/subscription') {
       const pid = req.headers['x-partner-user-id'];
       if (!pid || !users[pid]) return send(res, 401, { error: 'unknown user' });
-      users[pid].lastSeenAt = Date.now(); saveJson(FILES.users, users);
+      users[pid].lastSeenAt = Date.now(); touchDevice(pid, req); saveJson(FILES.users, users);
       return send(res, 200, userView(pid));
     }
 
@@ -300,6 +323,7 @@ const server = http.createServer(async (req, res) => {
       if (req.headers['authorization']) headers['Authorization'] = req.headers['authorization'];
       if (req.headers['x-partner-user-id']) headers['X-Partner-User-Id'] = req.headers['x-partner-user-id'];
       if (req.headers['x-lmg-fast']) headers['X-LMG-Fast'] = req.headers['x-lmg-fast'];
+      { const dpid = req.headers['x-partner-user-id']; if (dpid && users[dpid]) { users[dpid].lastSeenAt = Date.now(); touchDevice(dpid, req); saveJson(FILES.users, users); } }
       if (raw && raw.length) { headers['Content-Type'] = req.headers['content-type'] || 'application/json'; headers['Content-Length'] = raw.length; }
       let r;
       try { r = await request(target, { method, headers }, raw); }
@@ -334,8 +358,19 @@ const server = http.createServer(async (req, res) => {
         return send(res, 200, metricsFor(periodHours(url.searchParams.get('period'))));
       }
       if (method === 'GET' && p === '/admin/lmg/users') {
-        const list = Object.entries(users).map(([pid, u]) => ({ partner_user_id: pid, tgId: u.tgId || null, email: u.email || null, name: u.name || '', isPremium: !!u.isPremium, premiumExpiresAt: u.premiumExpiresAt || 0, lastSeenAt: u.lastSeenAt || 0 }))
+        const list = Object.entries(users).map(([pid, u]) => ({ partner_user_id: pid, tgId: u.tgId || null, email: u.email || null, name: u.name || '', isPremium: !!u.isPremium, premiumExpiresAt: u.premiumExpiresAt || 0, lastSeenAt: u.lastSeenAt || 0, devices: Object.keys(u.devices || {}).length }))
           .sort((a, b) => b.lastSeenAt - a.lastSeenAt);
+        return send(res, 200, { count: list.length, items: list });
+      }
+      // ── устройства (плоский список по всем юзерам, как в GsGit) ──
+      if (method === 'GET' && p === '/admin/lmg/devices') {
+        const list = [];
+        for (const [pid, u] of Object.entries(users)) {
+          for (const [devId, d] of Object.entries(u.devices || {})) {
+            list.push({ deviceId: devId, partner_user_id: pid, name: u.name || '', platform: d.platform || 'unknown', appVersion: d.appVersion || '', firstSeen: d.firstSeen || 0, lastSeen: d.lastSeen || 0 });
+          }
+        }
+        list.sort((a, b) => b.lastSeen - a.lastSeen);
         return send(res, 200, { count: list.length, items: list });
       }
       {

@@ -58,6 +58,15 @@ if (!partnerKey.isNullOrBlank()) builder.header("X-Partner-Key", partnerKey)
 (заголовок `X-Partner-User-Id: <partner_user_id>`). Ответ `{ is_premium, premium_expires_at, plan }`.
 Локальный флаг premium использовать только как кэш, источник истины — сервер.
 
+## 5a. Заголовки устройства (для админ-панели «Устройства», паритет с GsGit)
+На КАЖДЫЙ запрос к `<LMG_SERVER>/lmg/*` (в `IcmApi.buildRequest`) добавить два заголовка — без геолокации:
+```kotlin
+builder.header("X-Device-Id", stableInstallId)   // стабильный per-install UUID (SharedPreferences, генерится 1 раз)
+builder.header("X-App-Version", BuildConfig.VERSION_NAME)
+```
+`stableInstallId` — обычный `UUID.randomUUID()`, сохранённый при первом запуске. Платформу сервер сам берёт
+из `User-Agent`. Ничего больше слать не надо — сервер сведёт устройства по юзеру и покажет их в админке.
+
 ## 6. CertificatePinner
 В `IcmApi` пин сейчас на `byicloud.online`. Перевесить на домен `<LMG_SERVER>` (или временно снять и вернуть
 после того, как домен/сертификат зафиксируется).
