@@ -82,30 +82,41 @@ curl -s -X POST http://127.0.0.1:8090/admin/lmg/session/test -H "x-admin-key: <a
 
 ## Шаг 6. Навесить домен (HTTPS)
 
-Сервер слушает `:8090` локально. Чтобы клиент ходил по HTTPS — поднять поддомен через твой reverse-proxy
-(nginx/caddy на VPS), например `api.lmg.gsgit.org` → `127.0.0.1:8090`.
+Сервер слушает `:8090` локально. Домен — `api.gsgit.org/lmg` (переиспользуем существующий домен GsGit,
+свой сертификат не нужен). Прокси на VPS — **Caddy**.
 
-Пример nginx:
-```nginx
-server {
-    server_name api.lmg.gsgit.org;
-    location / { proxy_pass http://127.0.0.1:8090; proxy_set_header Host $host; }
-    # + certbot для TLS
+В Caddyfile, в блоке `api.gsgit.org`, добавить ДВА `handle` ПЕРЕД общим reverse_proxy:
+```caddy
+api.gsgit.org {
+    handle /lmg/* {
+        reverse_proxy localhost:8090
+    }
+    handle /admin/lmg/* {
+        reverse_proxy localhost:8090
+    }
+    handle {
+        reverse_proxy localhost:<порт-старого-GsGit-бэкенда>
+    }
 }
 ```
-Итоговый `https://api.lmg.gsgit.org` — это **`<LMG_SERVER>`**, который отдаёшь Fable для BASE_URL.
+- `handle`, НЕ `handle_path` — префикс `/lmg` не срезаем (роуты сервера сами начинаются с `/lmg`).
+- Caddy сам ставит `X-Forwarded-For` → rate-limit по IP считает реальный адрес.
+- Применить: `caddy reload` (или `systemctl reload caddy`).
 
-Проверка снаружи:
+Итоговый `https://api.gsgit.org/lmg/icm` — это база для Fable (BASE_URL).
+
+Проверка снаружи (после reload):
 ```bash
-curl -s https://api.lmg.gsgit.org/admin/lmg/health -H "x-admin-key: <admin-key>" | jq .serverVersion
+curl -s https://api.gsgit.org/lmg/config; echo
+curl -s https://api.gsgit.org/admin/lmg/health -H "x-admin-key: <admin-key>"; echo
 ```
 
 ---
 
 ## Шаг 7. Раздать по ролям
 
-- **Fable:** дать `<LMG_SERVER>` = `https://api.lmg.gsgit.org` (для `lmg-client-changes-for-fable.md`).
-- **GPT (админка):** дать `<LMG_SERVER>` + **admin-key** (для вкладки «LMG» — инструкцию напишу отдельно).
+- **Fable:** база `https://api.gsgit.org/lmg/icm` (для `lmg-client-changes-for-fable.md`).
+- **GPT (админка):** `https://api.gsgit.org/lmg` + **admin-key** (для вкладки «LMG» — инструкцию напишу отдельно).
 
 ---
 
