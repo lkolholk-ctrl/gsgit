@@ -412,7 +412,9 @@ const server = http.createServer(async (req, res) => {
       if (!users[pid]) users[pid] = { createdAt: Date.now() };   // авто-регистрация, если сервер перезапускали
       const { status, data } = await issueUpstreamSession(pid, !!body.hide_explicit);
       if (status < 200 || status >= 300 || !data.partner_session_token) { recordError('SESSION_' + status, 'refresh failed'); return send(res, 502, { error: 'refresh failed' }); }
-      users[pid].lastSeenAt = Date.now(); saveJson(FILES.users, users);
+      users[pid].lastSeenAt = Date.now();
+      touchDevice(pid, req);   // девайс+гео и на рефреше (не только на issue)
+      saveJson(FILES.users, users);
       recordMetric('sessionIssued');
       fetchUpstreamSubscription(pid).catch(() => {});   // прогрев кэша, не await
       return send(res, 200, Object.assign({ partner_session_token: data.partner_session_token, expires_in: data.expires_in || 0, scopes: data.scopes || [] }, userView(pid)));
