@@ -15,7 +15,7 @@ const fs = require('fs');
 const path = require('path');
 const { URL } = require('url');
 
-const SERVER_VERSION = '1.0.4';
+const SERVER_VERSION = '1.0.5';
 
 // ─── env / секреты (в код ничего не зашивать) ────────────────────────────────
 const PORT = Number(process.env.LMG_PORT || 8090);
@@ -49,6 +49,7 @@ const FILES = {
   metrics: path.join(DATA_DIR, 'lmg-metrics.json'),
   errors: path.join(DATA_DIR, 'lmg-errors.json'),
   geo: path.join(DATA_DIR, 'lmg-geo.json'),
+  clientErrors: path.join(DATA_DIR, 'lmg-client-errors.json'),
 };
 function loadJson(file, fallback) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) { return fallback; }
@@ -63,13 +64,18 @@ function saveJson(file, obj) {
 
 // users: { [partnerUserId]: { tgId, email, createdAt, lastSeenAt, isPremium, premiumExpiresAt, plan } }
 let users = loadJson(FILES.users, {});
-// config: server-driven (feature flags / maintenance / версии) — как appconfig GsGit
-let config = loadJson(FILES.config, {
-  maintenance: '', minVersion: '', latestVersion: '', changelog: '', downloadUrl: '',
+// config: server-driven (feature flags / maintenance / версии) — как appconfig GsGit.
+// Мерж с дефолтами: сохранённый на диске конфиг без нового ключа (notice)
+// иначе не давал бы его выставить через POST /admin/lmg/config.
+const CONFIG_DEFAULTS = {
+  maintenance: '', notice: '', minVersion: '', latestVersion: '', changelog: '', downloadUrl: '',
   waveEnabled: true, importEnabled: true,
-});
+};
+let config = Object.assign({}, CONFIG_DEFAULTS, loadJson(FILES.config, {}));
 let metrics = loadJson(FILES.metrics, { hours: {} });
 let errorsLog = loadJson(FILES.errors, []);
+// клиентские крэши/ошибки (mini-Crashlytics): агрегируются по tag+message+version
+let clientErrors = loadJson(FILES.clientErrors, []);
 
 const START = Date.now();
 
@@ -126,6 +132,34 @@ async function geoForIp(rawIp) {
   } catch (_) {}
   return null;
 }
+// ─── латентность upstream по группам путей (in-memory, с рестарта) ───────────
+// Кольцо последних 300 замеров на группу → p50/p95: видно, тормозит ли ICM
+// (и что именно — поиск/стрим/волна), без гаданий по жалобам юзеров.
+const latSamples = {};   // group → массив мс
+function recordLatency(group, ms) {
+  const a = latSamples[group] || (latSamples[group] = []);
+  a.push(ms);
+  if (a.length > 300) a.shift();
+}
+function latStats() {
+  const out = {};
+  for (const [g, a] of Object.entries(latSamples)) {
+    const s = [...a].sort((x, y) => x - y);
+    const q = (p) => (s.length ? s[Math.min(s.length - 1, Math.floor(p * s.length))] : 0);
+    out[g] = { count: a.length, p50: q(0.5), p95: q(0.95), max: s[s.length - 1] || 0 };
+  }
+  return out;
+}
+function latGroupFor(upstreamPath) {
+  const q = upstreamPath.split('?')[0];
+  if (q.startsWith('/search')) return 'search';
+  if (q.startsWith('/track')) return 'track';
+  if (q.startsWith('/library/wave')) return 'wave';
+  if (q.startsWith('/library')) return 'library';
+  if (q.startsWith('/me/')) return 'me';
+  return 'other';
+}
+
 // ─── простой rate-limit по IP (скользящее окно, in-memory) ───────────────────
 // Защищает открытый минт сессии: lg_-id — bearer-секрет, нельзя давать перебирать/спамить.
 const rlHits = new Map();  // ip → массив timestamps
@@ -211,6 +245,7 @@ function partnerUserIdForEmail(email) {
 // ─── ICM upstream: выпуск сессии (s2s, с партнёрским ключом) ─────────────────
 async function issueUpstreamSession(partnerUserId, hideExplicit) {
   const body = JSON.stringify({ partner_user_id: partnerUserId, hide_explicit: !!hideExplicit });
+  const t0 = Date.now();
   const r = await request(`${ICM_BASE_URL}/session/issue`, {
     method: 'POST',
     headers: {
@@ -223,6 +258,7 @@ async function issueUpstreamSession(partnerUserId, hideExplicit) {
       'Content-Length': Buffer.byteLength(body),
     },
   }, body);
+  recordLatency('session', Date.now() - t0);
   let data; try { data = JSON.parse(r.body.toString('utf8')); } catch (_) { data = {}; }
   return { status: r.status, data };
 }
@@ -354,6 +390,7 @@ const server = http.createServer(async (req, res) => {
       if (TELEGRAM_BOT_TOKEN && !verifyTelegramAuth(body)) { recordMetric('authFail'); return send(res, 401, { error: 'bad telegram signature' }); }
       const tgId = String(body.id);
       const pid = partnerUserIdForTelegram(tgId);
+      if (users[pid] && users[pid].banned) { recordMetric('bannedHit'); return send(res, 403, { error: 'banned' }); }
       const { status, data } = await issueUpstreamSession(pid, !!body.hide_explicit);
       if (status < 200 || status >= 300 || !data.partner_session_token) {
         recordError('SESSION_' + status, 'upstream session/issue failed'); recordMetric('authFail');
@@ -381,6 +418,9 @@ const server = http.createServer(async (req, res) => {
       const body = await jsonBody(req);
       const pid = body && body.partner_user_id;
       if (!pid) return send(res, 400, { error: 'no partner_user_id' });
+      // Бан — единственный настоящий kill switch: токен живёт ≤1ч, дальше
+      // забаненный юзер сюда и упрётся.
+      if (users[pid] && users[pid].banned) { recordMetric('bannedHit'); return send(res, 403, { error: 'banned' }); }
       const { status, data } = await issueUpstreamSession(pid, !!(body && body.hide_explicit));
       if (status < 200 || status >= 300 || !data.partner_session_token) {
         recordError('SESSION_' + status, 'upstream session/issue failed'); recordMetric('authFail');
@@ -409,6 +449,7 @@ const server = http.createServer(async (req, res) => {
       const body = await jsonBody(req);
       const pid = body && body.partner_user_id;
       if (!pid) return send(res, 400, { error: 'no partner_user_id' });
+      if (users[pid] && users[pid].banned) { recordMetric('bannedHit'); return send(res, 403, { error: 'banned' }); }
       if (!users[pid]) users[pid] = { createdAt: Date.now() };   // авто-регистрация, если сервер перезапускали
       const { status, data } = await issueUpstreamSession(pid, !!body.hide_explicit);
       if (status < 200 || status >= 300 || !data.partner_session_token) { recordError('SESSION_' + status, 'refresh failed'); return send(res, 502, { error: 'refresh failed' }); }
@@ -438,12 +479,39 @@ const server = http.createServer(async (req, res) => {
     if (method === 'GET' && p === '/lmg/me/subscription') {
       const pid = req.headers['x-partner-user-id'];
       if (!pid || !users[pid]) return send(res, 401, { error: 'unknown user' });
+      if (users[pid].banned) { recordMetric('bannedHit'); return send(res, 403, { error: 'banned' }); }
       users[pid].lastSeenAt = Date.now(); touchDevice(pid, req);
       await fetchUpstreamSubscription(pid);
       saveJson(FILES.users, users);
       return send(res, 200, Object.assign(userView(pid), {
         regions: users[pid].icmRegions || [],
       }));
+    }
+
+    // ── клиентские крэши/ошибки (mini-Crashlytics, без Google) ──
+    // Открытая ручка с жёсткой квотой; агрегация повторов по tag+message+version.
+    if (method === 'POST' && p === '/lmg/client-log') {
+      if (rateLimited('cl_' + clientIp(req), 10, 60_000)) { recordMetric('rateLimited'); return send(res, 429, { error: 'too many requests' }); }
+      const b = await jsonBody(req) || {};
+      const entry = {
+        at: Date.now(),
+        level: String(b.level || 'error').slice(0, 8),
+        tag: String(b.tag || '').slice(0, 64),
+        message: String(b.message || '').slice(0, 500),
+        stack: String(b.stack || '').slice(0, 4000),
+        version: String(b.version || req.headers['x-app-version'] || '').slice(0, 32),
+        pid: String(req.headers['x-partner-user-id'] || '').slice(0, 64),
+        deviceId: String(req.headers['x-device-id'] || '').slice(0, 64),
+      };
+      if (!entry.message) return send(res, 400, { error: 'no message' });
+      const key = crypto.createHash('sha1').update(entry.tag + '|' + entry.message + '|' + entry.version).digest('hex').slice(0, 12);
+      const found = clientErrors.find((e) => e.key === key);
+      if (found) { found.count++; found.lastAt = entry.at; if (entry.stack) found.stack = entry.stack; if (entry.pid) found.pid = entry.pid; }
+      else clientErrors.unshift(Object.assign({ key, count: 1, firstAt: entry.at }, entry));
+      clientErrors = clientErrors.slice(0, 200);
+      saveJson(FILES.clientErrors, clientErrors);
+      recordMetric('clientLog');
+      return send(res, 200, { ok: true });
     }
 
     // ── ICM reverse-proxy: ВСЁ остальное партнёрки ──
@@ -465,9 +533,10 @@ const server = http.createServer(async (req, res) => {
       if (req.headers['x-lmg-fast']) headers['X-LMG-Fast'] = req.headers['x-lmg-fast'];
       { const dpid = req.headers['x-partner-user-id']; if (dpid && users[dpid]) { users[dpid].lastSeenAt = Date.now(); touchDevice(dpid, req); saveJson(FILES.users, users); } }
       if (raw && raw.length) { headers['Content-Type'] = req.headers['content-type'] || 'application/json'; headers['Content-Length'] = raw.length; }
-      let r;
+      let r; const t0 = Date.now();
       try { r = await request(target, { method, headers }, raw); }
       catch (e) { recordError('ICM_NET', 'upstream unreachable'); recordMetric('icmFail'); return send(res, 502, { error: 'icm unreachable' }); }
+      recordLatency(latGroupFor(upstreamPath), Date.now() - t0);
       recordMetric('icm');
       if (r.status >= 500) { recordMetric('icm5xx'); recordError('ICM_' + r.status, 'upstream 5xx ' + upstreamPath.split('?')[0]); }
       else if (r.status >= 400) recordMetric('icm4xx');
@@ -510,7 +579,7 @@ const server = http.createServer(async (req, res) => {
             { tgId: u.tgId || null, email: u.email || null, name: u.name || '',
               lastSeenAt: u.lastSeenAt || 0, devices: Object.keys(u.devices || {}).length,
               regions: u.icmRegions || [], localGrant: !!u.isPremium,
-              cc, country, city },
+              banned: !!u.banned, cc, country, city },
             userView(pid),
           );
         }).sort((a, b) => b.lastSeenAt - a.lastSeenAt);
@@ -554,6 +623,102 @@ const server = http.createServer(async (req, res) => {
         }
       }
       if (method === 'GET' && p === '/admin/lmg/errors') return send(res, 200, { items: errorsLog });
+      // ── сводный статус зависимостей: «что работает, что нет» одним экраном ──
+      if (method === 'GET' && p === '/admin/lmg/status') {
+        const probe = async (name, fn) => {
+          const t0 = Date.now();
+          try { const ok = await fn(); return { name, ok: !!ok, ms: Date.now() - t0 }; }
+          catch (_) { return { name, ok: false, ms: Date.now() - t0 }; }
+        };
+        const [icm, bridge, geo] = await Promise.all([
+          probe('icm', async () => { const r = await request(`${ICM_BASE_URL}/health`, { method: 'GET', headers: { 'X-Partner-Key': ICM_PARTNER_KEY, 'Origin': ICM_ORIGIN, 'Referer': ICM_ORIGIN + '/', 'Accept': 'application/json' } }); return r.status >= 200 && r.status < 500; }),
+          probe('telegramBridge', async () => { const r = await request('https://liquid.glassfiles.ru/auth/telegram?linked=1&state=probe', { method: 'GET', headers: { 'Accept': 'text/html' } }); return r.status === 200; }),
+          probe('geoService', async () => { const r = await request('https://ipwho.is/8.8.8.8?fields=success', { method: 'GET', headers: { 'Accept': 'application/json' } }); return r.status === 200; }),
+        ]);
+        return send(res, 200, {
+          broker: { ok: true, version: SERVER_VERSION, uptimeMs: Date.now() - START, users: Object.keys(users).length, partnerKeySet: !!ICM_PARTNER_KEY },
+          checks: [icm, bridge, geo],
+          latency: latStats(),
+          serverTime: new Date().toISOString(),
+        });
+      }
+
+      // ── активность: живые люди, а не счётчики запросов ──
+      if (method === 'GET' && p === '/admin/lmg/activity') {
+        const now = Date.now(); const day = 86_400_000;
+        let dau = 0, wau = 0, mau = 0, new24 = 0, new7 = 0, banned = 0, premium = 0;
+        const versions = {}; const countries = {};
+        for (const [pid, u] of Object.entries(users)) {
+          const seen = u.lastSeenAt || 0;
+          if (now - seen < day) dau++;
+          if (now - seen < 7 * day) wau++;
+          if (now - seen < 30 * day) mau++;
+          if (now - (u.createdAt || 0) < day) new24++;
+          if (now - (u.createdAt || 0) < 7 * day) new7++;
+          if (u.banned) banned++;
+          if (userView(pid).is_premium) premium++;
+          let lastDev = null;
+          for (const d of Object.values(u.devices || {})) if (!lastDev || (d.lastSeen || 0) > (lastDev.lastSeen || 0)) lastDev = d;
+          if (lastDev) {
+            if (lastDev.appVersion) versions[lastDev.appVersion] = (versions[lastDev.appVersion] || 0) + 1;
+            if (lastDev.cc) countries[lastDev.cc] = (countries[lastDev.cc] || 0) + 1;
+          }
+        }
+        return send(res, 200, { total: Object.keys(users).length, dau, wau, mau, new24h: new24, new7d: new7, premium, banned, versions, countries });
+      }
+
+      // ── латентность ICM по группам путей (p50/p95, с рестарта) ──
+      if (method === 'GET' && p === '/admin/lmg/latency') return send(res, 200, latStats());
+
+      // ── клиентские ошибки (из POST /lmg/client-log) ──
+      if (method === 'GET' && p === '/admin/lmg/client-errors') return send(res, 200, { items: clientErrors });
+      if (method === 'DELETE' && p === '/admin/lmg/client-errors') { clientErrors = []; saveJson(FILES.clientErrors, clientErrors); return send(res, 200, { ok: true }); }
+
+      // ── бан: настоящий kill switch (issue/refresh/subscription отдают 403) ──
+      {
+        const m = p.match(/^\/admin\/lmg\/users\/([A-Za-z0-9_]+)\/ban$/);
+        if (m && method === 'POST') {
+          const u = users[m[1]]; if (!u) return send(res, 404, { error: 'not found' });
+          const b = await jsonBody(req) || {};
+          u.banned = b.banned !== false;
+          u.banReason = String(b.reason || '').slice(0, 200);
+          u.bannedAt = u.banned ? Date.now() : 0;
+          saveJson(FILES.users, users);
+          return send(res, 200, { partner_user_id: m[1], banned: !!u.banned, reason: u.banReason });
+        }
+      }
+
+      // ── бэкап одной кнопкой (users+config+ошибки, скачивается файлом) ──
+      if (method === 'GET' && p === '/admin/lmg/backup') {
+        const dump = Buffer.from(JSON.stringify({ exportedAt: new Date().toISOString(), serverVersion: SERVER_VERSION, users, config, clientErrors, errors: errorsLog }, null, 2));
+        return send(res, 200, dump, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Disposition': `attachment; filename="lmg-backup-${new Date().toISOString().slice(0, 10)}.json"` });
+      }
+
+      // ── ротация admin-ключа (засветил на скрине — перевыпустил без SSH).
+      // Новый ключ показывается ОДИН раз в ответе; старый умирает мгновенно. ──
+      if (method === 'POST' && p === '/admin/lmg/rotate-key') {
+        const fresh = crypto.randomBytes(24).toString('hex');
+        try { fs.writeFileSync(ADMIN_KEY_FILE, fresh); } catch (e) { return send(res, 500, { error: 'persist failed' }); }
+        ADMIN_KEY = fresh;
+        return send(res, 200, { adminKey: fresh });
+      }
+
+      // ── rate-limit: горячие IP и снятие бана лимитера ──
+      if (method === 'GET' && p === '/admin/lmg/ratelimits') {
+        const now = Date.now();
+        const items = [...rlHits.entries()]
+          .map(([ip, arr]) => ({ ip, hitsLastMin: arr.filter((t) => now - t < 60_000).length }))
+          .filter((x) => x.hitsLastMin > 0)
+          .sort((a, b) => b.hitsLastMin - a.hitsLastMin)
+          .slice(0, 50);
+        return send(res, 200, { items });
+      }
+      if (method === 'POST' && p === '/admin/lmg/ratelimits/clear') {
+        const b = await jsonBody(req) || {};
+        if (b.ip) { rlHits.delete(String(b.ip)); rlHits.delete('cl_' + String(b.ip)); } else rlHits.clear();
+        return send(res, 200, { ok: true });
+      }
+
       if (method === 'POST' && p === '/admin/lmg/session/test') {
         const { status, data } = await issueUpstreamSession('admin_probe_' + Date.now(), false);
         return send(res, 200, { upstreamStatus: status, gotToken: !!data.partner_session_token });
