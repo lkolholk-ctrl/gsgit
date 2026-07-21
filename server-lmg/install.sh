@@ -5,7 +5,7 @@ cd "$(dirname "$0")"
 
 if [ ! -f .env ]; then
   cp .env.example .env
-  echo "→ Создан server-lmg/.env. Впиши ICM_PARTNER_KEY и TELEGRAM_BOT_TOKEN, потом запусти снова."
+  echo "→ Создан server-lmg/.env. Впиши ICM_PARTNER_KEY (Telegram-токен не нужен), потом запусти снова."
   exit 1
 fi
 
@@ -26,4 +26,4 @@ curl -s "http://127.0.0.1:${LMG_PORT:-8090}/admin/lmg/health" -H "x-admin-key: $
 echo
 echo "──────────────────────────────────────────"
 echo "admin key (для админ-панели): ${KEY}"
-echo "Ждём в health: partnerKeySet:true, telegramConfigured:true, icmUpstream:\"ok\""
+echo "Ждём в health: partnerKeySet:true, icmUpstream:\"ok\" (telegramHmac:false — это норма)"
