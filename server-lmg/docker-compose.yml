@@ -1,0 +1,13 @@
+# Отдельный compose для LMG-сервера. Запуск: см. install.sh
+services:
+  lmg:
+    build: .
+    container_name: lmg-server
+    restart: unless-stopped
+    env_file: ./.env
+    volumes:
+      - lmg-data:/data
+    ports:
+      - "8090:8090"      # проксируй через nginx/caddy на поддомен при желании
+volumes:
+  lmg-data:
