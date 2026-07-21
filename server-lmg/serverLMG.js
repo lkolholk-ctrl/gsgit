@@ -15,7 +15,7 @@ const fs = require('fs');
 const path = require('path');
 const { URL } = require('url');
 
-const SERVER_VERSION = '1.0.1';
+const SERVER_VERSION = '1.0.2';
 
 // ─── env / секреты (в код ничего не зашивать) ────────────────────────────────
 const PORT = Number(process.env.LMG_PORT || 8090);
@@ -217,8 +217,70 @@ function touchDevice(pid, req) {
 }
 function userView(pid) {
   const u = users[pid] || {};
-  const premium = !!u.isPremium && (!u.premiumExpiresAt || Date.now() < u.premiumExpiresAt);
-  return { partner_user_id: pid, is_premium: premium, premium_expires_at: u.premiumExpiresAt || 0, plan: u.plan || 'free' };
+  const now = Date.now();
+  // Premium = локальный грант брокера ИЛИ реальная подписка ICM (кэш от
+  // fetchUpstreamSubscription). Полевой баг: у юзера подписка ICM до 06.08,
+  // а брокер отвечал "free", потому что смотрел только в свою базу.
+  const localP = !!u.isPremium && (!u.premiumExpiresAt || now < u.premiumExpiresAt);
+  const icmP = !!u.icmPremium && (!u.icmPremiumExpiresAt || now < u.icmPremiumExpiresAt);
+  const premium = localP || icmP;
+  const exp = Math.max(localP ? (u.premiumExpiresAt || 0) : 0, icmP ? (u.icmPremiumExpiresAt || 0) : 0)
+    || u.icmPremiumExpiresAt || u.premiumExpiresAt || 0;
+  const plan = premium
+    ? ((localP && u.plan && u.plan !== 'free') ? u.plan : (u.icmPlan && u.icmPlan !== 'free' ? u.icmPlan : 'premium'))
+    : 'free';
+  return { partner_user_id: pid, is_premium: premium, premium_expires_at: exp, plan };
+}
+
+// ─── ICM upstream: РЕАЛЬНАЯ подписка юзера (/me/subscription) ────────────────
+// Брокер владеет premium, но источник фактической подписки — ICM: минтим
+// сессию s2s, спрашиваем /me/subscription с Bearer, кэшируем на юзере 10 мин
+// (клиент опрашивает при каждом логине/старте — не долбим партнёрку).
+// Не-linked юзер (403) = подписки нет. Ошибки сети кэш не трогают.
+const SUB_CACHE_MS = 10 * 60_000;
+async function fetchUpstreamSubscription(pid, force) {
+  const u = users[pid];
+  if (!u || !ICM_PARTNER_KEY) return;
+  const now = Date.now();
+  if (!force && u.subCheckedAt && now - u.subCheckedAt < SUB_CACHE_MS) return;
+  try {
+    const s = await issueUpstreamSession(pid, false);
+    if (s.status < 200 || s.status >= 300 || !s.data.partner_session_token) return;
+    const r = await request(`${ICM_BASE_URL}/me/subscription`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'LiquidMusicGlass-Server/' + SERVER_VERSION,
+        'X-Partner-Key': ICM_PARTNER_KEY,
+        'Authorization': 'Bearer ' + s.data.partner_session_token,
+        'X-Partner-User-Id': pid,
+        'Origin': ICM_ORIGIN,
+        'Referer': ICM_ORIGIN + '/',
+      },
+    });
+    let d; try { d = JSON.parse(r.body.toString('utf8')); } catch (_) { d = null; }
+    if (r.status === 200 && d && typeof d.active === 'boolean') {
+      // active И не истекло (как гейт скачивания в клиенте): подписка с
+      // active=true, но days_left=0 premium давать не должна.
+      const active = d.active && (d.days_left == null || d.days_left > 0 || !d.expires_at);
+      // expires_at → миллисекунды (клиент сравнивает с currentTimeMillis):
+      // секунды → ×1000; фолбэк — expires_at_iso.
+      let exp = Number(d.expires_at || 0);
+      if (exp && exp < 1e12) exp *= 1000;
+      if (!exp && d.expires_at_iso) { const t = Date.parse(d.expires_at_iso); if (!isNaN(t)) exp = t; }
+      u.icmPremium = active;
+      u.icmPremiumExpiresAt = exp;
+      u.icmPlan = d.plan_type || (active ? 'premium' : 'free');
+      u.subCheckedAt = now;
+      saveJson(FILES.users, users);
+    } else if (r.status === 403 || r.status === 404) {
+      // user_not_linked / subscription_required / user_not_found → подписки нет
+      u.icmPremium = false;
+      u.subCheckedAt = now;
+      saveJson(FILES.users, users);
+    }
+    // 5xx/сеть: кэш не трогаем — прошлое знание лучше ложного "free"
+  } catch (_) { /* сеть упала — молча, кэш живёт */ }
 }
 
 // ─── роутинг ─────────────────────────────────────────────────────────────────
@@ -284,6 +346,9 @@ const server = http.createServer(async (req, res) => {
       touchDevice(pid, req);
       saveJson(FILES.users, users);
       recordMetric('sessionIssued');
+      // Прогрев кэша подписки в фоне (НЕ await — не удлиняем логин): клиент
+      // спросит /me/subscription сразу после — ответ уже будет тёплым.
+      fetchUpstreamSubscription(pid).catch(() => {});
       return send(res, 200, Object.assign({
         partner_session_token: data.partner_session_token,
         expires_in: data.expires_in || 0,
@@ -303,6 +368,7 @@ const server = http.createServer(async (req, res) => {
       if (status < 200 || status >= 300 || !data.partner_session_token) { recordError('SESSION_' + status, 'refresh failed'); return send(res, 502, { error: 'refresh failed' }); }
       users[pid].lastSeenAt = Date.now(); saveJson(FILES.users, users);
       recordMetric('sessionIssued');
+      fetchUpstreamSubscription(pid).catch(() => {});   // прогрев кэша, не await
       return send(res, 200, Object.assign({ partner_session_token: data.partner_session_token, expires_in: data.expires_in || 0, scopes: data.scopes || [] }, userView(pid)));
     }
 
@@ -319,10 +385,14 @@ const server = http.createServer(async (req, res) => {
     }
 
     // ── premium / подписка (server-authoritative) ──
+    // Реальная подписка тянется из ICM (кэш 10 мин) и мержится с локальными
+    // грантами брокера в userView.
     if (method === 'GET' && p === '/lmg/me/subscription') {
       const pid = req.headers['x-partner-user-id'];
       if (!pid || !users[pid]) return send(res, 401, { error: 'unknown user' });
-      users[pid].lastSeenAt = Date.now(); touchDevice(pid, req); saveJson(FILES.users, users);
+      users[pid].lastSeenAt = Date.now(); touchDevice(pid, req);
+      await fetchUpstreamSubscription(pid);
+      saveJson(FILES.users, users);
       return send(res, 200, userView(pid));
     }
 
