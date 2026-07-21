@@ -12,8 +12,14 @@ gsgit.org {
 
 api.gsgit.org {
 	# LMG-брокер (LiquidMusicGlass): сессии, прокси партнёрки ICM, premium.
-	# Контейнер lmg-server подключён в сеть server_default (docker network connect).
+	# Контейнер lmg-server в сети server_default (задано в server-lmg/docker-compose.yml).
 	handle /lmg/* {
+		reverse_proxy lmg-server:8090
+	}
+	# Админ-ручки брокера — для in-app админки (как Server Admin в GsGit).
+	# Защита: заголовок x-admin-key (192-битный ключ). Отдельный path, чтобы
+	# не пересекаться с /admin/* старого GsGit-бэкенда.
+	handle /admin/lmg/* {
 		reverse_proxy lmg-server:8090
 	}
 	handle {
