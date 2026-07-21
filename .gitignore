@@ -9,3 +9,6 @@ local.properties
 *.iml
 .cxx/
 app/.cxx/
+
+# LMG server secrets — НИКОГДА не коммитить
+server-lmg/.env
