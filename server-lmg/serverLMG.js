@@ -271,6 +271,9 @@ async function fetchUpstreamSubscription(pid, force) {
       u.icmPremium = active;
       u.icmPremiumExpiresAt = exp;
       u.icmPlan = d.plan_type || (active ? 'premium' : 'free');
+      // Регионы подписки (US/NZ) — как есть из ICM: профиль в клиенте
+      // показывает regions[0], без них рисовался ложный «Global (WW)».
+      u.icmRegions = Array.isArray(d.regions) ? d.regions : [];
       u.subCheckedAt = now;
       saveJson(FILES.users, users);
     } else if (r.status === 403 || r.status === 404) {
@@ -393,7 +396,9 @@ const server = http.createServer(async (req, res) => {
       users[pid].lastSeenAt = Date.now(); touchDevice(pid, req);
       await fetchUpstreamSubscription(pid);
       saveJson(FILES.users, users);
-      return send(res, 200, userView(pid));
+      return send(res, 200, Object.assign(userView(pid), {
+        regions: users[pid].icmRegions || [],
+      }));
     }
 
     // ── ICM reverse-proxy: ВСЁ остальное партнёрки ──
