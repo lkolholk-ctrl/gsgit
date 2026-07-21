@@ -93,13 +93,18 @@ private suspend fun GitHubManager.requestDeviceToken(clientId: String, deviceCod
     }
 }
 
+// Backend-прокси обновления токена. GitHub требует client_secret для
+// grant_type=refresh_token, а секрета на устройстве нет и быть не должно —
+// поэтому refresh_token уходит на наш сервер, он добавляет секрет и меняет
+// его в GitHub. Прямой обмен с пустым секретом (как было раньше) всегда падал
+// → по истечении access-токена пользователя разлогинивало.
+private const val GSGIT_REFRESH_URL = "https://api.gsgit.org/auth/refresh"
+
 internal suspend fun GitHubManager.refreshGsGitAppUserToken(refreshToken: String): GHDeviceTokenResult {
     val body = JSONObject().apply {
-        put("client_id", GsGitGitHubApp.CLIENT_ID)
-        put("grant_type", "refresh_token")
         put("refresh_token", refreshToken)
     }.toString()
-    val r = requestBasic("${getWebUrl()}/login/oauth/access_token", "POST", body, GsGitGitHubApp.CLIENT_ID, "")
+    val r = requestBasic(GSGIT_REFRESH_URL, "POST", body, "", "")
     return try {
         val json = JSONObject(r.body)
         val error = json.optString("error", "")

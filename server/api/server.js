@@ -39,10 +39,17 @@ const FCM_PROJECT_ID = process.env.FCM_PROJECT_ID || '';
 const SERVICE_ACCOUNT_FILE = process.env.SERVICE_ACCOUNT_FILE || '/data/service-account.json';
 const DEVICES_FILE = process.env.DEVICES_FILE || '/data/devices.json';
 const GITHUB_API = process.env.GITHUB_API || 'https://api.github.com';
+const GITHUB_WEB = process.env.GITHUB_WEB || 'https://github.com';
+// OAuth GsGit GitHub App: client_id публичный, а client_secret живёт ТОЛЬКО на
+// сервере (устройство его не видит). Нужен для обновления user-token'а —
+// GitHub требует секрет для grant_type=refresh_token.
+const GH_APP_CLIENT_ID = process.env.GITHUB_APP_CLIENT_ID || 'Iv23li20TIiHVSmfq2ai';
+const GH_APP_CLIENT_SECRET = process.env.GITHUB_APP_CLIENT_SECRET || '';
 const MAX_BODY = 1024 * 1024; // GitHub шлёт до ~25 МБ, но нам столько не нужно — режем на 1 МБ
 
 if (!WEBHOOK_SECRET) console.warn('[warn] GITHUB_WEBHOOK_SECRET не задан — /webhook будет отвечать 503');
 if (!FCM_PROJECT_ID) console.warn('[warn] FCM_PROJECT_ID не задан — пуши отправляться не будут');
+if (!GH_APP_CLIENT_SECRET) console.warn('[warn] GITHUB_APP_CLIENT_SECRET не задан — /auth/refresh будет отвечать 503');
 
 // ─── Общий JSON-стор с дебаунс-записью ───────────────────────────────────────
 
@@ -153,7 +160,7 @@ function saveAppConfig() { saveJson(APPCONFIG_FILE, appConfig); }
 // Всё под тем же X-Admin-Key. Ничего из боевых путей (/webhook, /register,
 // пуши, старые /admin/*) не меняет по контракту — только добавляет.
 
-const SERVER_VERSION = '1.1.1';
+const SERVER_VERSION = '1.1.2';
 const startedAt = Date.now();
 
 const ANNOUNCEMENTS_FILE = process.env.ANNOUNCEMENTS_FILE || path.join(DATA_DIR, 'announcements.json');
@@ -1176,6 +1183,54 @@ const server = http.createServer(async (req, res) => {
         createdAt: new Date(e.createdAt).toISOString(), lastAt: new Date(e.lastAt).toISOString(),
       }));
       return send(res, 200, { items });
+    }
+
+    // Обновление user-token'а GsGit GitHub App через backend: устройство шлёт
+    // свой refresh_token, сервер добавляет client_secret (которого на устройстве
+    // нет) и меняет его в GitHub на свежую пару. Токены НЕ логируем.
+    if (req.method === 'POST' && url.pathname === '/auth/refresh') {
+      if (!GH_APP_CLIENT_SECRET) return send(res, 503, { error: 'oauth not configured' });
+      const body = await jsonBody(req);
+      const refreshToken = body && typeof body.refresh_token === 'string' ? body.refresh_token.trim() : '';
+      if (!refreshToken) return send(res, 400, { error: 'refresh_token required' });
+      const form = new URLSearchParams({
+        client_id: GH_APP_CLIENT_ID,
+        client_secret: GH_APP_CLIENT_SECRET,
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken,
+      }).toString();
+      let gh;
+      try {
+        gh = await request(`${GITHUB_WEB}/login/oauth/access_token`, {
+          method: 'POST',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Content-Length': Buffer.byteLength(form),
+            'User-Agent': 'GsGit-Server',
+          },
+        }, form);
+      } catch (_) {
+        recordError('auth', 'REFRESH_NET', 'github unreachable during token refresh');
+        recordMetric('authRefreshFail');
+        return send(res, 502, { error: 'github unreachable' });
+      }
+      let data;
+      try { data = JSON.parse(gh.body); } catch (_) { data = {}; }
+      if (data.error || !data.access_token) {
+        recordError('auth', 'REFRESH_' + (data.error || gh.status), 'github refused token refresh');
+        recordMetric('authRefreshFail');
+        return send(res, 401, { error: data.error || 'refresh rejected' });
+      }
+      recordMetric('authRefresh');
+      console.log('[auth] user token refreshed');
+      return send(res, 200, {
+        access_token: data.access_token,
+        expires_in: data.expires_in || 0,
+        refresh_token: data.refresh_token || '',
+        refresh_token_expires_in: data.refresh_token_expires_in || 0,
+        token_type: data.token_type || 'bearer',
+      });
     }
 
     if (req.method === 'POST' && url.pathname === '/webhook') {
