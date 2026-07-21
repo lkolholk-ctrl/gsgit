@@ -29,6 +29,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -68,6 +69,10 @@ internal fun LoginScreen(onBack: () -> Unit, onMinimize: () -> Unit, onClose: ((
     var deviceCodeExpiresAt by remember { mutableStateOf(0L) }
     var appAuthBusy by remember { mutableStateOf(false) }
     var appAuthError by remember { mutableStateOf("") }
+    // Вход по токену (PAT) — опционально, только через явное согласие «на свой страх и риск».
+    var patExpanded by remember { mutableStateOf(false) }
+    var patAccepted by remember { mutableStateOf(false) }
+    var patInput by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
         securityWarning = withContext(Dispatchers.Default) {
@@ -141,6 +146,22 @@ internal fun LoginScreen(onBack: () -> Unit, onMinimize: () -> Unit, onClose: ((
         Toast.makeText(context, "Code copied", Toast.LENGTH_SHORT).show()
     }
 
+    fun continueAsGuest() {
+        GitHubAuth.enterGuestMode(context)
+        onLogin()
+    }
+
+    fun savePersonalAccessToken() {
+        val token = patInput.trim()
+        if (token.isBlank()) { appAuthError = "Token is empty"; return }
+        if (GitHubAuth.saveToken(context, token)) {
+            patInput = ""; patExpanded = false; patAccepted = false; appAuthError = ""
+            onLogin()
+        } else {
+            appAuthError = SecurityGate.blockedMessage(context)
+        }
+    }
+
     AiModuleSurface {
         Column(Modifier.fillMaxSize()) {
             GitHubPageBar(
@@ -208,6 +229,149 @@ internal fun LoginScreen(onBack: () -> Unit, onMinimize: () -> Unit, onClose: ((
                                 fontWeight = FontWeight.Medium,
                                 fontSize = 13.sp,
                             )
+                        }
+                    }
+
+                    // Инфо под рекомендуемым входом + контакт разработчика.
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Recommended. For private repositories you may need to install GsGit App. Questions about permissions — developer: t.me/fengbei1998",
+                        color = palette.textMuted,
+                        fontFamily = JetBrainsMono,
+                        fontSize = 10.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { context.openExternalHttps("https://t.me/fengbei1998") },
+                    )
+
+                    // Дверь 2: гость — публичный просмотр без входа.
+                    Spacer(Modifier.height(14.dp))
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(GitHubControlRadius))
+                            .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
+                            .clickable { continueAsGuest() }
+                            .padding(vertical = 12.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            "[ continue as guest ]",
+                            color = palette.textSecondary,
+                            fontFamily = JetBrainsMono,
+                            fontSize = 13.sp,
+                        )
+                    }
+                    Text(
+                        "browse public repositories without signing in",
+                        color = palette.textMuted,
+                        fontFamily = JetBrainsMono,
+                        fontSize = 10.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    )
+
+                    // Дверь 3: токен (PAT) — на свой страх и риск, только через согласие.
+                    Spacer(Modifier.height(14.dp))
+                    if (!patExpanded) {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(GitHubControlRadius))
+                                .border(1.dp, palette.error, RoundedCornerShape(GitHubControlRadius))
+                                .clickable { patExpanded = true; patAccepted = false; appAuthError = "" }
+                                .padding(vertical = 12.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                "[ sign in with token ]",
+                                color = palette.error,
+                                fontFamily = JetBrainsMono,
+                                fontSize = 13.sp,
+                            )
+                        }
+                    } else {
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(GitHubControlRadius))
+                                .border(1.dp, palette.error, RoundedCornerShape(GitHubControlRadius))
+                                .padding(12.dp),
+                        ) {
+                            Text(
+                                "WARNING: a personal access token is a long-lived secret with broad access, stored on this device. It is less safe than the GitHub App sign-in. Continue only if you understand the risk — you proceed at your own responsibility.",
+                                color = palette.error,
+                                fontFamily = JetBrainsMono,
+                                fontSize = 11.sp,
+                            )
+                            if (!patAccepted) {
+                                Spacer(Modifier.height(10.dp))
+                                Box(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(palette.error)
+                                        .clickable { patAccepted = true }
+                                        .padding(vertical = 10.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text("[ I understand the risk ]", color = palette.background, fontFamily = JetBrainsMono, fontSize = 12.sp)
+                                }
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    "[ cancel ]",
+                                    color = palette.textSecondary,
+                                    fontFamily = JetBrainsMono,
+                                    fontSize = 11.sp,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.fillMaxWidth().clickable { patExpanded = false },
+                                )
+                            } else {
+                                Spacer(Modifier.height(10.dp))
+                                Box(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(palette.background)
+                                        .border(1.dp, palette.border, RoundedCornerShape(4.dp))
+                                        .padding(8.dp),
+                                ) {
+                                    if (patInput.isEmpty()) {
+                                        Text("ghp_… / github_pat_…", color = palette.textMuted, fontFamily = JetBrainsMono, fontSize = 12.sp)
+                                    }
+                                    BasicTextField(
+                                        value = patInput,
+                                        onValueChange = { patInput = it },
+                                        textStyle = TextStyle(color = palette.textPrimary, fontSize = 12.sp, fontFamily = JetBrainsMono),
+                                        singleLine = true,
+                                        visualTransformation = PasswordVisualTransformation(),
+                                        cursorBrush = androidx.compose.ui.graphics.SolidColor(palette.accent),
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                }
+                                Spacer(Modifier.height(8.dp))
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Box(
+                                        Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .border(1.dp, palette.border, RoundedCornerShape(4.dp))
+                                            .clickable { patExpanded = false; patInput = "" }
+                                            .padding(vertical = 8.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) { Text("[ cancel ]", color = palette.textSecondary, fontFamily = JetBrainsMono, fontSize = 11.sp) }
+                                    Box(
+                                        Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(palette.accent)
+                                            .clickable { savePersonalAccessToken() }
+                                            .padding(vertical = 8.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) { Text("[ save token ]", color = palette.background, fontFamily = JetBrainsMono, fontSize = 11.sp) }
+                                }
+                            }
                         }
                     }
                 } else {
