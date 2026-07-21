@@ -146,6 +146,8 @@ internal fun LoginScreen(onBack: () -> Unit, onMinimize: () -> Unit, onClose: ((
         Toast.makeText(context, "Code copied", Toast.LENGTH_SHORT).show()
     }
 
+    // Пригодится в 1.0.91, когда гостя вернём с полным гейтингом.
+    @Suppress("unused")
     fun continueAsGuest() {
         GitHubAuth.enterGuestMode(context)
         onLogin()
@@ -245,32 +247,12 @@ internal fun LoginScreen(onBack: () -> Unit, onMinimize: () -> Unit, onClose: ((
                             .clickable { context.openExternalHttps("https://t.me/fengbei1998") },
                     )
 
-                    // Дверь 2: гость — публичный просмотр без входа.
-                    Spacer(Modifier.height(14.dp))
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(GitHubControlRadius))
-                            .border(1.dp, palette.border, RoundedCornerShape(GitHubControlRadius))
-                            .clickable { continueAsGuest() }
-                            .padding(vertical = 12.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            "[ continue as guest ]",
-                            color = palette.textSecondary,
-                            fontFamily = JetBrainsMono,
-                            fontSize = 13.sp,
-                        )
-                    }
-                    Text(
-                        "browse public repositories without signing in",
-                        color = palette.textMuted,
-                        fontFamily = JetBrainsMono,
-                        fontSize = 10.sp,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                    )
+                    // Дверь 2: гость — временно СКРЫТ до 1.0.91. Гостевой режим
+                    // готов в data-слое (enterGuestMode), но выкатим его только с
+                    // полным гейтингом: кнопка входа на главном, скрытие настроек/
+                    // repo-settings/записи у гостя и модалка при исчерпании 60 анонимных
+                    // запросов. `continueAsGuest()` оставлен для повторного включения.
+                    @Suppress("unused") val guestDoorHiddenUntil = "1.0.91"
 
                     // Дверь 3: токен (PAT) — на свой страх и риск, только через согласие.
                     Spacer(Modifier.height(14.dp))
