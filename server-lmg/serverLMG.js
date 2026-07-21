@@ -15,7 +15,7 @@ const fs = require('fs');
 const path = require('path');
 const { URL } = require('url');
 
-const SERVER_VERSION = '1.0.2';
+const SERVER_VERSION = '1.0.3';
 
 // ─── env / секреты (в код ничего не зашивать) ────────────────────────────────
 const PORT = Number(process.env.LMG_PORT || 8090);
@@ -453,8 +453,14 @@ const server = http.createServer(async (req, res) => {
         return send(res, 200, metricsFor(periodHours(url.searchParams.get('period'))));
       }
       if (method === 'GET' && p === '/admin/lmg/users') {
-        const list = Object.entries(users).map(([pid, u]) => ({ partner_user_id: pid, tgId: u.tgId || null, email: u.email || null, name: u.name || '', isPremium: !!u.isPremium, premiumExpiresAt: u.premiumExpiresAt || 0, lastSeenAt: u.lastSeenAt || 0, devices: Object.keys(u.devices || {}).length }))
-          .sort((a, b) => b.lastSeenAt - a.lastSeenAt);
+        // is_premium/plan/premium_expires_at — ЭФФЕКТИВНЫЕ (локальный грант ИЛИ ICM),
+        // через userView; localGrant отдаём отдельно, чтобы в панели было видно ручные гранты.
+        const list = Object.entries(users).map(([pid, u]) => Object.assign(
+          { tgId: u.tgId || null, email: u.email || null, name: u.name || '',
+            lastSeenAt: u.lastSeenAt || 0, devices: Object.keys(u.devices || {}).length,
+            regions: u.icmRegions || [], localGrant: !!u.isPremium },
+          userView(pid),
+        )).sort((a, b) => b.lastSeenAt - a.lastSeenAt);
         return send(res, 200, { count: list.length, items: list });
       }
       // ── устройства (плоский список по всем юзерам, как в GsGit) ──
@@ -470,7 +476,7 @@ const server = http.createServer(async (req, res) => {
       }
       {
         const m = p.match(/^\/admin\/lmg\/users\/([A-Za-z0-9_]+)$/);
-        if (m && method === 'GET') { const u = users[m[1]]; return u ? send(res, 200, Object.assign({ partner_user_id: m[1] }, u)) : send(res, 404, { error: 'not found' }); }
+        if (m && method === 'GET') { const u = users[m[1]]; return u ? send(res, 200, Object.assign({ partner_user_id: m[1] }, u, userView(m[1]), { regions: u.icmRegions || [], localGrant: !!u.isPremium })) : send(res, 404, { error: 'not found' }); }
         if (m && method === 'DELETE') { if (!users[m[1]]) return send(res, 404, { error: 'not found' }); delete users[m[1]]; saveJson(FILES.users, users); return send(res, 200, { ok: true }); }
       }
       {
