@@ -23,6 +23,33 @@ object GitHubAuth {
     private const val APP_TOKEN_REFRESH_WINDOW_MS = 2 * 60 * 1000L
     private val appTokenRefreshMutex = Mutex()
 
+    // Способ входа, выбранный пользователем на экране входа.
+    private const val KEY_AUTH_MODE = "auth_mode"
+    const val MODE_GUEST = "guest"   // без входа: только публичные данные (анонимный API)
+    const val MODE_DEVICE = "device" // GitHub App device flow (рекомендуемый)
+    const val MODE_PAT = "pat"       // классический токен — на свой страх и риск
+
+    /** Текущий режим. Если не сохранён (старые установки) — выводим из того, что уже лежит,
+     *  чтобы обратная совместимость не разлогинила существующих device-flow пользователей. */
+    fun getAuthMode(context: Context): String {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        prefs.getString(KEY_AUTH_MODE, null)?.takeIf { it.isNotBlank() }?.let { return it }
+        val repo = TokenRepository(context)
+        val session = repo.getGitHubAppSession()
+        return when {
+            session.accessToken.isNotBlank() || session.refreshToken.isNotBlank() -> MODE_DEVICE
+            repo.getToken().isNotBlank() -> MODE_PAT
+            else -> MODE_GUEST
+        }
+    }
+
+    fun setAuthMode(context: Context, mode: String) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_AUTH_MODE, mode).apply()
+    }
+
+    /** Пользователь выбрал «продолжить как гость» — публичный просмотр без входа. */
+    fun enterGuestMode(context: Context) = setAuthMode(context, MODE_GUEST)
+
     fun saveToken(context: Context, token: String): Boolean {
         val security = SecurityGate.decision(context)
         if (!security.allowsSensitiveData) {
@@ -35,6 +62,7 @@ object GitHubAuth {
             .edit()
             .remove(KEY_TOKEN_ENC)
             .apply()
+        setAuthMode(context, MODE_PAT)
         return true
     }
 
@@ -71,15 +99,24 @@ object GitHubAuth {
         }
     }
 
-    fun isLoggedIn(context: Context): Boolean = getGitHubAppConnection(context).connected
+    fun isLoggedIn(context: Context): Boolean = when (getAuthMode(context)) {
+        MODE_PAT -> TokenRepository(context).getToken().isNotBlank()
+        MODE_GUEST -> false
+        else -> getGitHubAppConnection(context).connected
+    }
 
     /**
-     * Единая точка выбора credential'а для всех вызовов GitHub API:
-     * только живой user-token GsGit GitHub App (с автообновлением).
-     * PAT из приложения выпилен — вход исключительно через device flow.
+     * Единая точка выбора credential'а для всех вызовов GitHub API по режиму входа:
+     *  - device: живой user-token GsGit GitHub App (с автообновлением через backend);
+     *  - pat:    классический токен пользователя (на свой страх и риск);
+     *  - guest:  пустая строка → ядро не ставит Authorization → анонимный публичный доступ.
      */
     internal suspend fun resolveApiToken(context: Context): String =
-        getValidGitHubAppUserToken(context)
+        when (getAuthMode(context)) {
+            MODE_PAT -> getToken(context)
+            MODE_GUEST -> ""
+            else -> getValidGitHubAppUserToken(context)
+        }
 
     fun getGitHubAppConnection(context: Context): GHGitHubAppConnection {
         val security = SecurityGate.decision(context)
@@ -133,6 +170,7 @@ object GitHubAuth {
                 lastRefreshError = "",
             )
         )
+        setAuthMode(context, MODE_DEVICE)
         return true
     }
 
@@ -194,6 +232,8 @@ object GitHubAuth {
             .remove(GitHubManager.KEY_USER)
             .remove(KEY_API_ERRORS)
             .apply()
+        // После выхода — режим гостя (не device/pat), чтобы не тянуть протухшие credential'ы.
+        setAuthMode(context, MODE_GUEST)
     }
 
     fun getApiErrorLog(context: Context): List<GHApiErrorLogEntry> {
