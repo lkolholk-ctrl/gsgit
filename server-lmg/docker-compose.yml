@@ -8,6 +8,15 @@ services:
     volumes:
       - lmg-data:/data
     ports:
-      - "8090:8090"      # проксируй через nginx/caddy на поддомен при желании
+      - "8090:8090"      # публикуем на хост (для локальных проверок/дебага)
+    networks:
+      - default          # своя сеть брокера
+      - caddy_net        # общая сеть с Caddy → он резолвит lmg-server:8090 по имени
 volumes:
   lmg-data:
+networks:
+  # Внешняя сеть, в которой живёт Caddy (+ старый GsGit-бэкенд).
+  # Так связка Caddy↔брокер переживает `docker compose down && up`, а не только restart.
+  caddy_net:
+    external: true
+    name: server_default
