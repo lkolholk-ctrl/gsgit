@@ -32,22 +32,32 @@ if (!partnerKey.isNullOrBlank()) builder.header("X-Partner-Key", partnerKey)
 В `IcmAuthRepository` убрать хранение/использование `apiKey`/`getPartnerKey()` (партнёрский ключ в APK не хранить).
 
 ## 3. Выпуск сессии — через сервер (не s2s с устройства)
-**Модель входа (согласована):** Telegram Login Widget живёт на странице ICM, приложение полей виджета
-(`id/hash/auth_date`) НЕ видит — после логина ICM возвращает deep-link `linked/<icm_user_id>/state`.
-Значит на устройстве нет ни бот-токена, ни HMAC. Клиент берёт `icm_user_id` из deep-link и шлёт его
-как `partner_user_id` на наш сервер; сервер (origin уже в whitelist ICM) минтит upstream-сессию.
+**Модель входа (уточнена по реальной ссылке).** `partner_user_id` **генерит САМА апка** и передаёт его В НАЧАЛЕ
+входа — ICM лишь привязывает Telegram-аккаунт к этому id на своей стороне. Пример стартовой ссылки:
+```
+https://byicloud.online/partner/msng/link
+  ?partner_user_id=lg_<random16hex>          ← генерим 1 раз, храним в prefs (стабильный id юзера)
+  &redirect_uri=https://liquid.glassfiles.ru/auth/telegram   ← CF-воркер, вернёт deep-link в апку
+  &state=<uuid>                              ← анти-replay, СВЕРИТЬ при возврате
+  &app_name=Liquid Music Glass
+```
+Формат id: `"lg_" + 16 hex` (напр. `lg_c618bd5b4d8b4436`). Это **bearer-секрет** — только по TLS, НЕ логировать.
+Deep-link назад несёт `state` (и признак успеха), НЕ несёт токен — токен апка получает уже от нашего сервера.
 
-Заменить прямой s2s `POST /session/issue` на:
-- После возврата из ICM deep-link (`linked/<icm_user_id>/state`) вызывать
-  **`POST <LMG_SERVER>/lmg/session/issue`** с телом `{ "partner_user_id": "<icm_user_id>", "hide_explicit": <bool> }`.
-  Ответ: `{ partner_session_token, expires_in, scopes, partner_user_id, is_premium, premium_expires_at, plan }`.
-  → `partner_session_token` в `IcmApi.sessionToken`, `partner_user_id` (= icm_user_id) в `IcmApi.partnerUserId` (сохранить в prefs).
-- Рефреш протухшего токена: **`POST <LMG_SERVER>/lmg/session/refresh`** с `{ partner_user_id }` (тот же сохранённый id).
-- **Удалить** с устройства `IcmApi.issueSession()`/прямой `/session/issue`, весь s2s (`s2sOnly`,
-  `X-Partner-Key` на session/issue) и любые данные Telegram-виджета — они больше не нужны.
+Поток:
+1. Один раз: `partnerUserId = "lg_" + randomHex(16)` → prefs. `state = UUID` (на каждый вход новый).
+2. Открыть `partner/msng/link?partner_user_id=...&redirect_uri=...&state=...&app_name=...`.
+3. Вернулись deep-link'ом → **сверить `state`** (не совпал → отменить, не входить).
+4. **`POST <LMG_SERVER>/lmg/session/issue`** с `{ "partner_user_id": "<lg_...>", "hide_explicit": <bool> }`.
+   Ответ: `{ partner_session_token, expires_in, scopes, partner_user_id, is_premium, premium_expires_at, plan }`.
+   → `partner_session_token` в `IcmApi.sessionToken`, `partner_user_id` в `IcmApi.partnerUserId`.
+5. Рефреш протухшего токена: **`POST <LMG_SERVER>/lmg/session/refresh`** с `{ partner_user_id }` (тот же id из prefs).
 
-> Сверить одно: что `icm_user_id` из deep-link — это и есть `partner_user_id` для upstream `/session/issue`
-> (в партнёрке ICM это наш идентификатор пользователя). Если ICM отдаёт другой линк-id — передавай именно его.
+**Удалить** с устройства `IcmApi.issueSession()`/прямой `/session/issue`, весь s2s (`s2sOnly`,
+`X-Partner-Key` на session/issue). Данные Telegram-виджета (`id/hash/auth_date`) не нужны — их апка и не видит.
+
+> Сервер лимитит минт (20/мин на IP на `/session/issue`, 30/мин на `/refresh`) → на 429 сделать паузу+ретрай,
+> не долбить в цикле. `partner_user_id` при логах/аналитике маскировать.
 
 ## 4. Email-линк → на сервер
 `/link/email/{request|verify|password/reset|password/change}` → **`<LMG_SERVER>/lmg/auth/email/{...}`**

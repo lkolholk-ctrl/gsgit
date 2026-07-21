@@ -87,13 +87,31 @@ function request(url, options, body) {
   });
 }
 
+// ─── реальный IP клиента (за nginx/CF) ───────────────────────────────────────
+function clientIp(req) {
+  const xff = req.headers['x-forwarded-for'];
+  if (xff) return String(xff).split(',')[0].trim();
+  return (req.socket && req.socket.remoteAddress) || 'unknown';
+}
+// ─── простой rate-limit по IP (скользящее окно, in-memory) ───────────────────
+// Защищает открытый минт сессии: lg_-id — bearer-секрет, нельзя давать перебирать/спамить.
+const rlHits = new Map();  // ip → массив timestamps
+function rateLimited(ip, limit, windowMs) {
+  const now = Date.now();
+  const arr = (rlHits.get(ip) || []).filter((t) => now - t < windowMs);
+  arr.push(now);
+  rlHits.set(ip, arr);
+  if (rlHits.size > 5000) { for (const [k, v] of rlHits) { if (!v.length || now - v[v.length - 1] > windowMs) rlHits.delete(k); } }
+  return arr.length > limit;
+}
+
 // ─── хелперы ─────────────────────────────────────────────────────────────────
 function send(res, status, obj, extraHeaders) {
   const data = Buffer.isBuffer(obj) ? obj : Buffer.from(JSON.stringify(obj));
   res.writeHead(status, Object.assign({
     'Content-Type': Buffer.isBuffer(obj) ? 'application/octet-stream' : 'application/json; charset=utf-8',
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'authorization,content-type,x-admin-key,x-partner-user-id',
+    'Access-Control-Allow-Headers': 'authorization,content-type,x-admin-key,x-partner-user-id,x-device-id,x-app-version,x-lmg-fast',
     'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
   }, extraHeaders || {}));
   res.end(data);
@@ -251,6 +269,7 @@ const server = http.createServer(async (req, res) => {
     // Юзер регистрируется на лету, HMAC не нужен — доверяем origin-whitelist ICM.
     if (method === 'POST' && p === '/lmg/session/issue') {
       if (!ICM_PARTNER_KEY) return send(res, 503, { error: 'not configured' });
+      if (rateLimited(clientIp(req), 20, 60_000)) { recordMetric('rateLimited'); return send(res, 429, { error: 'too many requests' }); }
       const body = await jsonBody(req);
       const pid = body && body.partner_user_id;
       if (!pid) return send(res, 400, { error: 'no partner_user_id' });
@@ -275,6 +294,7 @@ const server = http.createServer(async (req, res) => {
     // ── refresh: перевыпустить сессию по partner_user_id ──
     if (method === 'POST' && p === '/lmg/session/refresh') {
       if (!ICM_PARTNER_KEY) return send(res, 503, { error: 'not configured' });
+      if (rateLimited(clientIp(req), 30, 60_000)) { recordMetric('rateLimited'); return send(res, 429, { error: 'too many requests' }); }
       const body = await jsonBody(req);
       const pid = body && body.partner_user_id;
       if (!pid) return send(res, 400, { error: 'no partner_user_id' });
