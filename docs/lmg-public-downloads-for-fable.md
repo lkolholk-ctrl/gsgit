@@ -64,6 +64,41 @@ ExoPlayer умеет `content://` из коробки. Файловую пров
 ## 5. Обложки
 `localCoverPath` можно оставить приватным (обложки в «Загрузках» не нужны) — трогать не обязательно.
 
+## 6. ОДНОРАЗОВАЯ МИГРАЦИЯ уже скачанного (важно — у юзера уже 800 треков в приватной папке!)
+
+Существующие загрузки лежат в `filesDir/downloads/<trackId>.<ext>`, путь в БД `DownloadedTrackEntity.localPath`
+= абсолютный файловый путь. Перекачивать их НЕ надо — переносим файлы на месте.
+
+При первом запуске новой версии (флаг в prefs `downloads_migrated_v2`, чтобы один раз), в фоне
+(`WorkManager`/корутина на `Dispatchers.IO`, с прогрессом — файлов сотни):
+```kotlin
+for (e in dao.getAll()) {
+    if (e.localPath.startsWith("content://")) continue        // уже мигрирован
+    val src = File(e.localPath)
+    if (!src.exists() || src.length() == 0L) continue
+    val ext = "." + src.extension.ifBlank { "mp3" }
+    val mime = when (ext) { ".m4a" -> "audio/mp4"; ".flac" -> "audio/flac"; else -> "audio/mpeg" }
+    val name = (listOfNotNull(e.artistName, e.title).joinToString(" - ").ifBlank { e.trackId } + ext)
+        .replace(Regex("[/\\\\:*?\"<>|]"), "_")
+    val values = ContentValues().apply {
+        put(MediaStore.Downloads.DISPLAY_NAME, name)
+        put(MediaStore.Downloads.MIME_TYPE, mime)
+        put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/LiquidMusicGlass")
+        put(MediaStore.Downloads.IS_PENDING, 1)
+    }
+    val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: continue
+    resolver.openOutputStream(uri)!!.use { out -> src.inputStream().use { it.copyTo(out) } }
+    values.clear(); values.put(MediaStore.Downloads.IS_PENDING, 0); resolver.update(uri, values, null, null)
+    dao.updateLocalPath(e.trackId, uri.toString())   // БД → content URI
+    src.delete()                                      // освободить приватную копию
+}
+prefs.edit().putBoolean("downloads_migrated_v2", true).apply()
+```
+- Идемпотентно (пропускает уже `content://` и битые).
+- Показать ненавязчивый прогресс («переношу загрузки в Downloads… N/800»), не блокируя UI.
+- На Android ≤ 9 — копировать в public File-папку (см. раздел 1, legacy).
+- После миграции офлайн-воспроизведение (раздел 2) уже читает из `content://` — всё сходится.
+
 ## Definition of Done
 - Скачанный трек появляется в системных **«Загрузки» → LiquidMusicGlass**, виден в файловом менеджере.
 - Офлайн-воспроизведение играет из этого файла, размер в библиотеке верный.
