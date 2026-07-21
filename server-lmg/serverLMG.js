@@ -15,20 +15,22 @@ const fs = require('fs');
 const path = require('path');
 const { URL } = require('url');
 
-const SERVER_VERSION = '1.0.0';
+const SERVER_VERSION = '1.0.1';
 
 // ─── env / секреты (в код ничего не зашивать) ────────────────────────────────
 const PORT = Number(process.env.LMG_PORT || 8090);
 const ICM_BASE_URL = process.env.ICM_BASE_URL || 'https://byicloud.online/api/partner';
 const ICM_PARTNER_KEY = process.env.ICM_PARTNER_KEY || '';          // ГЛАВНЫЙ секрет
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';    // валидация Telegram Login
+// ICM пускает партнёрку по whitelist origin. Наш домен уже занесён — шлём его на upstream.
+const ICM_ORIGIN = process.env.ICM_ORIGIN || 'https://liquid.glassfiles.ru';
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';    // опционально: HMAC-валидация Telegram Login
 const DATA_DIR = process.env.LMG_DATA_DIR || '/data';
 const ADMIN_KEY_FILE = process.env.LMG_ADMIN_KEY_FILE || path.join(DATA_DIR, 'lmg-admin.key');
 let ADMIN_KEY = process.env.LMG_ADMIN_KEY || '';
 const MAX_BODY = 2 * 1024 * 1024;
 
 if (!ICM_PARTNER_KEY) console.warn('[warn] ICM_PARTNER_KEY не задан — сессии/прокси к ICM работать не будут');
-if (!TELEGRAM_BOT_TOKEN) console.warn('[warn] TELEGRAM_BOT_TOKEN не задан — /lmg/auth/telegram будет 503');
+if (!TELEGRAM_BOT_TOKEN) console.warn('[info] TELEGRAM_BOT_TOKEN не задан — HMAC-проверка Telegram отключена, доверяем origin-whitelist ICM');
 
 // ─── файловые сторы + дебаунс-сохранение (паттерн GsGit) ─────────────────────
 try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch (_) {}
@@ -165,6 +167,8 @@ async function issueUpstreamSession(partnerUserId, hideExplicit) {
       'Accept': 'application/json',
       'User-Agent': 'LiquidMusicGlass-Server/' + SERVER_VERSION,
       'X-Partner-Key': ICM_PARTNER_KEY,
+      'Origin': ICM_ORIGIN,
+      'Referer': ICM_ORIGIN + '/',
       'Content-Length': Buffer.byteLength(body),
     },
   }, body);
@@ -195,9 +199,11 @@ const server = http.createServer(async (req, res) => {
 
     // ── Telegram-логин → partner_user_id → upstream session ──
     if (method === 'POST' && p === '/lmg/auth/telegram') {
-      if (!TELEGRAM_BOT_TOKEN || !ICM_PARTNER_KEY) return send(res, 503, { error: 'auth not configured' });
+      if (!ICM_PARTNER_KEY) return send(res, 503, { error: 'auth not configured' });
       const body = await jsonBody(req);
-      if (!body || !verifyTelegramAuth(body)) { recordMetric('authFail'); return send(res, 401, { error: 'bad telegram signature' }); }
+      if (!body || !body.id) { recordMetric('authFail'); return send(res, 400, { error: 'no telegram id' }); }
+      // Если задан бот-токен — проверяем HMAC. Иначе доверяем origin-whitelist ICM (наш домен занесён).
+      if (TELEGRAM_BOT_TOKEN && !verifyTelegramAuth(body)) { recordMetric('authFail'); return send(res, 401, { error: 'bad telegram signature' }); }
       const tgId = String(body.id);
       const pid = partnerUserIdForTelegram(tgId);
       const { status, data } = await issueUpstreamSession(pid, !!body.hide_explicit);
@@ -238,7 +244,7 @@ const server = http.createServer(async (req, res) => {
       const raw = await readBody(req);
       const r = await request(`${ICM_BASE_URL}/link/email/${sub}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Partner-Key': ICM_PARTNER_KEY, 'Content-Length': raw.length, 'User-Agent': 'LiquidMusicGlass-Server/' + SERVER_VERSION },
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Partner-Key': ICM_PARTNER_KEY, 'Origin': ICM_ORIGIN, 'Referer': ICM_ORIGIN + '/', 'Content-Length': raw.length, 'User-Agent': 'LiquidMusicGlass-Server/' + SERVER_VERSION },
       }, raw);
       return send(res, r.status, r.body, { 'Content-Type': r.headers['content-type'] || 'application/json' });
     }
@@ -262,6 +268,8 @@ const server = http.createServer(async (req, res) => {
         'Accept': 'application/json',
         'User-Agent': 'LiquidMusicGlass/1.0',
         'X-Partner-Key': ICM_PARTNER_KEY,
+        'Origin': ICM_ORIGIN,
+        'Referer': ICM_ORIGIN + '/',
       };
       if (req.headers['authorization']) headers['Authorization'] = req.headers['authorization'];
       if (req.headers['x-partner-user-id']) headers['X-Partner-User-Id'] = req.headers['x-partner-user-id'];
@@ -284,13 +292,14 @@ const server = http.createServer(async (req, res) => {
 
       if (method === 'GET' && p === '/admin/lmg/health') {
         let icmOk = false;
-        try { const r = await request(`${ICM_BASE_URL}/health`, { method: 'GET', headers: { 'X-Partner-Key': ICM_PARTNER_KEY, 'Accept': 'application/json' } }); icmOk = r.status >= 200 && r.status < 500; } catch (_) {}
+        try { const r = await request(`${ICM_BASE_URL}/health`, { method: 'GET', headers: { 'X-Partner-Key': ICM_PARTNER_KEY, 'Origin': ICM_ORIGIN, 'Referer': ICM_ORIGIN + '/', 'Accept': 'application/json' } }); icmOk = r.status >= 200 && r.status < 500; } catch (_) {}
         return send(res, 200, {
           serverVersion: SERVER_VERSION,
           uptimeMs: Date.now() - START,
           users: Object.keys(users).length,
           partnerKeySet: !!ICM_PARTNER_KEY,
-          telegramConfigured: !!TELEGRAM_BOT_TOKEN,
+          icmOrigin: ICM_ORIGIN,
+          telegramHmac: !!TELEGRAM_BOT_TOKEN,
           icmUpstream: icmOk ? 'ok' : 'down',
           serverTime: new Date().toISOString(),
         });
@@ -344,4 +353,4 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, () => console.log(`[lmg] server ${SERVER_VERSION} on :${PORT} (icm=${ICM_BASE_URL})`));
+server.listen(PORT, () => console.log(`[lmg] server ${SERVER_VERSION} on :${PORT} (icm=${ICM_BASE_URL}, origin=${ICM_ORIGIN})`));
