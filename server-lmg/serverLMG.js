@@ -15,7 +15,7 @@ const fs = require('fs');
 const path = require('path');
 const { URL } = require('url');
 
-const SERVER_VERSION = '1.0.3';
+const SERVER_VERSION = '1.0.4';
 
 // ─── env / секреты (в код ничего не зашивать) ────────────────────────────────
 const PORT = Number(process.env.LMG_PORT || 8090);
@@ -48,6 +48,7 @@ const FILES = {
   config: path.join(DATA_DIR, 'lmg-config.json'),
   metrics: path.join(DATA_DIR, 'lmg-metrics.json'),
   errors: path.join(DATA_DIR, 'lmg-errors.json'),
+  geo: path.join(DATA_DIR, 'lmg-geo.json'),
 };
 function loadJson(file, fallback) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) { return fallback; }
@@ -92,6 +93,38 @@ function clientIp(req) {
   const xff = req.headers['x-forwarded-for'];
   if (xff) return String(xff).split(',')[0].trim();
   return (req.socket && req.socket.remoteAddress) || 'unknown';
+}
+
+// ─── IP → страна/город (БЕЗ гео-разрешений на устройстве) ────────────────────
+// Лукап через ipwho.is (https, без ключа), кэш на диске 30 дней на IP: наружу
+// IP юзера уходит один раз, не на каждый вход. Приватные/локальные IP не
+// резолвим. Ошибки молча — гео best-effort, логин не задерживает (не await).
+let geoCache = loadJson(FILES.geo, {});
+const GEO_TTL_MS = 30 * 24 * 3600_000;
+function isPrivateIp(ip) {
+  return !ip || ip === 'unknown' || /^(10\.|127\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|::1|fc|fd|fe80|169\.254\.)/.test(ip.replace(/^::ffff:/, ''));
+}
+async function geoForIp(rawIp) {
+  const ip = String(rawIp || '').replace(/^::ffff:/, '');
+  if (isPrivateIp(ip)) return null;
+  const hit = geoCache[ip];
+  if (hit && Date.now() - (hit.at || 0) < GEO_TTL_MS) return hit;
+  try {
+    const r = await request(`https://ipwho.is/${encodeURIComponent(ip)}?fields=success,country,country_code,city`, {
+      method: 'GET', headers: { 'Accept': 'application/json', 'User-Agent': 'LiquidMusicGlass-Server/' + SERVER_VERSION },
+    });
+    let d; try { d = JSON.parse(r.body.toString('utf8')); } catch (_) { d = null; }
+    if (r.status === 200 && d && d.success !== false && d.country_code) {
+      const g = { cc: String(d.country_code).toUpperCase(), country: d.country || '', city: d.city || '', at: Date.now() };
+      geoCache[ip] = g;
+      // кэш не пухнет бесконечно
+      const keys = Object.keys(geoCache);
+      if (keys.length > 20000) for (const k of keys.slice(0, 5000)) delete geoCache[k];
+      saveJson(FILES.geo, geoCache);
+      return g;
+    }
+  } catch (_) {}
+  return null;
 }
 // ─── простой rate-limit по IP (скользящее окно, in-memory) ───────────────────
 // Защищает открытый минт сессии: lg_-id — bearer-секрет, нельзя давать перебирать/спамить.
@@ -208,6 +241,16 @@ function touchDevice(pid, req) {
   d.lastSeen = now;
   d.appVersion = String(req.headers['x-app-version'] || d.appVersion || '');
   d.platform = /Android/i.test(ua) ? 'android' : (ua.split(/[/ ]/)[0] || 'unknown').slice(0, 32);
+  // Страна/город по IP (без гео-разрешений): IP сменился → перерезолвим.
+  // Fire-and-forget — вход не ждёт лукап; кэш ipwho 30 дней.
+  const ip = clientIp(req).replace(/^::ffff:/, '');
+  if (ip && ip !== d.ip) { d.ip = ip; d.cc = ''; }
+  if (ip && !d.cc && !isPrivateIp(ip)) {
+    geoForIp(ip).then((g) => {
+      const dd = (u.devices || {})[devId];
+      if (g && dd) { dd.cc = g.cc; dd.country = g.country; dd.city = g.city; saveJson(FILES.users, users); }
+    }).catch(() => {});
+  }
   // держим не больше 10 последних устройств на юзера
   const ids = Object.keys(devices);
   if (ids.length > 10) {
@@ -455,12 +498,20 @@ const server = http.createServer(async (req, res) => {
       if (method === 'GET' && p === '/admin/lmg/users') {
         // is_premium/plan/premium_expires_at — ЭФФЕКТИВНЫЕ (локальный грант ИЛИ ICM),
         // через userView; localGrant отдаём отдельно, чтобы в панели было видно ручные гранты.
-        const list = Object.entries(users).map(([pid, u]) => Object.assign(
-          { tgId: u.tgId || null, email: u.email || null, name: u.name || '',
-            lastSeenAt: u.lastSeenAt || 0, devices: Object.keys(u.devices || {}).length,
-            regions: u.icmRegions || [], localGrant: !!u.isPremium },
-          userView(pid),
-        )).sort((a, b) => b.lastSeenAt - a.lastSeenAt);
+        const list = Object.entries(users).map(([pid, u]) => {
+          // Страна входа = гео самого свежего девайса (IP-лукап, без гео-разрешений).
+          let cc = '', country = '', city = '', last = 0;
+          for (const d of Object.values(u.devices || {})) {
+            if ((d.lastSeen || 0) >= last && d.cc) { last = d.lastSeen || 0; cc = d.cc; country = d.country || ''; city = d.city || ''; }
+          }
+          return Object.assign(
+            { tgId: u.tgId || null, email: u.email || null, name: u.name || '',
+              lastSeenAt: u.lastSeenAt || 0, devices: Object.keys(u.devices || {}).length,
+              regions: u.icmRegions || [], localGrant: !!u.isPremium,
+              cc, country, city },
+            userView(pid),
+          );
+        }).sort((a, b) => b.lastSeenAt - a.lastSeenAt);
         return send(res, 200, { count: list.length, items: list });
       }
       // ── устройства (плоский список по всем юзерам, как в GsGit) ──
@@ -468,7 +519,7 @@ const server = http.createServer(async (req, res) => {
         const list = [];
         for (const [pid, u] of Object.entries(users)) {
           for (const [devId, d] of Object.entries(u.devices || {})) {
-            list.push({ deviceId: devId, partner_user_id: pid, name: u.name || '', platform: d.platform || 'unknown', appVersion: d.appVersion || '', firstSeen: d.firstSeen || 0, lastSeen: d.lastSeen || 0 });
+            list.push({ deviceId: devId, partner_user_id: pid, name: u.name || '', platform: d.platform || 'unknown', appVersion: d.appVersion || '', firstSeen: d.firstSeen || 0, lastSeen: d.lastSeen || 0, ip: d.ip || '', cc: d.cc || '', country: d.country || '', city: d.city || '' });
           }
         }
         list.sort((a, b) => b.lastSeen - a.lastSeen);
