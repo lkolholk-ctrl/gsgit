@@ -11,7 +11,14 @@ gsgit.org {
 }
 
 api.gsgit.org {
-	reverse_proxy api:8080
+	# LMG-брокер (LiquidMusicGlass): сессии, прокси партнёрки ICM, premium.
+	# Контейнер lmg-server подключён в сеть server_default (docker network connect).
+	handle /lmg/* {
+		reverse_proxy lmg-server:8090
+	}
+	handle {
+		reverse_proxy api:8080
+	}
 }
 
 status.gsgit.org {
