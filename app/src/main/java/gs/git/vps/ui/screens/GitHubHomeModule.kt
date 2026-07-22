@@ -22,6 +22,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -59,14 +60,24 @@ import java.io.File
 
 // Compact mode — propagates through all sub-screens automatically
 
+// Saver для pending device-кода: состояние device-flow должно пережить уход в браузер и
+// убийство Activity/процесса (MIUI/HyperOS, «Don't keep activities»), иначе на возврате код
+// теряется и поллинг не возобновляется — вход «сбрасывается, не дождавшись авторизации».
+private val DeviceCodeSaver = listSaver<GHDeviceCode?, Any>(
+    save = { c -> if (c == null) emptyList() else listOf(c.deviceCode, c.userCode, c.verificationUri, c.expiresIn, c.interval) },
+    restore = { l -> if (l.isEmpty()) null else GHDeviceCode(l[0] as String, l[1] as String, l[2] as String, l[3] as Int, l[4] as Int) },
+)
+
 @Composable
 internal fun LoginScreen(onBack: () -> Unit, onMinimize: () -> Unit, onClose: (() -> Unit)? = null, onLogin: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val palette = AiModuleTheme.colors
     var securityWarning by remember { mutableStateOf("") }
-    var deviceCode by remember { mutableStateOf<GHDeviceCode?>(null) }
-    var deviceCodeExpiresAt by remember { mutableStateOf(0L) }
+    // rememberSaveable — переживает пересоздание Activity/процесса при уходе в браузер,
+    // LaunchedEffect(deviceCode?.deviceCode) на возврате возобновит поллинг по тому же коду.
+    var deviceCode by rememberSaveable(stateSaver = DeviceCodeSaver) { mutableStateOf<GHDeviceCode?>(null) }
+    var deviceCodeExpiresAt by rememberSaveable { mutableStateOf(0L) }
     var appAuthBusy by remember { mutableStateOf(false) }
     var appAuthError by remember { mutableStateOf("") }
     // Вход по токену (PAT) — опционально, только через явное согласие «на свой страх и риск».
@@ -110,11 +121,15 @@ internal fun LoginScreen(onBack: () -> Unit, onMinimize: () -> Unit, onClose: ((
                     deviceCode = null
                     return@LaunchedEffect
                 }
-                else -> {
+                // Конфигурационные ошибки GitHub — вход невозможен, есть смысл упасть сразу.
+                result.error in setOf("unsupported_grant_type", "incorrect_client_credentials", "incorrect_device_code") -> {
                     appAuthError = result.error?.replace('_', ' ') ?: "GitHub authorization failed"
                     deviceCode = null
                     return@LaunchedEffect
                 }
+                // Всё остальное (сетевой сбой, parse_error, пустой ответ, неизвестный код) —
+                // ТРАНЗИЕНТНО: не роняем вход, продолжаем ждать авторизацию до истечения кода.
+                else -> Unit
             }
         }
         appAuthError = "The device code expired. Try again."
@@ -132,7 +147,10 @@ internal fun LoginScreen(onBack: () -> Unit, onMinimize: () -> Unit, onClose: ((
                 return@launch
             }
             deviceCode = code
-            deviceCodeExpiresAt = System.currentTimeMillis() + code.expiresIn.coerceAtLeast(1) * 1000L
+            // GitHub всегда шлёт expires_in (~900с); фолбэк на 900, если пришло 0/мусор,
+            // иначе цикл поллинга умрёт после первого delay, не дождавшись авторизации.
+            val ttlSeconds = if (code.expiresIn > 0) code.expiresIn else 900
+            deviceCodeExpiresAt = System.currentTimeMillis() + ttlSeconds * 1000L
             if (!context.openExternalHttps(code.verificationUri)) {
                 Toast.makeText(context, "Open ${code.verificationUri} and enter the code", Toast.LENGTH_LONG).show()
             }
