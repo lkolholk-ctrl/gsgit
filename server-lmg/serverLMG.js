@@ -15,7 +15,7 @@ const fs = require('fs');
 const path = require('path');
 const { URL } = require('url');
 
-const SERVER_VERSION = '1.0.6';
+const SERVER_VERSION = '1.0.7';
 
 // ─── env / секреты (в код ничего не зашивать) ────────────────────────────────
 const PORT = Number(process.env.LMG_PORT || 8090);
@@ -157,6 +157,7 @@ function latStats() {
 }
 function latGroupFor(upstreamPath) {
   const q = upstreamPath.split('?')[0];
+  if (q.startsWith('/clips')) return 'clips';
   if (q.startsWith('/search')) return 'search';
   if (q.startsWith('/track')) return 'track';
   if (q.startsWith('/library/wave')) return 'wave';
@@ -547,6 +548,9 @@ const server = http.createServer(async (req, res) => {
       else if (r.status >= 400) recordMetric('icm4xx');
       const passHeaders = { 'Content-Type': r.headers['content-type'] || 'application/json' };
       if (r.headers['x-request-id']) passHeaders['X-Request-Id'] = r.headers['x-request-id'];
+      // Пробрасываем Location: если ICM отдаёт стрим клипа/трека 302-редиректом на CDN,
+      // без Location клиент не сможет пройти по подписанной ссылке.
+      if (r.headers['location']) passHeaders['Location'] = r.headers['location'];
       return send(res, r.status, r.body, passHeaders);
     }
 
