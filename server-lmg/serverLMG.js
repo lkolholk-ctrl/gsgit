@@ -15,7 +15,7 @@ const fs = require('fs');
 const path = require('path');
 const { URL } = require('url');
 
-const SERVER_VERSION = '1.0.5';
+const SERVER_VERSION = '1.0.6';
 
 // ─── env / секреты (в код ничего не зашивать) ────────────────────────────────
 const PORT = Number(process.env.LMG_PORT || 8090);
@@ -23,6 +23,11 @@ const ICM_BASE_URL = process.env.ICM_BASE_URL || 'https://byicloud.online/api/pa
 const ICM_PARTNER_KEY = process.env.ICM_PARTNER_KEY || '';          // ГЛАВНЫЙ секрет
 // ICM пускает партнёрку по whitelist origin. Наш домен уже занесён — шлём его на upstream.
 const ICM_ORIGIN = process.env.ICM_ORIGIN || 'https://liquid.glassfiles.ru';
+// ВСЕ исходящие к ICM представляются КЛИЕНТСКИМ UA (как реальное приложение).
+// WAF ICM режет «сканерные»/серверные UA (curl/*, *-Server) → 500 на email
+// (полевой скрин их анти-фрода: «Scanner UA: curl»). reverse-proxy для /icm/*
+// уже слал этот UA и работал; session/email — слали «-Server» и попадали под фильтр.
+const ICM_CLIENT_UA = 'LiquidMusicGlass/1.0';
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';    // опционально: HMAC-валидация Telegram Login
 const DATA_DIR = process.env.LMG_DATA_DIR || '/data';
 const ADMIN_KEY_FILE = process.env.LMG_ADMIN_KEY_FILE || path.join(DATA_DIR, 'lmg-admin.key');
@@ -251,7 +256,7 @@ async function issueUpstreamSession(partnerUserId, hideExplicit) {
     headers: {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
-      'User-Agent': 'LiquidMusicGlass-Server/' + SERVER_VERSION,
+      'User-Agent': ICM_CLIENT_UA,
       'X-Partner-Key': ICM_PARTNER_KEY,
       'Origin': ICM_ORIGIN,
       'Referer': ICM_ORIGIN + '/',
@@ -329,7 +334,7 @@ async function fetchUpstreamSubscription(pid, force) {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
-        'User-Agent': 'LiquidMusicGlass-Server/' + SERVER_VERSION,
+        'User-Agent': ICM_CLIENT_UA,
         'X-Partner-Key': ICM_PARTNER_KEY,
         'Authorization': 'Bearer ' + s.data.partner_session_token,
         'X-Partner-User-Id': pid,
@@ -468,7 +473,7 @@ const server = http.createServer(async (req, res) => {
       const raw = await readBody(req);
       const r = await request(`${ICM_BASE_URL}/link/email/${sub}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Partner-Key': ICM_PARTNER_KEY, 'Origin': ICM_ORIGIN, 'Referer': ICM_ORIGIN + '/', 'Content-Length': raw.length, 'User-Agent': 'LiquidMusicGlass-Server/' + SERVER_VERSION },
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Partner-Key': ICM_PARTNER_KEY, 'Origin': ICM_ORIGIN, 'Referer': ICM_ORIGIN + '/', 'Content-Length': raw.length, 'User-Agent': ICM_CLIENT_UA },
       }, raw);
       return send(res, r.status, r.body, { 'Content-Type': r.headers['content-type'] || 'application/json' });
     }
