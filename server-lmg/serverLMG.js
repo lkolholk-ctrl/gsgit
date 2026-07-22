@@ -15,7 +15,7 @@ const fs = require('fs');
 const path = require('path');
 const { URL } = require('url');
 
-const SERVER_VERSION = '1.0.7';
+const SERVER_VERSION = '1.0.8';
 
 // ─── env / секреты (в код ничего не зашивать) ────────────────────────────────
 const PORT = Number(process.env.LMG_PORT || 8090);
@@ -560,7 +560,7 @@ const server = http.createServer(async (req, res) => {
 
       if (method === 'GET' && p === '/admin/lmg/health') {
         let icmOk = false;
-        try { const r = await request(`${ICM_BASE_URL}/health`, { method: 'GET', headers: { 'X-Partner-Key': ICM_PARTNER_KEY, 'Origin': ICM_ORIGIN, 'Referer': ICM_ORIGIN + '/', 'Accept': 'application/json' } }); icmOk = r.status >= 200 && r.status < 500; } catch (_) {}
+        try { const r = await request(`${ICM_BASE_URL}/health`, { method: 'GET', headers: { 'X-Partner-Key': ICM_PARTNER_KEY, 'Origin': ICM_ORIGIN, 'Referer': ICM_ORIGIN + '/', 'Accept': 'application/json', 'User-Agent': ICM_CLIENT_UA } }); icmOk = r.status >= 200 && r.status < 500; } catch (_) {}
         return send(res, 200, {
           serverVersion: SERVER_VERSION,
           uptimeMs: Date.now() - START,
@@ -640,7 +640,7 @@ const server = http.createServer(async (req, res) => {
           catch (_) { return { name, ok: false, ms: Date.now() - t0 }; }
         };
         const [icm, bridge, geo] = await Promise.all([
-          probe('icm', async () => { const r = await request(`${ICM_BASE_URL}/health`, { method: 'GET', headers: { 'X-Partner-Key': ICM_PARTNER_KEY, 'Origin': ICM_ORIGIN, 'Referer': ICM_ORIGIN + '/', 'Accept': 'application/json' } }); return r.status >= 200 && r.status < 500; }),
+          probe('icm', async () => { const r = await request(`${ICM_BASE_URL}/health`, { method: 'GET', headers: { 'X-Partner-Key': ICM_PARTNER_KEY, 'Origin': ICM_ORIGIN, 'Referer': ICM_ORIGIN + '/', 'Accept': 'application/json', 'User-Agent': ICM_CLIENT_UA } }); return r.status >= 200 && r.status < 500; }),
           probe('telegramBridge', async () => { const r = await request('https://liquid.glassfiles.ru/auth/telegram?linked=1&state=probe', { method: 'GET', headers: { 'Accept': 'text/html' } }); return r.status === 200; }),
           probe('geoService', async () => { const r = await request('https://ipwho.is/8.8.8.8?fields=success', { method: 'GET', headers: { 'Accept': 'application/json' } }); return r.status === 200; }),
         ]);
