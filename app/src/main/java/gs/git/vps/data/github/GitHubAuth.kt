@@ -29,12 +29,18 @@ object GitHubAuth {
     const val MODE_DEVICE = "device" // GitHub App device flow (рекомендуемый)
     const val MODE_PAT = "pat"       // классический токен — на свой страх и риск
 
-    /** Текущий режим. Если не сохранён (старые установки) — выводим из того, что уже лежит,
-     *  чтобы обратная совместимость не разлогинила существующих device-flow пользователей. */
+    // Мульти-аккаунт: все credential'ы/режим читаются/пишутся для АКТИВНОГО слота.
+    // Слот 0 — без суффикса (обратная совместимость), поэтому старые установки не затрагиваются.
+    private fun repo(context: Context) = TokenRepository(context, AccountStore.activeSlot(context))
+    private fun authModeKey(context: Context) =
+        AccountStore.slotKey(AccountStore.activeSlot(context), KEY_AUTH_MODE)
+
+    /** Текущий режим активного аккаунта. Если не сохранён (старые установки) — выводим из того,
+     *  что уже лежит, чтобы обратная совместимость не разлогинила существующих device-flow юзеров. */
     fun getAuthMode(context: Context): String {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        prefs.getString(KEY_AUTH_MODE, null)?.takeIf { it.isNotBlank() }?.let { return it }
-        val repo = TokenRepository(context)
+        prefs.getString(authModeKey(context), null)?.takeIf { it.isNotBlank() }?.let { return it }
+        val repo = repo(context)
         val session = repo.getGitHubAppSession()
         return when {
             session.accessToken.isNotBlank() || session.refreshToken.isNotBlank() -> MODE_DEVICE
@@ -44,7 +50,7 @@ object GitHubAuth {
     }
 
     fun setAuthMode(context: Context, mode: String) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_AUTH_MODE, mode).apply()
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(authModeKey(context), mode).apply()
     }
 
     /** Пользователь выбрал «продолжить как гость» — публичный просмотр без входа. */
@@ -56,7 +62,7 @@ object GitHubAuth {
             if (security.shouldWipe) logout(context)
             return false
         }
-        TokenRepository(context).saveToken(token)
+        repo(context).saveToken(token)
         // Clear any legacy encrypted token once the new secure storage is populated.
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
@@ -72,7 +78,7 @@ object GitHubAuth {
             if (security.shouldWipe) logout(context)
             return ""
         }
-        val repo = TokenRepository(context)
+        val repo = repo(context)
         val token = repo.getToken()
         if (token.isNotBlank()) return token
 
@@ -100,7 +106,7 @@ object GitHubAuth {
     }
 
     fun isLoggedIn(context: Context): Boolean = when (getAuthMode(context)) {
-        MODE_PAT -> TokenRepository(context).getToken().isNotBlank()
+        MODE_PAT -> repo(context).getToken().isNotBlank()
         MODE_GUEST -> false
         else -> getGitHubAppConnection(context).connected
     }
@@ -124,7 +130,7 @@ object GitHubAuth {
             if (security.shouldWipe) logout(context)
             return GHGitHubAppConnection(connected = false)
         }
-        val session = TokenRepository(context).getGitHubAppSession()
+        val session = repo(context).getGitHubAppSession()
         val now = System.currentTimeMillis()
         val accessUsable = session.accessToken.isNotBlank() &&
             (session.accessTokenExpiresAt == 0L || now < session.accessTokenExpiresAt)
@@ -158,7 +164,7 @@ object GitHubAuth {
             return false
         }
         val now = System.currentTimeMillis()
-        TokenRepository(context).saveGitHubAppSession(
+        repo(context).saveGitHubAppSession(
             GitHubAppTokenSession(
                 accessToken = accessToken,
                 refreshToken = result.refreshToken.trim(),
@@ -181,7 +187,7 @@ object GitHubAuth {
                 if (security.shouldWipe) logout(context)
                 return@withLock ""
             }
-            val repository = TokenRepository(context)
+            val repository = repo(context)
             val session = repository.getGitHubAppSession()
             val now = System.currentTimeMillis()
             if (session.accessToken.isBlank()) return@withLock ""
@@ -215,12 +221,12 @@ object GitHubAuth {
         }
 
     fun disconnectGitHubApp(context: Context) {
-        TokenRepository(context).clearGitHubAppSession()
+        repo(context).clearGitHubAppSession()
         GitHubManager.clearEtagCache()
     }
 
     fun logout(context: Context) {
-        TokenRepository(context).apply {
+        repo(context).apply {
             clearToken()
             clearGitHubAppSession()
         }
