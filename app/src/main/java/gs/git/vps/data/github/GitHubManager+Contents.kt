@@ -277,7 +277,7 @@ internal suspend fun GitHubManager.commitWorkspaceChanges(
                 val privKey = gs.git.vps.security.PgpKeyManager.getPrivateKey(context)
                 val passphrase = gs.git.vps.security.PgpKeyManager.getPassphrase(context)
                 if (privKey != null && passphrase != null) {
-                    val rawUser = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_USER, null)
+                    val rawUser = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(userKey(context), null)
                     val (name, email) = if (rawUser != null) {
                         val j = JSONObject(rawUser)
                         val n = j.optString("name", "")

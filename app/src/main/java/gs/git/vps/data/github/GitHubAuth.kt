@@ -24,7 +24,7 @@ object GitHubAuth {
     private val appTokenRefreshMutex = Mutex()
 
     // Способ входа, выбранный пользователем на экране входа.
-    private const val KEY_AUTH_MODE = "auth_mode"
+    internal const val KEY_AUTH_MODE = "auth_mode"
     const val MODE_GUEST = "guest"   // без входа: только публичные данные (анонимный API)
     const val MODE_DEVICE = "device" // GitHub App device flow (рекомендуемый)
     const val MODE_PAT = "pat"       // классический токен — на свой страх и риск
@@ -232,10 +232,11 @@ object GitHubAuth {
         }
         // `github_prefs` also contains app configuration, the local PIN and PGP settings.
         // Logging out must only remove account-scoped data, never wipe the whole app state.
+        // KEY_TOKEN_ENC (legacy) и KEY_API_ERRORS — app-level, без слота; KEY_USER — per-slot.
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
             .remove(KEY_TOKEN_ENC)
-            .remove(GitHubManager.KEY_USER)
+            .remove(GitHubManager.userKey(context))
             .remove(KEY_API_ERRORS)
             .apply()
         // После выхода — режим гостя (не device/pat), чтобы не тянуть протухшие credential'ы.

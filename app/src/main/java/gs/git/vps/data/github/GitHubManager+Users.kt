@@ -38,18 +38,18 @@ internal suspend fun GitHubManager.getUser(context: Context): GHUser? {
     if (!r.success) return null
     return try {
         val user = parseGHUser(JSONObject(r.body))
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_USER, r.body).apply()
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(userKey(context), r.body).apply()
         user
     } catch (e: Exception) { Log.e(USERS_TAG, "Parse user failed"); null }
 }
 
 internal fun GitHubManager.getCachedUser(context: Context): GHUser? {
-    val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_USER, null) ?: return null
+    val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(userKey(context), null) ?: return null
     return try { parseGHUser(JSONObject(raw)) } catch (_: Exception) { null }
 }
 
 internal fun GitHubManager.clearGitHubUserCache(context: Context) {
-    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(KEY_USER).apply()
+    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(userKey(context)).apply()
 }
 
 internal suspend fun GitHubManager.searchUsers(context: Context, query: String): List<GHUser> {
@@ -197,7 +197,7 @@ internal suspend fun GitHubManager.getCurrentUserProfile(context: Context): GHUs
     if (!r.success) return null
     return try {
         val j = JSONObject(r.body)
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_USER, r.body).apply()
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(userKey(context), r.body).apply()
         parseGHUserProfile(j)
     } catch (e: Exception) {
         Log.e(USERS_TAG, "Parse current profile failed")

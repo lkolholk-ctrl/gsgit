@@ -132,6 +132,28 @@ object GsGitPush {
         scope.launch { runCatching { register(app) } }
     }
 
+    /**
+     * Мульти-аккаунт: привести пуши к АКТИВНОМУ аккаунту (один FCM-токен = один активный).
+     * Есть device-токен → перерегистрируем (сервер перезаписывает связку fcmToken→user, прошлый
+     * аккаунт перестаёт получать пуши на это устройство). Нет (pat/guest) → снимаем с пушей.
+     * Звать после AccountStore.switchTo / removeAccount / успешного входа в новый слот.
+     */
+    fun syncActiveAsync(context: Context) {
+        val app = context.applicationContext
+        scope.launch {
+            runCatching {
+                if (!isEnabled(app) || !ensureInit(app)) return@runCatching
+                val userToken = GitHubAuth.getValidGitHubAppUserToken(app)
+                val fcmToken = if (userToken.isNotBlank()) currentFcmToken() else null
+                if (userToken.isNotBlank() && fcmToken != null) {
+                    registerToken(app, userToken, fcmToken)
+                } else {
+                    unregisterAsync(app)
+                }
+            }
+        }
+    }
+
     /** Снятие устройства с пушей (логаут/выключение тумблера). Авторизации не требует. */
     fun unregisterAsync(context: Context) {
         val app = context.applicationContext

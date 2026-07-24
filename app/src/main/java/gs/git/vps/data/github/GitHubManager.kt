@@ -73,6 +73,9 @@ object GitHubManager {
     }
     internal const val PREFS = "github_prefs"
     internal const val KEY_USER = "user_json"
+    // Мульти-аккаунт: кэш профиля неймспейсится по активному слоту (слот 0 = без суффикса).
+    internal fun userKey(context: Context): String =
+        AccountStore.slotKey(AccountStore.activeSlot(context), KEY_USER)
     private const val CODE_NOT_MODIFIED = 304
 
     private val etagCache = ConcurrentHashMap<String, Pair<String, Map<String, String>>>()
