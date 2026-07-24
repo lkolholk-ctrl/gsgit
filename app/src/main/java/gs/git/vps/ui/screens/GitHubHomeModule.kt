@@ -695,6 +695,7 @@ internal fun ReposScreen(
     onSettings: () -> Unit,
     onNotifications: () -> Unit = {},
     onProfile: (String) -> Unit = {},
+    onAccounts: () -> Unit = {},
     initialShowApps: Boolean = false,
     onInitialShowAppsConsumed: () -> Unit = {},
 ) {
@@ -900,7 +901,10 @@ internal fun ReposScreen(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    AsyncImage(user.avatarUrl, user.login, Modifier.size(36.dp).clip(CircleShape))
+                    AsyncImage(
+                        user.avatarUrl, user.login,
+                        Modifier.size(36.dp).clip(CircleShape).clickable { onAccounts() },
+                    )
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(

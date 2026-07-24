@@ -66,6 +66,9 @@ fun GitHubScreen(
             var showSettings by rememberSaveable { mutableStateOf(false) }
             var showNotifications by rememberSaveable { mutableStateOf(false) }
             var showProfile by rememberSaveable { mutableStateOf<String?>(null) }
+            // Мульти-аккаунт: переключатель + слот, на который вернуться при отмене добавления.
+            var showAccounts by remember { mutableStateOf(false) }
+            var addReturnSlot by remember { mutableStateOf<Int?>(null) }
             var pendingTarget by remember { mutableStateOf(initialTarget) }
             var pendingAppsOpen by remember { mutableStateOf(initialOpenApps) }
             val saveableStateHolder = rememberSaveableStateHolder()
@@ -140,7 +143,25 @@ fun GitHubScreen(
                 }
             }
             when {
-                !isLoggedIn -> LoginScreen(onBack, onMinimize, onClose) { isLoggedIn = true }
+                !isLoggedIn -> LoginScreen(
+                    onBack = {
+                        val ret = addReturnSlot
+                        if (ret != null) {
+                            // Отмена добавления аккаунта — вернуться на прошлый.
+                            gs.git.vps.data.github.AccountStore.switchTo(context, ret)
+                            addReturnSlot = null
+                            isLoggedIn = GitHubManager.isLoggedIn(context)
+                            user = GitHubManager.getCachedUser(context)
+                        } else onBack()
+                    },
+                    onMinimize = onMinimize,
+                    onClose = onClose,
+                ) {
+                    isLoggedIn = true
+                    addReturnSlot = null
+                    user = GitHubManager.getCachedUser(context)
+                    gs.git.vps.notifications.GsGitPush.syncActiveAsync(context)
+                }
                 showSettings -> saveableStateHolder.SaveableStateProvider("settings") {
                     GitHubSettingsScreen(
                         onBack = { showSettings = false },
@@ -186,11 +207,52 @@ fun GitHubScreen(
                         onSettings = { showSettings = true },
                         onNotifications = { showNotifications = true },
                         onProfile = { showProfile = it },
+                        onAccounts = { showAccounts = true },
                         initialShowApps = pendingAppsOpen,
                         onInitialShowAppsConsumed = {
                             pendingAppsOpen = false
                             onInitialOpenAppsConsumed()
                         },
+                    )
+                }
+            }
+
+            // ── Мульти-аккаунт: Gmail-style переключатель поверх контента ──
+            if (showAccounts) {
+                androidx.compose.ui.window.Popup(
+                    onDismissRequest = { showAccounts = false },
+                    properties = androidx.compose.ui.window.PopupProperties(focusable = true),
+                ) {
+                    AccountSwitcherSheet(
+                        accounts = gs.git.vps.data.github.AccountStore.accounts(context),
+                        canAdd = !gs.git.vps.data.github.AccountStore.isFull(context),
+                        onSwitch = { slot ->
+                            gs.git.vps.data.github.AccountStore.switchTo(context, slot)
+                            gs.git.vps.notifications.GsGitPush.syncActiveAsync(context)
+                            isLoggedIn = GitHubManager.isLoggedIn(context)
+                            user = GitHubManager.getCachedUser(context)
+                            selectedRepo = null; showSettings = false; showGists = false
+                            showNotifications = false; showProfile = null
+                            showAccounts = false
+                        },
+                        onAdd = {
+                            val prev = gs.git.vps.data.github.AccountStore.activeSlot(context)
+                            val free = gs.git.vps.data.github.AccountStore.beginAddAccount(context)
+                            showAccounts = false
+                            if (free != null) {
+                                addReturnSlot = prev
+                                isLoggedIn = false
+                                user = null
+                            }
+                        },
+                        onRemove = { slot ->
+                            gs.git.vps.data.github.AccountStore.removeAccount(context, slot)
+                            gs.git.vps.notifications.GsGitPush.syncActiveAsync(context)
+                            isLoggedIn = GitHubManager.isLoggedIn(context)
+                            user = GitHubManager.getCachedUser(context)
+                            if (gs.git.vps.data.github.AccountStore.accounts(context).isEmpty()) showAccounts = false
+                        },
+                        onDismiss = { showAccounts = false },
                     )
                 }
             }
