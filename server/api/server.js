@@ -99,6 +99,17 @@ function allDeviceObjects() {
 
 function addDevice(login, fcmToken, meta) {
   const key = login.toLowerCase();
+  // Мульти-аккаунт: один FCM-токен принадлежит ТОЛЬКО одному логину (активному аккаунту).
+  // При переключении аккаунта клиент перерегистрирует тот же токен на нового юзера —
+  // снимаем его с прочих логинов, чтобы прошлый аккаунт перестал получать пуши на это устройство.
+  for (const other of Object.keys(devices)) {
+    if (other === key) continue;
+    const next = devices[other].filter((d) => d.t !== fcmToken);
+    if (next.length !== devices[other].length) {
+      if (next.length === 0) delete devices[other];
+      else devices[other] = next;
+    }
+  }
   const list = devices[key] || (devices[key] = []);
   let entry = list.find((d) => d.t === fcmToken);
   const isNew = !entry;
@@ -160,7 +171,7 @@ function saveAppConfig() { saveJson(APPCONFIG_FILE, appConfig); }
 // Всё под тем же X-Admin-Key. Ничего из боевых путей (/webhook, /register,
 // пуши, старые /admin/*) не меняет по контракту — только добавляет.
 
-const SERVER_VERSION = '1.1.2';
+const SERVER_VERSION = '1.1.3';
 const startedAt = Date.now();
 
 const ANNOUNCEMENTS_FILE = process.env.ANNOUNCEMENTS_FILE || path.join(DATA_DIR, 'announcements.json');
